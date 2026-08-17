@@ -1,0 +1,26 @@
+@echo off
+REM CI / agent build — no interactive pause. Copy to project root as build_ci.bat
+
+cd /d "%~dp0"
+
+set BUILD_NOPAUSE=1
+
+echo Running tests...
+call run_tests.bat
+if errorlevel 1 (
+    echo Tests failed.
+    exit /b 1
+)
+
+echo Building...
+REM REPLACE: your build command here
+REM pyinstaller MyApp.spec --noconfirm
+REM npm run build
+
+if errorlevel 1 (
+    echo Build failed.
+    exit /b 1
+)
+
+echo Build OK.
+exit /b 0

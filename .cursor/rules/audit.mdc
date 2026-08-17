@@ -1,0 +1,18 @@
+---
+description: Agent Starter Pack self-audit — full tests, semantic report, Fix/Improve only
+alwaysApply: true
+---
+
+# Audit (pack self-audit)
+
+On **audit**, **full scan**, or **check everything** in this repo:
+
+1. **`run_audit.cmd`** — `run_audit_tests.bat` + machine checks + sync verify; never `-SkipTests`.
+2. Read **`docs/.audit_agent_manifest.json`** — complete semantic report for all required sections.
+3. Edit **`docs/.audit_semantic_report.json`**; run **`scripts\verify_semantic_audit.cmd`**.
+4. **`scripts\finalize_audit.cmd`** when semantic is complete.
+5. Report **only** Fix and Improve.
+
+Do not claim audit complete unless **`finalize_audit.cmd`** exits 0.
+
+For **audit-system file edits** (not a full self-audit): `pack\scripts\sync-audit-system.ps1` then `verify-audit-system.ps1` exit 0.

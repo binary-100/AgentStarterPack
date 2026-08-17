@@ -1,0 +1,17 @@
+# Copilot instructions — {{PROJECT_NAME}}
+
+Follow **`AGENTS.md`** and **`AI_INSTRUCTIONS.md`** in this repository.
+
+## Audits
+
+When the user asks for an **audit**: run **`run_audit.cmd`**, complete the semantic report workflow in **`docs/AUDIT.md`**, and respond with **Fix** and **Improve** sections only.
+
+## Builds and tests
+
+- Tests: **`run_tests.bat`**
+- CI-style build: set **`BUILD_NOPAUSE=1`** then **`build_ci.bat`**
+- Do not leave Windows batch files waiting on `pause`
+
+## Version
+
+Canonical version lives in **`{{SOURCE_MODULE}}`** (`VERSION` constant). Do not hand-edit **`{{VERSION_FILE}}`** — run version sync per **`AGENTS.md`**.

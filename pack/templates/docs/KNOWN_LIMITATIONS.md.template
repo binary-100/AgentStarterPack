@@ -1,0 +1,11 @@
+# Known limitations — {{PROJECT_NAME}}
+
+Document intentional trade-offs and environment constraints so agents do not "fix" them repeatedly.
+
+## Template examples (delete or replace)
+
+- *(None yet — add items as you discover stable limitations.)*
+
+---
+
+**Agents:** informational only. Audit **Improve** items belong in the audit semantic report, not here, unless the team explicitly parks mitigation work in **`docs/ROADMAP.md`**.

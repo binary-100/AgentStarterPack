@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+dist/
+*.zip
+.DS_Store
+
+# Audit artifacts (pack self-audit)
+docs/.audit_agent_manifest.json
+docs/.audit_semantic_report.json
+docs/.audit_timing.jsonl
+docs/.audit_inventory.json
+docs/.audit_domain_expanded.json
+docs/.audit_receipt.json

@@ -1,0 +1,39 @@
+"""VERSION.txt must match canonical module VERSION (run on every test pass)."""
+
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+# --- CONFIG (match scripts/apply_version.py) ---
+SOURCE_MODULE = ROOT / "{{SOURCE_MODULE}}"  # e.g. bsod_analyzer.py
+VERSION_READ = re.compile(r'^VERSION = "([^"]+)"', re.M)
+
+
+def _parse_version_txt(text: str) -> str | None:
+    for line in text.splitlines():
+        m = re.search(r"Version:\s*(\S+)", line, re.I)
+        if m:
+            return m.group(1).strip()
+    m = re.search(r"v(\d+\.\d+\.\d+)", text)
+    return m.group(1) if m else None
+
+
+def test_version_matches_version_txt() -> None:
+    text = SOURCE_MODULE.read_text(encoding="utf-8")
+    m = VERSION_READ.search(text)
+    assert m, f"No VERSION in {SOURCE_MODULE.name}"
+    ver = m.group(1)
+    vtxt = ROOT / "VERSION.txt"
+    assert vtxt.is_file(), "Missing VERSION.txt — run: py -3 scripts/apply_version.py sync"
+    parsed = _parse_version_txt(vtxt.read_text(encoding="utf-8"))
+    assert parsed == ver, f"VERSION.txt has {parsed}, {SOURCE_MODULE.name} has {ver}"
+
+
+if __name__ == "__main__":
+    test_version_matches_version_txt()
+    print("Version consistency tests OK")

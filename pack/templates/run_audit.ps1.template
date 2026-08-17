@@ -1,0 +1,17 @@
+param(
+    [string]$RepoRoot = (Get-Location).Path,
+    [switch]$FinalizeOnly,
+    [switch]$SkipTests
+)
+
+function Resolve-AuditCore {
+    . (Join-Path $PSScriptRoot 'pack-paths.ps1')
+    foreach ($base in (Get-AgentStarterPackCandidates)) {
+        $core = Join-Path $base 'pack\scripts\run_audit_core.ps1'
+        if (Test-Path -LiteralPath $core) { return $core }
+    }
+    Write-Error 'run_audit_core.ps1 not found. Install Agent Starter Pack (Install-AgentStarterPack.cmd).'
+}
+
+$core = Resolve-AuditCore
+& powershell -NoProfile -ExecutionPolicy Bypass -File $core -RepoRoot $RepoRoot @PSBoundParameters

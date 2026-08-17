@@ -1,0 +1,13 @@
+# Windsurf rules — {{PROJECT_NAME}}
+
+Read AGENTS.md and AI_INSTRUCTIONS.md first.
+
+Audits: run run_audit.cmd; report Fix and Improve only (see docs/AUDIT.md). No Phase A/B.
+
+Multi-step features: one phased plan; runtime order equals build order.
+
+Before long shell commands: agent-hygiene MCP when available.
+
+Windows agent builds: BUILD_NOPAUSE=1 or build_ci.bat.
+
+Version: canonical in {{SOURCE_MODULE}}; sync per AGENTS.md — do not hand-edit {{VERSION_FILE}}.

@@ -1,0 +1,777 @@
+#Requires -Version 5.1
+<#
+.SYNOPSIS
+  Generic audit machine checks — driven by docs/AUDIT.config.json in the app root.
+  All projects use this core; project config defines paths, patterns, and domain map rules.
+#>
+param(
+    [Parameter(Mandatory = $true)][string]$RepoRoot,
+    [Parameter(Mandatory = $true)][string]$AppRoot,
+    [switch]$SkipTests,
+    [switch]$FinalizeOnly,
+    [string]$ConfigPath = ''
+)
+
+$ErrorActionPreference = 'Continue'
+$RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
+$AppRoot = (Resolve-Path -LiteralPath $AppRoot).Path
+Set-Location $AppRoot
+
+$Fix = [System.Collections.Generic.List[string]]::new()
+$Improve = [System.Collections.Generic.List[string]]::new()
+$script:CodeMachineFixes = $null
+$script:RequiredSectionCount = 0
+$script:TestsGitHead = $null
+$script:TestsPassedAt = $null
+$script:LegacyNoGitProof = '__no_git__'
+$script:AuditPhases = [ordered]@{}
+$script:PhaseWatch = $null
+$script:PhaseName = ''
+$script:AuditRunStarted = $null
+$script:AuditMode = 'full'
+function Add-Fix([string]$m) { $Fix.Add($m) }
+function Add-Improve([string]$m) { $Improve.Add($m) }
+
+function Start-AuditPhase([string]$Name) {
+    if ($script:PhaseWatch) { Stop-AuditPhase $script:PhaseName }
+    $script:PhaseName = $Name
+    $script:PhaseWatch = [System.Diagnostics.Stopwatch]::StartNew()
+}
+
+function Stop-AuditPhase([string]$Name) {
+    if (-not $script:PhaseWatch) { return }
+    $script:PhaseWatch.Stop()
+    if ($Name) { $script:AuditPhases[$Name] = [math]::Round($script:PhaseWatch.Elapsed.TotalSeconds, 3) }
+    $script:PhaseWatch = $null
+    $script:PhaseName = ''
+}
+
+function Get-RepoGitHead([string]$Root) {
+    if (-not (Test-Path -LiteralPath (Join-Path $Root '.git'))) { return $null }
+    try {
+        $h = (& git -C $Root rev-parse HEAD 2>$null | Select-Object -First 1)
+        if ($h) { return $h.ToString().Trim() }
+    } catch { }
+    return $null
+}
+
+function Get-AuditTreeFingerprint([string]$AppRoot, $Cfg) {
+    $paths = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    if ($Cfg.tests -and $Cfg.tests.script) {
+        $tp = Join-Path $AppRoot ($Cfg.tests.script -replace '/', '\')
+        if (Test-Path -LiteralPath $tp) { [void]$paths.Add((Resolve-Path -LiteralPath $tp).Path) }
+    }
+    foreach ($rel in @('docs\AUDIT.config.json', 'docs\AUDIT.md')) {
+        $p = Join-Path $AppRoot $rel
+        if (Test-Path -LiteralPath $p) { [void]$paths.Add((Resolve-Path -LiteralPath $p).Path) }
+    }
+    $dm = $Cfg.domainMap
+    if ($dm) {
+        $scanDir = Join-Path $AppRoot (($dm.scanDir -replace '/', '\'))
+        if (-not $dm.scanDir -or $dm.scanDir -eq '.') { $scanDir = $AppRoot }
+        $glob = if ($dm.scanGlob) { $dm.scanGlob } else { '*.py' }
+        if (Test-Path -LiteralPath $scanDir) {
+            Get-ChildItem -LiteralPath $scanDir -Filter $glob -File -ErrorAction SilentlyContinue | ForEach-Object {
+                [void]$paths.Add($_.FullName)
+            }
+        }
+        foreach ($subdir in @($dm.moduleSearchDirs)) {
+            $sd = Join-Path $AppRoot ($subdir -replace '/', '\')
+            if (Test-Path -LiteralPath $sd) {
+                Get-ChildItem -LiteralPath $sd -Filter $glob -File -ErrorAction SilentlyContinue | ForEach-Object {
+                    [void]$paths.Add($_.FullName)
+                }
+            }
+        }
+    } else {
+        $scanDir = $AppRoot
+        if (Test-Path -LiteralPath $scanDir) {
+            Get-ChildItem -LiteralPath $scanDir -Filter '*.py' -File -ErrorAction SilentlyContinue | ForEach-Object {
+                [void]$paths.Add($_.FullName)
+            }
+        }
+    }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    $ms = New-Object System.IO.MemoryStream
+    foreach ($f in ($paths | Sort-Object)) {
+        $item = Get-Item -LiteralPath $f
+        $line = "$($item.FullName)|$($item.Length)|$($item.LastWriteTimeUtc.Ticks)"
+        $bytes = [Text.Encoding]::UTF8.GetBytes($line)
+        $ms.Write($bytes, 0, $bytes.Length)
+    }
+    $hash = $sha.ComputeHash($ms.ToArray())
+    return 'tree:' + (-join ($hash | ForEach-Object { $_.ToString('x2') }))
+}
+
+function Get-TestsProofHeadFromPython([string]$AppRoot) {
+    $codePy = Join-Path $PSScriptRoot 'audit_code_checks.py'
+    if (-not (Test-Path -LiteralPath $codePy)) { return $null }
+    $out = & py -3 $codePy $AppRoot --print-tests-git-head 2>&1
+    if ($LASTEXITCODE -ne 0) { return $null }
+    $line = ($out | Select-Object -Last 1).ToString().Trim()
+    if ($line) { return $line }
+    return $null
+}
+
+function Get-TestsProofHead([string]$RepoRoot, [string]$AppRoot, $Cfg) {
+    $git = Get-RepoGitHead $RepoRoot
+    if ($git) { return $git }
+    $pyHead = Get-TestsProofHeadFromPython $AppRoot
+    if ($pyHead) { return $pyHead }
+    return Get-AuditTreeFingerprint $AppRoot $Cfg
+}
+
+function Test-ManifestFinalizeAllowed([string]$AppRoot, [string]$RepoRoot, $Cfg) {
+    $path = Join-Path $AppRoot 'docs\.audit_agent_manifest.json'
+    if (-not (Test-Path -LiteralPath $path)) {
+        Add-Fix 'Audit finalize blocked - no docs\.audit_agent_manifest.json - run full run_audit.cmd first'
+        return $false
+    }
+    try {
+        $script:FinalizeManifest = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+    } catch {
+        Add-Fix 'Audit finalize blocked - invalid docs\.audit_agent_manifest.json'
+        return $false
+    }
+    $man = $script:FinalizeManifest
+    if (-not $man.testsPassedAt -or -not $man.testsGitHead) {
+        Add-Fix 'Audit finalize blocked - manifest has no test-pass proof - run full run_audit.cmd first'
+        return $false
+    }
+    if ($man.testsGitHead -eq $script:LegacyNoGitProof) {
+        Add-Fix 'Audit finalize blocked - stale test proof - run full run_audit.cmd first'
+        return $false
+    }
+    $head = Get-TestsProofHead $RepoRoot $AppRoot $Cfg
+    if (-not $head) {
+        Add-Fix 'Audit finalize blocked - cannot compute test-pass proof - run full run_audit.cmd'
+        return $false
+    }
+    if ($head -ne $man.testsGitHead.ToString()) {
+        Add-Fix 'Audit finalize blocked - source tree changed since last test pass - run full run_audit.cmd'
+        return $false
+    }
+    $script:TestsGitHead = $man.testsGitHead.ToString()
+    $script:TestsPassedAt = $man.testsPassedAt.ToString()
+    return $true
+}
+
+function Test-SemanticPassIncomplete {
+    return @($Fix | Where-Object { $_ -match '^Semantic report' }).Count -gt 0
+}
+
+function Test-AuditGateIncomplete {
+    return @($Fix | Where-Object {
+        $_ -match '^Semantic report missing|^Semantic report invalid|^Semantic report verify failed|^Incomplete audit'
+    }).Count -gt 0
+}
+
+function Write-SemanticNextSteps {
+    Write-Host ''
+    Write-Host 'Semantic pass incomplete. Next steps:'
+    Write-Host '  1. If needed: scripts\write_semantic_audit_template.cmd (auto-written on step 1 when missing)'
+    if ($script:RequiredSectionCount -gt 0) {
+        Write-Host "  2. Edit docs\.audit_semantic_report.json - all $script:RequiredSectionCount sections (reviewed + summary + evidence when not clean)"
+    } else {
+        Write-Host '  2. Edit docs\.audit_semantic_report.json - all required sections'
+    }
+    Write-Host '  3. scripts\verify_semantic_audit.cmd'
+    Write-Host '  4. scripts\finalize_audit.cmd   (or run_audit.cmd -FinalizeOnly — skips tests if git HEAD unchanged)'
+    Write-Host '  5. Or run full run_audit.cmd again if the tree changed since tests ran'
+}
+
+function Update-ManifestMachineFixes(
+    [string]$ManifestPath,
+    [System.Collections.Generic.List[string]]$AllFixes,
+    [hashtable]$CodeMachineFixes = $null,
+    [string]$TestsGitHead = '',
+    [string]$TestsPassedAt = ''
+) {
+    if (-not $ManifestPath -or -not (Test-Path -LiteralPath $ManifestPath)) { return }
+    try {
+        $bySec = [ordered]@{}
+        $gateFixes = [System.Collections.Generic.List[string]]::new()
+        function Add-SectionFix([string]$Letter, [string]$Text) {
+            if (-not $bySec[$Letter]) { $bySec[$Letter] = [System.Collections.Generic.List[string]]::new() }
+            if ($bySec[$Letter] -notcontains $Text) { [void]$bySec[$Letter].Add($Text) }
+        }
+        if ($CodeMachineFixes) {
+            foreach ($letter in $CodeMachineFixes.Keys) {
+                foreach ($item in @($CodeMachineFixes[$letter])) {
+                    if ($item) { Add-SectionFix $letter $item }
+                }
+            }
+        }
+        foreach ($f in $AllFixes) {
+            if ($f -match '^Semantic report missing|^Semantic report invalid|^Semantic report verify failed|^Incomplete audit') {
+                if ($gateFixes -notcontains $f) { [void]$gateFixes.Add($f) }
+                continue
+            }
+            if ($f -match '^Section ([A-N]) ') { Add-SectionFix $Matches[1] $f; continue }
+            if ($f -match '^Semantic report - section ([A-N]) ') { Add-SectionFix $Matches[1] $f; continue }
+            if ($f -match '^(Version |Tests failed|Dist version|Import smoke)') { Add-SectionFix 'A' $f; continue }
+            if ($f -match 'Stale doc|Stale logs|Build cruft|Cache cruft|Possible secret|Committed env|Obsolete|Stable |Old folder|Missing path|Domain map - ') {
+                Add-SectionFix 'B' $f; continue
+            }
+            if ($f -match 'Audit sync|Audit wiring|Code checks|Missing audit file|Old audit|forbidden rule|Forbidden') {
+                Add-SectionFix 'L' $f; continue
+            }
+        }
+        $out = @{}
+        foreach ($k in $bySec.Keys) { $out[$k] = @($bySec[$k]) }
+        $sectionsWithFixes = @($bySec.Keys | Sort-Object)
+        $man = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
+        $man | Add-Member -NotePropertyName machineFixesBySection -NotePropertyValue $out -Force
+        $man | Add-Member -NotePropertyName machineSectionsWithFixes -NotePropertyValue $sectionsWithFixes -Force
+        $man | Add-Member -NotePropertyName auditGateFixes -NotePropertyValue @($gateFixes) -Force
+        if ($TestsGitHead) {
+            $man | Add-Member -NotePropertyName testsGitHead -NotePropertyValue $TestsGitHead -Force
+        } elseif ($man.PSObject.Properties.Name -contains 'testsGitHead') {
+            $man | Add-Member -NotePropertyName testsGitHead -NotePropertyValue $man.testsGitHead -Force
+        }
+        if ($TestsPassedAt) {
+            $man | Add-Member -NotePropertyName testsPassedAt -NotePropertyValue $TestsPassedAt -Force
+        } elseif ($man.PSObject.Properties.Name -contains 'testsPassedAt') {
+            $man | Add-Member -NotePropertyName testsPassedAt -NotePropertyValue $man.testsPassedAt -Force
+        }
+        $man | ConvertTo-Json -Depth 12 | ForEach-Object { Write-Utf8JsonFile $ManifestPath $_ }
+    } catch { }
+}
+
+function Write-Utf8JsonFile([string]$Path, [string]$Content) {
+    $dir = Split-Path -Parent $Path
+    if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    $utf8 = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($Path, $Content, $utf8)
+}
+
+function Write-AuditTimingLog([int]$ExitCode, [string]$ProjectLabel) {
+    Stop-AuditPhase $script:PhaseName
+    if (-not $script:AuditRunStarted) { return }
+    $script:AuditRunStarted.Stop()
+    $timingPath = Join-Path $AppRoot 'docs\.audit_timing.jsonl'
+    $total = [math]::Round($script:AuditRunStarted.Elapsed.TotalSeconds, 3)
+    $entry = @{
+        runAt        = (Get-Date).ToUniversalTime().ToString('o')
+        mode         = $script:AuditMode
+        project      = $ProjectLabel
+        phases       = $script:AuditPhases
+        totalSeconds = $total
+        exitCode     = $ExitCode
+    }
+    try {
+        $dir = Split-Path -Parent $timingPath
+        if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        Add-Content -LiteralPath $timingPath -Value ($entry | ConvertTo-Json -Compress) -Encoding UTF8
+        Write-Host "Audit timing: docs\.audit_timing.jsonl (${total}s total)"
+    } catch { }
+}
+
+function Write-AuditReport {
+    Write-Host ''
+    Write-Host '========== AUDIT (machine + semantic gate) =========='
+    Write-Host '## Fix'
+    if ($Fix.Count -eq 0) { Write-Host 'Nothing found.' } else { $Fix | ForEach-Object { Write-Host "- $_" } }
+    Write-Host ''
+    Write-Host '## Improve'
+    if ($Improve.Count -eq 0) { Write-Host 'Nothing found.' } else { $Improve | ForEach-Object { Write-Host "- $_" } }
+    Write-Host ''
+    Write-Host 'Agent: read docs\.audit_agent_manifest.json - semantic review (machine checks above).'
+    Write-Host '============================================'
+}
+
+function Get-PackRoot {
+    param([string]$PreferAppRoot = '')
+    . (Join-Path $PSScriptRoot 'pack-paths.ps1')
+    if ($PreferAppRoot) {
+        $manifest = Join-Path $PreferAppRoot 'pack\audit\manifest.json'
+        $install = Join-Path $PreferAppRoot 'install.ps1'
+        if ((Test-Path -LiteralPath $manifest) -and (Test-Path -LiteralPath $install)) {
+            return $PreferAppRoot
+        }
+    }
+    Get-AgentStarterPackRoot
+}
+
+function Get-JsonFromOutput([string]$Text) {
+    if (-not $Text) { return $null }
+    $start = $Text.IndexOf('{')
+    $end = $Text.LastIndexOf('}')
+    if ($start -lt 0 -or $end -le $start) { return $null }
+    return $Text.Substring($start, $end - $start + 1)
+}
+
+function Load-AuditConfig([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) {
+        Add-Fix "Missing AUDIT.config.json - copy from starter pack templates/docs/AUDIT.config.json.template"
+        return $null
+    }
+    try {
+        return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    } catch {
+        Add-Fix "Invalid AUDIT.config.json - $_"
+        return $null
+    }
+}
+
+if (-not $ConfigPath) { $ConfigPath = Join-Path $AppRoot 'docs\AUDIT.config.json' }
+$cfg = Load-AuditConfig $ConfigPath
+$projectLabel = if ($cfg.projectName) { $cfg.projectName } else { Split-Path $RepoRoot -Leaf }
+
+Write-Host "$projectLabel audit (machine + semantic gate)"
+Write-Host "Repo: $RepoRoot"
+Write-Host "App:  $AppRoot"
+Write-Host ""
+
+if (-not $cfg) {
+    Write-AuditReport
+    Write-AuditTimingLog 1 $projectLabel
+    exit 1
+}
+
+$script:AuditRunStarted = [System.Diagnostics.Stopwatch]::StartNew()
+if ($FinalizeOnly) { $script:AuditMode = 'finalize' }
+elseif ($SkipTests) { $script:AuditMode = 'skip_tests' }
+else { $script:AuditMode = 'full' }
+Start-AuditPhase 'init'
+
+if ($FinalizeOnly -and $SkipTests) {
+    Add-Fix 'Audit finalize blocked - do not combine -FinalizeOnly with -SkipTests'
+}
+
+$testsPassed = $false
+
+if ($FinalizeOnly) {
+    Write-Host 'Mode: FinalizeOnly (skip tests; reuse manifest test-pass proof)'
+    if (Test-ManifestFinalizeAllowed $AppRoot $RepoRoot $cfg) { $testsPassed = $true }
+} elseif (-not $SkipTests) {
+    $script:TestsGitHead = Get-TestsProofHead $RepoRoot $AppRoot $cfg
+}
+Stop-AuditPhase 'init'
+
+# --- Version sync ---
+Start-AuditPhase 'version_sync'
+if ($cfg.versionSync) {
+    $vs = $cfg.versionSync
+    $pyVer = $null
+    $pyFile = Join-Path $AppRoot ($vs.codeFile -replace '/', '\')
+    if (Test-Path -LiteralPath $pyFile) {
+        $m = Select-String -Path $pyFile -Pattern $vs.codePattern | Select-Object -First 1
+        if ($m -and $m.Matches.Groups.Count -gt 1) { $pyVer = $m.Matches.Groups[1].Value }
+    }
+    $txtFile = Join-Path $AppRoot ($vs.txtFile -replace '/', '\')
+    $txtVer = $null
+    if (Test-Path -LiteralPath $txtFile) {
+        $m = Select-String -Path $txtFile -Pattern $vs.txtPattern | Select-Object -First 1
+        if ($m -and $m.Matches.Groups.Count -gt 1) { $txtVer = $m.Matches.Groups[1].Value }
+    }
+    if (-not $pyVer) { Add-Fix "Version - $($vs.codeFile) - missing version" }
+    elseif (-not $txtVer) { Add-Fix "Version - $($vs.txtFile) - missing" }
+    elseif ($pyVer -ne $txtVer) { Add-Fix "Version mismatch - $pyVer vs $txtVer" }
+    if ($pyVer -and $vs.distTxtFile) {
+        $distFile = Join-Path $AppRoot ($vs.distTxtFile -replace '/', '\')
+        if (Test-Path -LiteralPath $distFile) {
+            $dm = Select-String -Path $distFile -Pattern $vs.distTxtPattern | Select-Object -First 1
+            if ($dm -and $dm.Matches.Groups.Count -gt 1) {
+                $distVer = $dm.Matches.Groups[1].Value
+                if ($distVer -ne $pyVer) { Add-Fix "Dist version - $($vs.distTxtFile) is $distVer, code is $pyVer" }
+            }
+        }
+    }
+}
+
+Stop-AuditPhase 'version_sync'
+
+# --- Tests ---
+Start-AuditPhase 'tests'
+if (-not $FinalizeOnly -and -not $SkipTests -and $cfg.tests -and $cfg.tests.script) {
+    $testScript = Join-Path $AppRoot $cfg.tests.script
+    if (Test-Path -LiteralPath $testScript) {
+        if ($cfg.tests.env) {
+            $cfg.tests.env.PSObject.Properties | ForEach-Object { Set-Item -Path "Env:$($_.Name)" -Value $_.Value }
+        }
+        $env:PYTHONPATH = $AppRoot
+        $testLog = Join-Path $env:TEMP "audit_tests_$PID.log"
+        Write-Host "Running $($cfg.tests.script) ..."
+        $p = Start-Process cmd.exe -ArgumentList '/c',"$($cfg.tests.script) > `"$testLog`" 2>&1" -WorkingDirectory $AppRoot -Wait -PassThru -NoNewWindow
+        if ($p.ExitCode -ne 0) { Add-Fix "Tests failed - $($cfg.tests.script) exit $($p.ExitCode) - see $testLog" }
+        else {
+            Write-Host 'Tests: OK'
+            $testsPassed = $true
+            if (-not $script:TestsGitHead) { $script:TestsGitHead = Get-TestsProofHead $RepoRoot $AppRoot $cfg }
+        }
+    } else { Add-Fix "Missing test script - $($cfg.tests.script)" }
+} elseif ($FinalizeOnly) {
+    # testsPassed set from manifest gate
+} elseif (-not $SkipTests) { Write-Host 'Tests: skipped (no test script in config)' }
+Stop-AuditPhase 'tests'
+
+Start-AuditPhase 'machine_checks'
+if ($cfg.requiredPaths) {
+    foreach ($rel in @($cfg.requiredPaths.app)) {
+        $p = Join-Path $AppRoot ($rel -replace '/', '\')
+        if (-not (Test-Path -LiteralPath $p)) { Add-Fix "Missing path - app\$($rel -replace '/','\')" }
+    }
+    foreach ($rel in @($cfg.requiredPaths.repo)) {
+        $p = Join-Path $RepoRoot ($rel -replace '/', '\')
+        if (-not (Test-Path -LiteralPath $p)) { Add-Fix "Missing path - $rel" }
+    }
+}
+
+# --- Stale docs ---
+if ($cfg.staleDocs -and $cfg.staleDocs.pattern -and ($cfg.staleDocs.pattern.ToString().Trim())) {
+    $mdFiles = [System.Collections.Generic.List[System.IO.FileInfo]]::new()
+    if ($cfg.staleDocs.scanRepoMd) {
+        Get-ChildItem -LiteralPath $RepoRoot -Filter '*.md' -File -ErrorAction SilentlyContinue | ForEach-Object { $mdFiles.Add($_) }
+    }
+    if ($cfg.staleDocs.scanAppDocsMd) {
+        $docsDir = Join-Path $AppRoot 'docs'
+        if (Test-Path -LiteralPath $docsDir) {
+            Get-ChildItem -LiteralPath $docsDir -Filter '*.md' -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $mdFiles.Add($_) }
+        }
+    }
+    foreach ($extra in @($cfg.staleDocs.extraFiles)) {
+        $p = if ($extra -eq 'AGENTS.md') { Join-Path $AppRoot $extra } else { Join-Path $RepoRoot $extra }
+        if (Test-Path -LiteralPath $p) { $mdFiles.Add((Get-Item -LiteralPath $p)) }
+    }
+    $excludeFiles = @($cfg.staleDocs.excludeFiles)
+    $excludeDirs = @($cfg.staleDocs.excludeDirs)
+    $seen = @{}
+    foreach ($md in ($mdFiles | Sort-Object FullName)) {
+        if ($seen[$md.FullName]) { continue }
+        $seen[$md.FullName] = $true
+        if ($excludeFiles -contains $md.Name) { continue }
+        $skip = $false
+        foreach ($ed in $excludeDirs) { if ($md.FullName -match [regex]::Escape($ed)) { $skip = $true; break } }
+        if ($skip) { continue }
+        if (Select-String -Path $md.FullName -Pattern $cfg.staleDocs.pattern -Quiet) {
+            $rel = $md.FullName.Substring($RepoRoot.Length).TrimStart('\')
+            Add-Fix "Stale doc - $rel - matches stale pattern"
+        }
+    }
+}
+
+# --- Cruft ---
+if ($cfg.cruft) {
+    foreach ($bad in @($cfg.cruft.dirs)) {
+        $p = Join-Path $AppRoot ($bad -replace '/', '\')
+        if (Test-Path -LiteralPath $p) { Add-Fix "Build cruft - app\$bad - delete" }
+    }
+    foreach ($glob in @($cfg.cruft.globFiles)) {
+        if (Get-ChildItem -LiteralPath $AppRoot -Filter $glob -File -ErrorAction SilentlyContinue) {
+            Add-Fix "Stale files - app\$glob - delete"
+        }
+    }
+    $logCount = 0
+    foreach ($ld in @($cfg.cruft.logDirs)) {
+        $base = if ($ld -eq 'repo') { $RepoRoot } elseif ($ld -eq 'app') { $AppRoot } else { Join-Path $AppRoot $ld }
+        if (Test-Path -LiteralPath $base) {
+            $logCount += @(Get-ChildItem -LiteralPath $base -Filter '*.log' -File -ErrorAction SilentlyContinue).Count
+        }
+    }
+    if ($logCount -gt 0) { Add-Fix "Stale logs - delete $logCount log file(s)" }
+    $cacheEx = if ($cfg.cruft.cacheExcludeRegex) { $cfg.cruft.cacheExcludeRegex } else { '\\tests\\' }
+    $pycache = @(Get-ChildItem -LiteralPath $AppRoot -Directory -Recurse -Filter '__pycache__' -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -notmatch $cacheEx })
+    if ($pycache.Count -gt 0) { Add-Fix "Cache cruft - $($pycache.Count) __pycache__ dir(s) - delete" }
+    if (Test-Path -LiteralPath (Join-Path $AppRoot '.pytest_cache')) { Add-Fix 'Cache cruft - app\.pytest_cache - delete' }
+}
+
+# --- Secrets ---
+if ($cfg.secretsScan -and $cfg.secretsScan.enabled) {
+    $secretPat = '(?i)(api[_-]?key\s*[:=]|password\s*[:=]\s*[''"][^''"]+|BEGIN (RSA |OPENSSH )?PRIVATE KEY)'
+    $extPat = ($cfg.secretsScan.extensions | ForEach-Object { [regex]::Escape($_) }) -join '|'
+    $skipPat = if ($cfg.secretsScan.excludePathRegex) { $cfg.secretsScan.excludePathRegex } else { '\\tests\\fixtures\\' }
+    Get-ChildItem -LiteralPath $AppRoot -Recurse -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -match "($extPat)$" -and $_.FullName -notmatch $skipPat } |
+        ForEach-Object {
+            if (Select-String -Path $_.FullName -Pattern $secretPat -Quiet) {
+                $rel = $_.FullName.Substring($RepoRoot.Length).TrimStart('\')
+                Add-Fix "Possible secret - $rel - review"
+            }
+        }
+    Get-ChildItem -LiteralPath $RepoRoot -Filter '.env' -File -ErrorAction SilentlyContinue | ForEach-Object {
+        Add-Fix "Committed env file - $($_.Name) - remove or gitignore"
+    }
+}
+
+# --- Obsolete paths ---
+if ($cfg.obsoletePaths) {
+    foreach ($rel in @($cfg.obsoletePaths.repo)) {
+        $p = Join-Path $RepoRoot ($rel -replace '/', '\')
+        if (Test-Path -LiteralPath $p) { Add-Improve "Obsolete - $rel - remove or archive" }
+    }
+    if ($cfg.obsoletePaths.desktopFolder) {
+        $desk = Join-Path $env:USERPROFILE 'OneDrive\Desktop'
+        if (-not (Test-Path -LiteralPath $desk)) { $desk = [Environment]::GetFolderPath('Desktop') }
+        $old = Join-Path $desk $cfg.obsoletePaths.desktopFolder
+        if (Test-Path -LiteralPath $old) { Add-Fix "Old folder - Desktop\$($cfg.obsoletePaths.desktopFolder) still exists" }
+    }
+}
+
+# --- Forbidden audit artifacts ---
+$packRoot = Get-PackRoot -PreferAppRoot $AppRoot
+$forbidden = @('code-audit-checklist.mdc', 'generic-code-audit-checklist.mdc', 'bsod-analyzer-audit-overlay.mdc', 'run_tests_with_timeout.bat')
+if ($packRoot) {
+    $manifestPath = Join-Path $packRoot 'pack\audit\manifest.json'
+    if (Test-Path -LiteralPath $manifestPath) {
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+        if ($manifest.forbiddenArtifacts) { $forbidden = @($manifest.forbiddenArtifacts) }
+    }
+}
+foreach ($or in $forbidden) {
+    if ($or -match '\.mdc$') {
+        $p = Join-Path $AppRoot ".cursor\rules\$or"
+        if (Test-Path -LiteralPath $p) { Add-Fix "Old audit rule - app\.cursor\rules\$or - delete" }
+    } else {
+        $p = Join-Path $AppRoot $or
+        if (Test-Path -LiteralPath $p) { Add-Fix "Obsolete - $or - delete" }
+    }
+}
+Get-ChildItem -LiteralPath (Join-Path $AppRoot 'docs') -Filter 'CODE_AUDIT*.md' -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.DirectoryName -notmatch 'audit_archive' } |
+    ForEach-Object { Add-Fix "Old audit doc - $($_.Name) - move to audit_archive" }
+
+# --- Stables ---
+if ($cfg.stables -and $cfg.stables.enabled) {
+    $desk = Join-Path $env:USERPROFILE 'OneDrive\Desktop'
+    if (-not (Test-Path -LiteralPath $desk)) { $desk = [Environment]::GetFolderPath('Desktop') }
+    $stableRoot = Join-Path $desk $cfg.stables.desktopFolder
+    $expected = @($cfg.stables.expected)
+    if ((Test-Path -LiteralPath $stableRoot) -and $expected.Count -gt 0) {
+        $found = @(Get-ChildItem -LiteralPath $stableRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+        if ($found.Count -ne $expected.Count) { Add-Fix "Stable count - expected $($expected.Count), found $($found.Count)" }
+        else {
+            foreach ($e in $expected) {
+                if ($e -notin $found) { Add-Fix "Stable missing - $e" }
+            }
+        }
+    }
+}
+
+# --- Domain map ---
+if ($cfg.domainMap) {
+    $dm = $cfg.domainMap
+    $auditMd = Join-Path $AppRoot ($dm.auditMd -replace '/', '\')
+    $scanDir = Join-Path $AppRoot ($dm.scanDir -replace '/', '.')
+    if (-not (Test-Path -LiteralPath $auditMd)) {
+        Add-Fix "Domain map - missing $($dm.auditMd)"
+    } else {
+        $allLines = Get-Content -LiteralPath $auditMd
+        $heading = if ($dm.sectionHeading) { $dm.sectionHeading } else { '## Domain map' }
+        $startIdx = -1
+        for ($i = 0; $i -lt $allLines.Count; $i++) {
+            if ($allLines[$i] -match [regex]::Escape($heading)) { $startIdx = $i; break }
+        }
+        $domainText = if ($startIdx -ge 0) {
+            $chunk = @()
+            for ($j = $startIdx; $j -lt $allLines.Count; $j++) {
+                if ($j -gt $startIdx -and $allLines[$j] -match '^## ') { break }
+                $chunk += $allLines[$j]
+            }
+            $chunk -join "`n"
+        } else { '' }
+        if (-not $domainText) { Add-Fix "Domain map - missing section $heading in $($dm.auditMd)" }
+        else {
+            $exclude = @($dm.excludeModules)
+            $wildcards = @($dm.wildcardPatterns)
+            Get-ChildItem -LiteralPath $scanDir -Filter $dm.scanGlob -File -ErrorAction SilentlyContinue | ForEach-Object {
+                $name = $_.Name
+                if ($exclude -contains $name) { return }
+                $covered = $domainText.Contains($name)
+                if (-not $covered) {
+                    foreach ($w in $wildcards) {
+                        $pat = '^' + ($w -replace '\*', '.*') + '$'
+                        if ($name -match $pat) { $covered = $true; break }
+                    }
+                }
+                if (-not $covered) {
+                    foreach ($wm in [regex]::Matches($domainText, '`([a-z_]+\*[^`]*\.py)`')) {
+                        $pat = '^' + ($wm.Groups[1].Value -replace '\*', '.*') + '$'
+                        if ($name -match $pat) { $covered = $true; break }
+                    }
+                }
+                if (-not $covered) {
+                    Add-Fix "Domain map - $name not in domain map - add row in $($dm.auditMd)"
+                }
+            }
+        }
+    }
+}
+
+# --- Project required files (manifest) ---
+if ($packRoot) {
+    $manifest = Get-Content -LiteralPath (Join-Path $packRoot 'pack\audit\manifest.json') -Raw | ConvertFrom-Json
+    $reqBase = $RepoRoot
+    $layout = $manifest.projectRequired.flatLayout
+    if (Test-Path -LiteralPath (Join-Path $RepoRoot 'app\docs\AUDIT.md')) {
+        $layout = $manifest.projectRequired.appLayout
+    } elseif (Test-Path -LiteralPath (Join-Path $AppRoot 'docs\AUDIT.md')) {
+        $reqBase = $AppRoot
+    }
+    $layout.PSObject.Properties | ForEach-Object {
+        $full = Join-Path $reqBase ($_.Value -replace '/', '\')
+        if (-not (Test-Path -LiteralPath $full)) {
+            Add-Fix "Missing audit file - $($_.Value)"
+        }
+    }
+}
+
+Stop-AuditPhase 'machine_checks'
+
+# --- Code checks (sections D–K: import smoke, static patterns, section tests) ---
+Start-AuditPhase 'code_checks'
+$codeScript = $null
+if ($cfg.codeChecks) {
+    if (-not $packRoot) { $packRoot = Get-PackRoot -PreferAppRoot $AppRoot }
+    $codeScript = if ($packRoot) { Join-Path $packRoot 'pack\scripts\audit_code_checks.py' } else { $null }
+    if (-not $codeScript -or -not (Test-Path -LiteralPath $codeScript)) {
+        Add-Fix 'Code checks - audit_code_checks.py missing - reinstall starter pack'
+    } else {
+        Write-Host 'Running audit_code_checks.py ...'
+        $codeArgs = @('-3', $codeScript, $AppRoot)
+        if ($testsPassed) { $codeArgs += '--full-tests-ran' }
+        if ($SkipTests) { $codeArgs += '--lightweight' }
+        $jsonOut = & py @codeArgs 2>&1 | Out-String
+        $jsonBlock = Get-JsonFromOutput $jsonOut
+        try {
+            if (-not $jsonBlock) { throw 'no JSON object in output' }
+            $codeResult = $jsonBlock | ConvertFrom-Json
+            foreach ($f in @($codeResult.fixes)) { Add-Fix $f }
+            foreach ($im in @($codeResult.improve)) { Add-Improve $im }
+            $script:RequiredSectionCount = @($codeResult.requiredSections).Count
+            $script:CodeMachineFixes = @{}
+            if ($codeResult.machineFixesBySection) {
+                $codeResult.machineFixesBySection.PSObject.Properties | ForEach-Object {
+                    $script:CodeMachineFixes[$_.Name] = @($_.Value)
+                }
+            }
+            $manifestOut = Join-Path $AppRoot 'docs\.audit_agent_manifest.json'
+            $manifestObj = [ordered]@{
+                requiredSections         = @($codeResult.requiredSections)
+                semanticReportFile       = $codeResult.semanticReportFile
+                machineCoverage          = $codeResult.machineCoverage
+                agentSections            = $codeResult.agentSections
+                machineClosed            = $codeResult.machineClosed
+                machineFixesBySection    = $codeResult.machineFixesBySection
+                machineSectionsWithFixes = $codeResult.machineSectionsWithFixes
+                auditGateFixes           = @()
+                generatedAt              = (Get-Date).ToUniversalTime().ToString('o')
+            }
+            if ($script:TestsGitHead) { $manifestObj['testsGitHead'] = $script:TestsGitHead }
+            if ($script:TestsPassedAt) { $manifestObj['testsPassedAt'] = $script:TestsPassedAt }
+            Write-Utf8JsonFile $manifestOut ($manifestObj | ConvertTo-Json -Depth 12)
+            Write-Host 'Agent manifest: docs\.audit_agent_manifest.json (all sections + semantic report path)'
+        } catch {
+            Add-Fix "Code checks - audit_code_checks.py failed: $_"
+            if ($jsonOut) { Write-Host $jsonOut }
+        }
+    }
+}
+
+Stop-AuditPhase 'code_checks'
+
+# --- Semantic report verify (required for complete audit) ---
+Start-AuditPhase 'semantic'
+if ($testsPassed -and -not $SkipTests -and $cfg.codeChecks) {
+    $requireSemantic = $true
+    if ($cfg.codeChecks.PSObject.Properties.Name -contains 'semanticReportRequiredInRunAudit') {
+        $requireSemantic = [bool]$cfg.codeChecks.semanticReportRequiredInRunAudit
+    }
+    if ($requireSemantic -and $codeScript -and (Test-Path -LiteralPath $codeScript)) {
+        $semRel = if ($cfg.codeChecks.semanticReportFile) { $cfg.codeChecks.semanticReportFile } else { 'docs/.audit_semantic_report.json' }
+        $semPath = Join-Path $AppRoot ($semRel -replace '/', '\')
+        if (-not (Test-Path -LiteralPath $semPath)) {
+            Write-Host 'Writing semantic report template (auditor must complete before audit can pass) ...'
+            & py -3 $codeScript $AppRoot --write-semantic-template 2>&1 | Out-Host
+        }
+        Write-Host 'Running semantic report verify ...'
+        $semOut = & py -3 $codeScript $AppRoot --verify-semantic-report 2>&1 | Out-String
+        $semJson = Get-JsonFromOutput $semOut
+        try {
+            if (-not $semJson) { throw 'no JSON from verify-semantic-report' }
+            $semResult = $semJson | ConvertFrom-Json
+            $semanticGuidanceShown = $false
+            foreach ($f in @($semResult.fixes)) {
+                Add-Fix $f
+            }
+            if (@($semResult.fixes).Count -gt 0 -and -not $semanticGuidanceShown) {
+                Write-SemanticNextSteps
+                $semanticGuidanceShown = $true
+            }
+        } catch {
+            Add-Fix "Semantic report verify failed - $_"
+            if ($semOut) { Write-Host $semOut }
+        }
+    }
+}
+
+Stop-AuditPhase 'semantic'
+
+# --- Sync + legacy verify (verify-audit-system only when semantic + sync gates pass) ---
+Start-AuditPhase 'sync_verify'
+$semanticIncomplete = Test-SemanticPassIncomplete
+$syncBlocked = $false
+if ($cfg.syncAndVerify) {
+    if ($cfg.syncAndVerify.runSyncVerify) {
+        $sync = Join-Path $packRoot 'pack\scripts\sync-audit-system.ps1'
+        if (-not $packRoot -or -not (Test-Path -LiteralPath $sync)) {
+            Add-Fix 'Audit sync - sync-audit-system.ps1 not found - install starter pack'
+            $syncBlocked = $true
+        } else {
+            $autoFix = $false
+            if ($cfg.syncAndVerify.PSObject.Properties.Name -contains 'autoFixDrift') {
+                $autoFix = [bool]$cfg.syncAndVerify.autoFixDrift
+            }
+            Write-Host 'Running sync-audit-system.ps1 -VerifyOnly ...'
+            if ($autoFix) {
+                & powershell -NoProfile -ExecutionPolicy Bypass -File $sync -VerifyOnly -AutoFix -ProjectRoot $RepoRoot | Out-Host
+            } else {
+                & powershell -NoProfile -ExecutionPolicy Bypass -File $sync -VerifyOnly -ProjectRoot $RepoRoot | Out-Host
+            }
+            if ($LASTEXITCODE -ne 0) {
+                Add-Fix 'Audit sync drift - run app\scripts\sync_audit_system.cmd'
+                $syncBlocked = $true
+            } else { Write-Host 'sync-audit-system: OK' }
+        }
+    }
+    if ($cfg.syncAndVerify.runLegacyVerify) {
+        if ($semanticIncomplete) {
+            Write-Host 'Skipping verify-audit-system.ps1 (semantic pass incomplete — finish semantic report first; verify runs on complete pass).'
+            Add-Improve 'Section L - verify-audit-system.ps1 skipped (semantic pass incomplete) - finalize semantic report to run harness checks'
+        } elseif ($syncBlocked) {
+            Write-Host 'Skipping verify-audit-system.ps1 (sync drift — run scripts\sync_audit_system.cmd first).'
+            Add-Improve 'Section L - verify-audit-system.ps1 skipped (sync drift) - run scripts\sync_audit_system.cmd first'
+        } else {
+            $verify = Join-Path $packRoot 'pack\scripts\verify-audit-system.ps1'
+            if (Test-Path -LiteralPath $verify) {
+                Write-Host 'Running verify-audit-system.ps1 (Section L harness check; independent of product Fix lines) ...'
+                & powershell -NoProfile -ExecutionPolicy Bypass -File $verify -ProjectRoot $RepoRoot | Out-Host
+                if ($LASTEXITCODE -ne 0) { Add-Fix 'Audit wiring - verify-audit-system.ps1 failed — run sync + verify after audit-system edits' }
+                else { Write-Host 'verify-audit-system: OK' }
+            }
+        }
+    }
+}
+
+Stop-AuditPhase 'sync_verify'
+
+Write-AuditReport
+$manifestOut = Join-Path $AppRoot 'docs\.audit_agent_manifest.json'
+$testsPassedAt = ''
+if ($testsPassed -and -not $SkipTests -and -not $FinalizeOnly -and $script:TestsGitHead) {
+    $testsPassedAt = (Get-Date).ToUniversalTime().ToString('o')
+    $script:TestsPassedAt = $testsPassedAt
+} elseif ($FinalizeOnly -and $script:TestsPassedAt) {
+    $testsPassedAt = $script:TestsPassedAt
+}
+Update-ManifestMachineFixes $manifestOut $Fix $script:CodeMachineFixes $script:TestsGitHead $testsPassedAt
+if ($Fix.Count -eq 0 -and $codeScript -and (Test-Path -LiteralPath $codeScript)) {
+    & py -3 $codeScript $AppRoot --write-audit-receipt 2>&1 | Out-Null
+}
+if ($Fix.Count -gt 0) {
+    Write-AuditTimingLog 1 $projectLabel
+    exit 1
+}
+Write-AuditTimingLog 0 $projectLabel
+exit 0

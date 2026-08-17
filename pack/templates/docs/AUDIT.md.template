@@ -1,0 +1,48 @@
+# Audit — copy to docs/AUDIT.md and customize for your project.
+
+When you ask for **an audit**, that means **everything** — one pass, closed scope. Report **only Fix and Improve**.
+
+Pair with **`docs/AUDIT.config.json`** (from `AUDIT.config.json.template`).
+
+**Reference implementation:** BSOD Analyzer `app/docs/AUDIT.md` + `app/docs/AUDIT.config.json` (also `pack/templates/docs/AUDIT.bsod.reference.md`).
+
+## Coverage contract
+
+- No partial audits, Phase A/B, or "extend coverage later"
+- **One audit, three steps** — never `-SkipTests` for step 1
+- Domain map gaps → **Fix** (auto-detected by `run_audit_core.ps1`)
+- Audit file drift → **Fix** (auto-detected by `sync-audit-system.ps1 -VerifyOnly`)
+
+## How to run
+
+```bat
+run_audit.cmd
+scripts\verify_semantic_audit.cmd
+scripts\finalize_audit.cmd
+```
+
+| Step | Command | Who |
+|------|---------|-----|
+| 1 — Machine | `run_audit.cmd` | Tooling (full tests) |
+| 2 — Semantic | Edit `docs/.audit_semantic_report.json` + `verify_semantic_audit.cmd` | Auditor |
+| 3 — Finalize | `scripts\finalize_audit.cmd` | Tooling (no retest when manifest proof valid) |
+
+Re-run **full `run_audit.cmd`** only if git HEAD or source tree changed since step 1 (no-git repos use a tree fingerprint — re-run step 1 when source changed).
+
+## Checklist sections
+
+Define sections A–N (or your own letters) below. Include a **## Domain map** table mapping every production module to a section.
+
+## Report format
+
+**Fix** and **Improve** only. If none: **Nothing found.**
+
+## After an audit
+
+Fix items, then re-run step 1 if tests need refreshing; otherwise update semantic report and **`finalize_audit.cmd`**.
+
+## Domain map
+
+| Module / area | Section |
+|---------------|---------|
+| `main.py` | D |

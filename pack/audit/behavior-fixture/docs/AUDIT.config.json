@@ -1,0 +1,33 @@
+{
+  "configVersion": 1,
+  "projectName": "audit-behavior-fixture",
+  "tests": { "script": "run_tests_stub.bat" },
+  "syncAndVerify": {
+    "runSyncVerify": false,
+    "runLegacyVerify": false
+  },
+  "codeChecks": {
+    "importSmoke": { "enabled": false, "exclude": [] },
+    "staticPatterns": [],
+    "sectionTests": {
+      "D": ["tests/test_k.py"],
+      "F": ["tests/test_f.py"],
+      "K": ["tests/test_k.py"]
+    },
+    "semanticReviewHints": {
+      "A": ["tests stub"],
+      "F": ["portable-first paths"],
+      "K": ["error handling policy"]
+    },
+    "sectionMachineChecks": {
+      "L": {
+        "enabled": true,
+        "gitignoreAuditArtifacts": [
+          "docs/.audit_agent_manifest.json",
+          "docs/.audit_semantic_report.json",
+          "docs/.audit_timing.jsonl"
+        ]
+      }
+    }
+  }
+}

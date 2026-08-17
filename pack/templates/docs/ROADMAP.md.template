@@ -1,0 +1,19 @@
+# Product roadmap — {{PROJECT_NAME}}
+
+Parked product work lives here. **Not** the same as audit **Improve** items (those come from `run_audit.cmd` and are ephemeral).
+
+## Active queue
+
+*(Empty — add items when you plan feature work.)*
+
+## Backlog
+
+*(Optional future work — link phased plans in `docs/*_PLAN.md` when you start them.)*
+
+## Completed
+
+*(Move finished items here with date + version.)*
+
+---
+
+**Agents:** read **`AGENTS.md`** for commands. Say **audit** for Fix/Improve via **`docs/AUDIT.md`**. Do not treat this file as an audit checklist.

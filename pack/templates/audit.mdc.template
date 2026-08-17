@@ -1,0 +1,17 @@
+---
+description: Project audit — full tests, semantic report required, Fix/Improve only
+alwaysApply: true
+---
+
+# Audit
+
+On **audit**, **full scan**, **check everything**, or repeat **still broken** / **anything else**:
+
+1. **Loop back** if repeat ask — `loop-back-protocol.mdc`.
+2. **`run_audit.cmd`** — full tests; never `-SkipTests` (step 1).
+3. Read **`docs/.audit_agent_manifest.json`** — **`machineFixesBySection`**: listed letters cannot be "Nothing found." in semantic report; use **`agentFocus`** for the rest.
+4. Edit **`docs/.audit_semantic_report.json`** — non-clean summaries **must cite files** and include **`evidence[]`**; run **`scripts\verify_semantic_audit.cmd`** (step 2).
+5. **`scripts\finalize_audit.cmd`** — step 3 (machine + semantic verify + harness; skips tests when manifest proof valid).
+6. Report **only** Fix and Improve. Every gap → Fix (remove) or Improve (mitigate).
+
+Do not claim audit complete unless **`finalize_audit.cmd`** (or full **`run_audit.cmd`** with semantic already complete) exits 0.

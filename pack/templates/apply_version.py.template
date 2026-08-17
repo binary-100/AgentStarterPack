@@ -1,0 +1,131 @@
+"""Sync project version: canonical module → VERSION.txt (+ optional distrib folder).
+
+Copy to scripts/apply_version.py and configure the CONFIG section below.
+
+Canonical runtime version: {{SOURCE_MODULE}} → VERSION
+VERSION.txt is derived — do not edit by hand.
+
+  py -3 scripts/apply_version.py sync              # align VERSION.txt to source
+  py -3 scripts/apply_version.py 1.2.3             # bump (requires PRESETS entry)
+  py -3 scripts/apply_version.py 1.2.3 "notes"     # bump with inline highlight
+
+Wire run_tests.bat to run `sync` before tests (see run_tests.bat.template).
+"""
+
+from __future__ import annotations
+
+import re
+import shutil
+import sys
+from datetime import date
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+# --- CONFIG (customize after copy) ---
+PROJECT_NAME = "{{PROJECT_NAME}}"
+SOURCE_MODULE = ROOT / "{{SOURCE_MODULE}}"  # e.g. bsod_analyzer.py
+# Distrib folder; {major} = first semver segment. Set to None to skip distrib copy.
+DIST_DIR_PATTERN: str | None = None  # e.g. "MyApp_v{major}"
+VERSION_LINE_RE = re.compile(r'^VERSION = "([^"]+)"', re.M)
+VERSION_REPLACE_RE = re.compile(r'^VERSION = "[^"]+"', re.M)
+
+# Optional: py -3 scripts/apply_version.py <key>  →  (version, highlight)
+PRESETS: dict[str, tuple[str, str]] = {
+    # "1.0.0": ("1.0.0", "Initial release"),
+}
+
+
+def read_source_version() -> str:
+    text = SOURCE_MODULE.read_text(encoding="utf-8")
+    m = VERSION_LINE_RE.search(text)
+    if not m:
+        raise SystemExit(f"Could not read VERSION from {SOURCE_MODULE}")
+    return m.group(1)
+
+
+def parse_version_txt(text: str) -> str | None:
+    for line in text.splitlines():
+        m = re.search(r"Version:\s*(\S+)", line, re.I)
+        if m:
+            return m.group(1).strip()
+    m = re.search(r"v(\d+\.\d+\.\d+)", text)
+    return m.group(1) if m else None
+
+
+def read_version_txt() -> str | None:
+    path = ROOT / "VERSION.txt"
+    if not path.is_file():
+        return None
+    return parse_version_txt(path.read_text(encoding="utf-8"))
+
+
+def render_version_txt(version: str, highlights: str) -> str:
+    today = date.today().isoformat()
+    major = version.split(".")[0]
+    dist_line = ""
+    if DIST_DIR_PATTERN:
+        dist_line = f"Distribution folder: {DIST_DIR_PATTERN.format(major=major)}\\\n\n"
+    return (
+        f"{PROJECT_NAME} v{version}\n\n"
+        f"====================\n\n"
+        f"Release date: {today}\n\n"
+        f"Version: {version}\n\n"
+        f"{dist_line}"
+        f"v{version} highlights:\n\n"
+        f"- {highlights}\n"
+    )
+
+
+def apply(version: str, highlights: str) -> None:
+    text = SOURCE_MODULE.read_text(encoding="utf-8")
+    text, n = VERSION_REPLACE_RE.subn(f'VERSION = "{version}"', text, count=1)
+    if n != 1:
+        raise SystemExit(f"Could not update VERSION in {SOURCE_MODULE}")
+    SOURCE_MODULE.write_text(text, encoding="utf-8")
+    (ROOT / "VERSION.txt").write_text(render_version_txt(version, highlights), encoding="utf-8")
+    print(f"Applied version {version}")
+
+
+def sync_distribution_artifacts(version: str) -> None:
+    if not DIST_DIR_PATTERN:
+        return
+    major = version.split(".")[0]
+    dist = ROOT / DIST_DIR_PATTERN.format(major=major)
+    if not dist.is_dir():
+        return
+    src_ver = ROOT / "VERSION.txt"
+    if src_ver.is_file():
+        shutil.copy2(src_ver, dist / "VERSION.txt")
+
+
+def sync_from_source() -> None:
+    ver = read_source_version()
+    on_disk = read_version_txt()
+    if on_disk == ver:
+        print(f"Version {ver} already synced ({SOURCE_MODULE.name} → VERSION.txt)")
+    else:
+        note = PRESETS.get(ver, (ver, f"{PROJECT_NAME} v{ver}"))[1]
+        apply(ver, note)
+    sync_distribution_artifacts(ver)
+
+
+def main() -> None:
+    if len(sys.argv) == 2 and sys.argv[1] == "sync":
+        sync_from_source()
+        return
+    if len(sys.argv) == 3:
+        apply(sys.argv[1], sys.argv[2])
+        sync_distribution_artifacts(sys.argv[1])
+        return
+    if len(sys.argv) == 2 and sys.argv[1] in PRESETS:
+        ver, note = PRESETS[sys.argv[1]]
+        apply(ver, note)
+        sync_distribution_artifacts(ver)
+        return
+    opts = "sync, <version> <highlights>, " + ", ".join(sorted(PRESETS)) if PRESETS else "sync, <version> <highlights>"
+    raise SystemExit(f"Usage: apply_version.py [{opts}]")
+
+
+if __name__ == "__main__":
+    main()

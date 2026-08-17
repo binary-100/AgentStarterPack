@@ -1,0 +1,179 @@
+{
+  "configVersion": 1,
+  "projectName": "YOUR_PROJECT_NAME",
+
+  "versionSync": {
+    "codeFile": "main.py",
+    "codePattern": "^VERSION = \"([^\"]+)\"",
+    "txtFile": "VERSION.txt",
+    "txtPattern": "^Version:\\s*(\\S+)"
+  },
+
+  "tests": {
+    "script": "run_tests.bat",
+    "env": {}
+  },
+
+  "requiredPaths": {
+    "app": [
+      "run_tests.bat",
+      "run_audit.cmd",
+      "docs/AUDIT.md",
+      "docs/AUDIT.config.json",
+      ".cursor/rules/audit.mdc",
+      "scripts/sync_audit_system.cmd"
+    ],
+    "repo": ["README.md"]
+  },
+
+  "staleDocs": {
+    "pattern": "",
+    "excludeFiles": ["AUDIT.md"],
+    "excludeDirs": ["audit_archive"],
+    "scanRepoMd": true,
+    "scanAppDocsMd": false,
+    "extraFiles": []
+  },
+
+  "cruft": {
+    "dirs": ["dist", "build"],
+    "globFiles": [],
+    "logDirs": ["repo", "app"],
+    "cacheExcludeRegex": "\\\\tests\\\\|_internal\\\\"
+  },
+
+  "obsoletePaths": {
+    "repo": [],
+    "desktopFolder": ""
+  },
+
+  "domainMap": {
+    "auditMd": "docs/AUDIT.md",
+    "sectionHeading": "## Domain map",
+    "scanGlob": "*.py",
+    "scanDir": ".",
+    "moduleSearchDirs": ["."],
+    "excludeModules": [],
+    "wildcardPatterns": [],
+    "orphanScanEnabled": true
+  },
+
+  "stables": {
+    "enabled": false,
+    "desktopFolder": "",
+    "expected": []
+  },
+
+  "secretsScan": {
+    "enabled": true,
+    "extensions": [".py", ".ps1", ".md", ".json", ".env", ".bat", ".cmd", ".txt", ".yaml", ".yml"],
+    "excludePathRegex": "\\\\tests\\\\fixtures\\\\|_internal\\\\|audit_archive\\\\"
+  },
+
+  "syncAndVerify": {
+    "runSyncVerify": true,
+    "runLegacyVerify": true,
+    "autoFixDrift": true
+  },
+
+  "codeChecks": {
+    "importSmoke": { "enabled": true, "exclude": [] },
+    "semanticReportFile": "docs/.audit_semantic_report.json",
+    "semanticReportRequireCites": true,
+    "semanticReportRequireEvidence": true,
+    "semanticReportEvidenceMinWhenNotClean": 1,
+    "semanticReportEvidenceRequireFileWhenNotClean": true,
+    "semanticReportRequiredInRunAudit": true,
+    "semanticBlockCleanWhenMachineFails": true,
+    "semanticFreshnessCheck": true,
+    "semanticRequireTestsGitHead": true,
+    "semanticRequireModulesReviewed": true,
+    "semanticModulesReviewedSections": ["D", "E", "F", "G", "H", "I", "J", "K"],
+    "inventoryFile": "docs/.audit_inventory.json",
+    "inventoryRequireAck": true,
+    "expandedDomainMapFile": "docs/.audit_domain_expanded.json",
+    "receiptFile": "docs/.audit_receipt.json",
+    "allowlistFile": "docs/audit_allowlist.json",
+    "largeModuleLocThreshold": 2000,
+    "deadCodeScan": {
+      "enabled": true,
+      "maxReports": 8
+    },
+    "testGapHints": {
+      "enabled": true,
+      "sections": ["D", "E", "F", "G", "H", "I", "J", "K"],
+      "maxModulesListed": 5
+    },
+    "auditVersionDocs": {
+      "enabled": false,
+      "manifestPath": "pack/audit/manifest.json",
+      "scanFiles": [],
+      "contextKeywords": ["manifest.json", "audit engine"]
+    },
+    "packVersionDocs": {
+      "enabled": false,
+      "scanFiles": []
+    },
+    "packReferenceConfig": {
+      "enabled": false,
+      "source": "docs/AUDIT.config.json",
+      "reference": "pack/templates/docs/AUDIT.config.pack.reference.json"
+    },
+    "installedVsSource": {
+      "enabled": false,
+      "manifestPath": "pack/audit/manifest.json",
+      "compareFiles": []
+    },
+    "changelogVersionDocs": {
+      "enabled": false,
+      "changelogFile": "CHANGELOG.md"
+    },
+    "mcpWiring": {
+      "enabled": false,
+      "requirementsFile": "mcp/requirements.txt",
+      "serverName": "agent-hygiene",
+      "requireImport": false
+    },
+    "sectionMachineChecks": {
+      "L": {
+        "enabled": true,
+        "forbiddenRules": [
+          "code-audit-checklist.mdc",
+          "generic-code-audit-checklist.mdc"
+        ],
+        "forbidDuplicateSkill": "agent-code-audit",
+        "agentsMdRequiredPhrases": ["run_audit.cmd", "run_tests.bat"],
+        "gitignoreAuditArtifacts": [
+          "docs/.audit_agent_manifest.json",
+          "docs/.audit_semantic_report.json",
+          "docs/.audit_timing.jsonl",
+          "docs/.audit_inventory.json",
+          "docs/.audit_domain_expanded.json",
+          "docs/.audit_receipt.json"
+        ]
+      },
+      "N": { "enabled": false }
+    },
+    "staticPatterns": [
+      {
+        "id": "yaml-unsafe-load",
+        "section": "K",
+        "glob": "*.py",
+        "excludePathRegex": "\\\\tests\\\\",
+        "forbiddenRegex": "yaml\\.load\\(",
+        "allowLineRegex": "SafeLoader|safe_load",
+        "message": "yaml.load without SafeLoader — use yaml.safe_load"
+      },
+      {
+        "id": "pickle-loads",
+        "section": "K",
+        "glob": "*.py",
+        "excludePathRegex": "\\\\tests\\\\",
+        "forbiddenRegex": "pickle\\.loads?\\(",
+        "message": "pickle load — untrusted data risk"
+      }
+    ],
+    "sectionTests": {},
+    "semanticReviewHints": {}
+  }
+}

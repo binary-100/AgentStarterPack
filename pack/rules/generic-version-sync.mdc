@@ -1,0 +1,53 @@
+---
+description: Version single-source-of-truth — derived files sync before tests/builds (all stacks)
+alwaysApply: false
+---
+
+# Version sync (agents)
+
+Prevent **version drift** between runtime code, `VERSION.txt`/release notes, and distrib folders. Drift is often only caught on full audit or `test_version_consistency` — fix the process, not just the symptom.
+
+## Principles
+
+1. **One canonical source** per project (pick one):
+   - Python: `VERSION = "x.y.z"` in the main module (e.g. `app.py`, `bsod_analyzer.py`)
+   - Node: `package.json` → `version`
+   - Rust: `Cargo.toml` → `version`
+   - Starter pack itself: root `VERSION` file (no duplicate — already correct)
+
+2. **Derived artifacts are generated**, not hand-edited:
+   - `VERSION.txt`, distrib `README.txt`, about strings copied at build time
+
+3. **Sync before verify**: `run_tests` / CI runs sync **before** consistency tests.
+
+4. **Idempotent sync**: if already aligned, do not rewrite release dates or churn files.
+
+## Python projects
+
+Copy from starter pack:
+
+- `pack/templates/apply_version.py.template` → `scripts/apply_version.py` (configure `SOURCE_MODULE`, `PROJECT_NAME`)
+- `pack/templates/test_version_consistency.py.template` → `tests/test_version_consistency.py`
+- `pack/templates/version-sync.mdc.template` → `.cursor/rules/version-sync.mdc`
+
+Wire `run_tests.bat`:
+
+```bat
+py -3 scripts\apply_version.py sync
+if errorlevel 1 exit /b 1
+```
+
+**Agents:** edit only the canonical `VERSION` in source module; never hand-edit `VERSION.txt`. After bumping, run `sync` or `run_tests.bat`.
+
+## Node / other stacks
+
+| Stack | Canonical | Sync hook |
+|-------|-----------|-----------|
+| Node | `package.json` | `npm version` / `scripts/sync-version.mjs` in `pretest` |
+| Rust | `Cargo.toml` | `cargo set-version` or build script |
+
+Add a one-line consistency test or `npm run verify:version` that fails CI when derived files drift.
+
+## Audit
+
+Version drift should be impossible if sync is wired into `run_tests.bat`. See project `docs/AUDIT.md` or `run_audit.cmd`.

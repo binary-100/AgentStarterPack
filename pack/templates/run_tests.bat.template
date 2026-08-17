@@ -1,0 +1,64 @@
+@echo off
+
+REM Copy to project root as run_tests.bat — adjust PYTHONPATH and test glob.
+
+REM Python projects: copy apply_version.py.template → scripts/apply_version.py first.
+
+
+
+cd /d "%~dp0"
+
+set "PYTHONPATH=."
+
+set "FAILED=0"
+
+
+
+REM --- Version sync (Python — uncomment when scripts/apply_version.py exists) ---
+
+REM echo Syncing VERSION.txt from source module...
+
+REM py -3 scripts\apply_version.py sync
+
+REM if errorlevel 1 (
+
+REM     echo Version sync failed.
+
+REM     exit /b 1
+
+REM )
+
+
+
+echo Test suite (PYTHONPATH=%CD%)
+
+echo.
+
+
+
+for %%F in (tests\test_*.py) do (
+
+    echo === %%F ===
+
+    py -3 "%%F"
+
+    if errorlevel 1 set FAILED=1
+
+    echo.
+
+)
+
+
+
+if %FAILED% neq 0 (
+
+    echo One or more tests failed.
+
+    exit /b 1
+
+)
+
+echo All tests passed.
+
+exit /b 0
+

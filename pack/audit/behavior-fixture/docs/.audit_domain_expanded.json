@@ -1,0 +1,19 @@
+{
+  "generatedAt": "2026-08-16T22:03:48.451128+00:00",
+  "sections": {
+    "F": [
+      "app_settings.py",
+      "catalog_cache.py",
+      "hardware_cache.py"
+    ],
+    "D": [
+      "main.py"
+    ]
+  },
+  "allModules": [
+    "app_settings.py",
+    "catalog_cache.py",
+    "hardware_cache.py",
+    "main.py"
+  ]
+}

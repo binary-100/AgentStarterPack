@@ -1,0 +1,225 @@
+{
+  "configVersion": 1,
+  "projectName": "Agent Starter Pack",
+
+  "versionSync": {
+    "codeFile": "VERSION",
+    "codePattern": "^(\\d+\\.\\d+\\.\\d+)",
+    "txtFile": "VERSION",
+    "txtPattern": "^(\\d+\\.\\d+\\.\\d+)"
+  },
+
+  "tests": {
+    "script": "run_audit_tests.bat",
+    "env": {}
+  },
+
+  "requiredPaths": {
+    "app": [
+      "VERSION",
+      "install.ps1",
+      "Install-AgentStarterPack.cmd",
+      "run_audit.cmd",
+      "run_audit_tests.bat",
+      "docs/AUDIT.md",
+      "docs/AUDIT.config.json",
+      "AGENTS.md",
+      ".cursor/rules/audit.mdc",
+      "pack/scripts/run_audit_core.ps1",
+      "pack/scripts/audit_code_checks.py",
+      "pack/scripts/sync-audit-system.ps1",
+      "pack/audit/manifest.json",
+      "scripts/run_audit.ps1",
+      "scripts/sync_audit_system.cmd"
+    ],
+    "repo": [
+      "README.md",
+      "CHANGELOG.md",
+      "pack/docs/START_HERE.md",
+      "pack/docs/AUDIT_SYSTEM.md"
+    ]
+  },
+
+  "staleDocs": {
+    "pattern": "CursorAgentStarterPack|Cursor Agent Starter Pack|agent-starter-pack",
+    "excludeFiles": ["AUDIT.md", "AUDIT_SYSTEM_CHANGELOG.md", "CHANGELOG.md", "PORTABLE_SETUP.md"],
+    "excludeDirs": ["pack/audit/behavior-fixture"],
+    "scanRepoMd": true,
+    "scanAppDocsMd": true,
+    "extraFiles": ["AGENTS.md", "INSTALL.md"]
+  },
+
+  "cruft": {
+    "dirs": ["dist", "build"],
+    "globFiles": ["*.zip"],
+    "logDirs": ["repo"],
+    "cacheExcludeRegex": "\\\\pack\\\\audit\\\\behavior-fixture\\\\|__pycache__"
+  },
+
+  "obsoletePaths": {
+    "repo": [
+      "Install-CursorAgentStarterPack.cmd",
+      "CursorAgentStarterPack"
+    ],
+    "desktopFolder": "CursorAgentStarterPack"
+  },
+
+  "domainMap": {
+    "auditMd": "docs/AUDIT.md",
+    "sectionHeading": "## Domain map",
+    "scanGlob": "*.py",
+    "scanDir": ".",
+    "moduleSearchDirs": ["pack/scripts", "mcp"],
+    "excludeModules": [],
+    "wildcardPatterns": [],
+    "orphanScanEnabled": true
+  },
+
+  "stables": {
+    "enabled": false,
+    "desktopFolder": "",
+    "expected": []
+  },
+
+  "secretsScan": {
+    "enabled": true,
+    "extensions": [".py", ".ps1", ".md", ".json", ".env", ".bat", ".cmd", ".txt"],
+    "excludePathRegex": "\\\\pack\\\\audit\\\\behavior-fixture\\\\|\\\\tests\\\\"
+  },
+
+  "syncAndVerify": {
+    "runSyncVerify": true,
+    "runLegacyVerify": true,
+    "autoFixDrift": true
+  },
+
+  "codeChecks": {
+    "importSmoke": {
+      "enabled": true,
+      "exclude": []
+    },
+    "semanticReportFile": "docs/.audit_semantic_report.json",
+    "semanticReportRequireCites": true,
+    "semanticReportRequireEvidence": true,
+    "semanticReportEvidenceMinWhenNotClean": 1,
+    "semanticReportEvidenceRequireFileWhenNotClean": true,
+    "semanticReportRequiredInRunAudit": true,
+    "semanticBlockCleanWhenMachineFails": true,
+    "semanticFreshnessCheck": true,
+    "semanticRequireTestsGitHead": true,
+    "semanticRequireModulesReviewed": true,
+    "semanticModulesReviewedSections": ["D", "F", "G"],
+    "inventoryFile": "docs/.audit_inventory.json",
+    "inventoryRequireAck": true,
+    "expandedDomainMapFile": "docs/.audit_domain_expanded.json",
+    "receiptFile": "docs/.audit_receipt.json",
+    "allowlistFile": "docs/audit_allowlist.json",
+    "largeModuleLocThreshold": 2500,
+    "deadCodeScan": {
+      "enabled": true,
+      "maxReports": 8
+    },
+    "testGapHints": {
+      "enabled": true,
+      "sections": ["D", "F", "G"],
+      "maxModulesListed": 5
+    },
+    "auditVersionDocs": {
+      "enabled": true,
+      "manifestPath": "pack/audit/manifest.json",
+      "scanFiles": [
+        "README.md",
+        "INSTALL.md",
+        "pack/docs/START_HERE.md",
+        "pack/docs/AUDIT_SYSTEM.md",
+        "pack/docs/README.md",
+        "pack/docs/AGENT_WORKFLOW.md"
+      ],
+      "contextKeywords": ["manifest.json", "audit engine", "starter pack"]
+    },
+    "packVersionDocs": {
+      "enabled": true,
+      "scanFiles": [
+        "README.md",
+        "INSTALL.md",
+        "pack/docs/START_HERE.md"
+      ]
+    },
+    "packReferenceConfig": {
+      "enabled": true,
+      "source": "docs/AUDIT.config.json",
+      "reference": "pack/templates/docs/AUDIT.config.pack.reference.json"
+    },
+    "installedVsSource": {
+      "enabled": true,
+      "manifestPath": "pack/audit/manifest.json",
+      "compareFiles": [
+        "pack/scripts/audit_code_checks.py",
+        "pack/scripts/run_audit_core.ps1"
+      ]
+    },
+    "changelogVersionDocs": {
+      "enabled": true,
+      "changelogFile": "CHANGELOG.md"
+    },
+    "mcpWiring": {
+      "enabled": true,
+      "requirementsFile": "mcp/requirements.txt",
+      "serverName": "agent-hygiene",
+      "requireImport": true
+    },
+    "sectionMachineChecks": {
+      "L": {
+        "enabled": true,
+        "forbiddenRules": [
+          "code-audit-checklist.mdc",
+          "generic-code-audit-checklist.mdc",
+          "bsod-analyzer-audit-overlay.mdc"
+        ],
+        "forbidDuplicateSkill": "agent-code-audit",
+        "agentsMdRequiredPhrases": ["run_audit.cmd", "run_audit_tests.bat"],
+        "gitignoreAuditArtifacts": [
+          "docs/.audit_agent_manifest.json",
+          "docs/.audit_semantic_report.json",
+          "docs/.audit_timing.jsonl",
+          "docs/.audit_inventory.json",
+          "docs/.audit_domain_expanded.json",
+          "docs/.audit_receipt.json"
+        ]
+      },
+      "N": {
+        "enabled": true,
+        "gitLogPaths": [
+          "VERSION",
+          "CHANGELOG.md",
+          "pack/audit/manifest.json",
+          "pack/docs/AUDIT_SYSTEM_CHANGELOG.md"
+        ],
+        "gitMaxCommits": 8
+      }
+    },
+    "staticPatterns": [
+      {
+        "id": "legacy-pack-folder-name",
+        "section": "L",
+        "glob": "*.{md,ps1,mdc,cmd,bat,json,py}",
+        "excludePathRegex": "\\\\pack\\\\audit\\\\behavior-fixture\\\\|pack[\\\\/]scripts[\\\\/]pack-paths\\.ps1|install\\.ps1|CHANGELOG\\.md|bootstrap-project\\.ps1|PORTABLE_SETUP\\.md",
+        "forbiddenRegex": "CursorAgentStarterPack|\\\\agent-starter-pack\\\\",
+        "message": "legacy starter pack path — use AgentStarterPack"
+      }
+    ],
+    "sectionTests": {
+      "D": ["tests/test_pack_audit.py"],
+      "A": ["tests/test_pack_audit.py"],
+      "F": ["tests/test_pack_audit.py"],
+      "G": ["tests/test_pack_audit.py"]
+    },
+    "semanticReviewHints": {
+      "D": ["semantic gates", "manifest JSON", "domain map parser"],
+      "E": ["FinalizeOnly", "testsGitHead fingerprint"],
+      "F": ["install scopes", "MCP registration"],
+      "G": ["FastMCP", "orphan process scan"],
+      "L": ["manifest mirror", "forbidden artifacts"]
+    }
+  }
+}

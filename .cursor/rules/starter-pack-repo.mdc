@@ -1,0 +1,18 @@
+---
+description: This workspace is the Agent Starter Pack — not an application repo
+alwaysApply: true
+---
+
+# Starter pack development workspace
+
+This project **is** the Agent Starter Pack (rules, skills, MCP, install scripts).
+
+**Read first:** `pack/docs/START_HERE.md` — install paths, agent pre-flight, bootstrap, audit maintenance, pitfalls.
+
+- Do not mix BSOD Analyzer or other app code here.
+- User-global install copies to `%USERPROFILE%\.cursor\AgentStarterPack\`.
+- Verify: `pack\scripts\doctor.ps1 -ProjectRoot (Get-Location).Path` and `run_audit.cmd` (pack self-audit)
+- Export for other PCs: `export.ps1`
+- After audit-system edits: `pack\scripts\sync-audit-system.ps1` then verify exit 0
+
+Documentation index: `pack/docs/README.md`

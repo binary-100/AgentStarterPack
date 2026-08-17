@@ -1,0 +1,28 @@
+AGENT STARTER PACK - QUICK INSTALL (v1.7.0)
+================================================
+
+1. Double-click:  Install-AgentStarterPack.cmd
+2. Restart Cursor (fully quit and reopen)
+3. Settings -> MCP -> check "agent-hygiene" is on
+
+VERIFY:
+  PowerShell:
+    %USERPROFILE%\.cursor\AgentStarterPack\pack\scripts\doctor.ps1
+
+  Cursor chat:
+    "Run agent_hygiene_full_check"
+
+AFTER KILLING A HUNG TERMINAL:
+  "cleanup orphan agent processes dry run first"
+
+FULL INSTRUCTIONS:  See INSTALL.md in this folder
+
+INSTALLS TO:
+  %USERPROFILE%\.cursor\skills
+  %USERPROFILE%\.cursor\rules
+  %USERPROFILE%\.cursor\mcp.json
+  %USERPROFILE%\.cursor\AgentStarterPack
+
+Works for ALL Cursor projects on this PC.
+
+NEW PC: Run export.ps1, copy zip, unzip, Install-AgentStarterPack.cmd again.

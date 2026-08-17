@@ -1,0 +1,60 @@
+# AGENTS.md
+
+Instructions for AI coding agents working in this repository.
+
+**Universal entry:** **`AI_INSTRUCTIONS.md`** (all AI tools). This file adds project specifics.
+
+## Project
+
+- **Name:** {{PROJECT_NAME}}
+- **Version file:** {{VERSION_FILE}}
+- **Test command:** `run_tests.bat`
+- **Audit command:** `run_audit.cmd` → report per `docs/AUDIT.md` (Fix + Improve only)
+- **CI build:** `build_ci.bat` with `BUILD_NOPAUSE=1`
+- **Product backlog:** `docs/ROADMAP.md` (parked work — not audit Improve)
+- **Known limitations:** `docs/KNOWN_LIMITATIONS.md` (informational)
+
+## Before long shell commands
+
+Use **agent-hygiene** MCP when available:
+
+1. `agent_hygiene_full_check`
+2. After force-kill: `cleanup_orphan_agent_processes` (`dry_run=True` first)
+
+Without MCP: `%USERPROFILE%\.cursor\AgentStarterPack\pack\scripts\cleanup-orphan-processes.ps1`
+
+## Audits
+
+Say **audit**. Agent runs `run_audit.cmd` and follows **`docs/AUDIT.md`**. Report only **Fix** and **Improve**.
+
+Do not use Phase A/B, add-ons menus, or audit overlay rules.
+
+## GUI tests (if applicable)
+
+- Skill **agent-gui-test-hygiene**
+- `QT_QPA_PLATFORM=offscreen`
+- Full suite: `run_tests.bat` or `run_audit.cmd` (includes tests)
+
+## Builds (agents)
+
+```bat
+set BUILD_NOPAUSE=1
+call build_ci.bat
+```
+
+## Version sync
+
+See `generic-version-sync.mdc` and starter pack `docs/VERSION_SYNC.md`.
+
+## Multi-step features
+
+Phased plans: starter pack `pack/docs/PHASED_FEATURE_DESIGN.md` and rule `generic-phased-feature-design.mdc`.  
+Store project plans in `docs/*_PLAN.md`; link from this file when active.
+
+## Starter pack
+
+Onboarding: `%USERPROFILE%\.cursor\AgentStarterPack\pack\docs\START_HERE.md`  
+Multi-tool setup: `%USERPROFILE%\.cursor\AgentStarterPack\docs\PORTABLE_SETUP.md`  
+Install: `AgentStarterPack\Install-AgentStarterPack.cmd`  
+Verify: `pack\scripts\doctor.ps1` and `pack\scripts\verify-audit-system.ps1`  
+Audit maintenance: `pack\docs\AUDIT_SYSTEM.md`

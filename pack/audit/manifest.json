@@ -1,0 +1,150 @@
+{
+  "version": "2.21.6",
+  "description": "Audit system manifest — every file that must stay in sync. Used by sync-audit-system.ps1 and verify-audit-system.ps1.",
+
+  "packMirror": [
+    "pack/audit/manifest.json",
+    "pack/docs/START_HERE.md",
+    "pack/docs/README.md",
+    "pack/docs/AUDIT_SYSTEM.md",
+    "pack/docs/AUDIT_SYSTEM_CHANGELOG.md",
+    "pack/docs/AGENT_WORKFLOW.md",
+    "pack/scripts/pack-paths.ps1",
+    "pack/scripts/run_audit_core.ps1",
+    "pack/scripts/audit_code_checks.py",
+    "pack/scripts/sync-audit-system.ps1",
+    "pack/scripts/verify-audit-system.ps1",
+    "pack/scripts/verify-audit-behavior.ps1",
+    "pack/templates/run_audit.ps1.template",
+    "pack/templates/run_audit.cmd.template",
+    "pack/templates/scripts/sync_audit_system.cmd.template",
+    "pack/templates/scripts/verify_semantic_audit.cmd.template",
+    "pack/templates/scripts/write_semantic_audit_template.cmd.template",
+    "pack/templates/scripts/finalize_audit.cmd.template",
+    "pack/templates/audit.mdc.template",
+    "pack/templates/docs/AUDIT.md.template",
+    "pack/templates/docs/AUDIT.config.json.template",
+    "pack/templates/docs/AUDIT.config.bsod.reference.json",
+    "pack/templates/docs/gitignore.audit.snippet",
+    "pack/rules/agent-defaults-always.mdc",
+    "pack/rules/loop-back-protocol.mdc",
+    "pack/rules/audit-protocol.mdc",
+    "pack/skills/agent-code-audit/SKILL.md",
+    "pack/audit/behavior-fixture/run_tests_stub.bat",
+    "pack/audit/behavior-fixture/run_audit.cmd",
+    "pack/audit/behavior-fixture/scripts/run_audit.ps1",
+    "pack/audit/behavior-fixture/scripts/sync_audit_system.cmd",
+    "pack/audit/behavior-fixture/scripts/finalize_audit.cmd",
+    "pack/audit/behavior-fixture/scripts/verify_semantic_audit.cmd",
+    "pack/audit/behavior-fixture/scripts/write_semantic_audit_template.cmd",
+    "pack/audit/behavior-fixture/.cursor/rules/audit.mdc",
+    "pack/audit/behavior-fixture/.gitignore",
+    "pack/audit/behavior-fixture/main.py",
+    "pack/audit/behavior-fixture/app_settings.py",
+    "pack/audit/behavior-fixture/catalog_cache.py",
+    "pack/audit/behavior-fixture/hardware_cache.py",
+    "pack/audit/behavior-fixture/docs/AUDIT.md",
+    "pack/audit/behavior-fixture/docs/AUDIT.config.json",
+    "pack/audit/behavior-fixture/tests/test_f.py",
+    "pack/audit/behavior-fixture/tests/test_k.py",
+    "docs/AUDIT.md",
+    "docs/AUDIT.config.json",
+    "AGENTS.md",
+    "run_audit.cmd",
+    "run_audit_tests.bat",
+    "scripts/run_audit.ps1",
+    "scripts/sync_audit_system.cmd",
+    "scripts/finalize_audit.cmd",
+    "scripts/verify_semantic_audit.cmd",
+    "scripts/write_semantic_audit_template.cmd",
+    "scripts/fill_pack_semantic_report.py",
+    ".cursor/rules/audit.mdc",
+    "tests/test_pack_audit.py",
+    "pack/templates/docs/AUDIT.pack.reference.md",
+    "pack/templates/docs/AUDIT.config.pack.reference.json"
+  ],
+
+  "packToUser": [
+    { "from": "pack/rules/agent-defaults-always.mdc", "to": "rules/agent-defaults-always.mdc" },
+    { "from": "pack/rules/loop-back-protocol.mdc", "to": "rules/loop-back-protocol.mdc" },
+    { "from": "pack/rules/audit-protocol.mdc", "to": "rules/audit-protocol.mdc" },
+    { "from": "pack/skills/agent-code-audit/SKILL.md", "to": "skills/agent-code-audit/SKILL.md" }
+  ],
+
+  "referenceProject": {
+    "name": "BSOD Analyzer",
+    "repoRootEnv": "BSOD_AUDIT_REFERENCE_ROOT",
+    "defaultRepoRoot": "OneDrive/Desktop/BSODAnalyzer",
+    "appSubdir": "app",
+    "pushToTemplates": [
+      { "from": "app/scripts/run_audit.ps1", "to": "pack/templates/run_audit.ps1.template" },
+      { "from": "app/run_audit.cmd", "to": "pack/templates/run_audit.cmd.template" },
+      { "from": "app/scripts/sync_audit_system.cmd", "to": "pack/templates/scripts/sync_audit_system.cmd.template" },
+      { "from": "app/scripts/verify_semantic_audit.cmd", "to": "pack/templates/scripts/verify_semantic_audit.cmd.template" },
+      { "from": "app/scripts/write_semantic_audit_template.cmd", "to": "pack/templates/scripts/write_semantic_audit_template.cmd.template" },
+      { "from": "app/scripts/finalize_audit.cmd", "to": "pack/templates/scripts/finalize_audit.cmd.template" },
+      { "from": "app/.cursor/rules/audit.mdc", "to": "pack/templates/audit.mdc.template" }
+    ],
+    "referenceOnly": [
+      { "from": "app/docs/AUDIT.config.json", "to": "pack/templates/docs/AUDIT.config.bsod.reference.json" },
+      { "from": "app/docs/AUDIT.md", "to": "pack/templates/docs/AUDIT.bsod.reference.md" }
+    ]
+  },
+
+  "projectRequired": {
+    "appLayout": {
+      "auditMd": "app/docs/AUDIT.md",
+      "auditConfig": "app/docs/AUDIT.config.json",
+      "auditRule": "app/.cursor/rules/audit.mdc",
+      "runAuditCmd": "app/run_audit.cmd",
+      "runAuditPs1": "app/scripts/run_audit.ps1",
+      "syncAuditCmd": "app/scripts/sync_audit_system.cmd",
+      "finalizeAuditCmd": "app/scripts/finalize_audit.cmd",
+      "verifySemanticCmd": "app/scripts/verify_semantic_audit.cmd",
+      "writeSemanticTemplateCmd": "app/scripts/write_semantic_audit_template.cmd"
+    },
+    "flatLayout": {
+      "auditMd": "docs/AUDIT.md",
+      "auditConfig": "docs/AUDIT.config.json",
+      "auditRule": ".cursor/rules/audit.mdc",
+      "runAuditCmd": "run_audit.cmd",
+      "runAuditPs1": "scripts/run_audit.ps1",
+      "syncAuditCmd": "scripts/sync_audit_system.cmd",
+      "finalizeAuditCmd": "scripts/finalize_audit.cmd",
+      "verifySemanticCmd": "scripts/verify_semantic_audit.cmd",
+      "writeSemanticTemplateCmd": "scripts/write_semantic_audit_template.cmd"
+    }
+  },
+
+  "forbiddenArtifacts": [
+    "code-audit-checklist.mdc",
+    "generic-code-audit-checklist.mdc",
+    "bsod-analyzer-audit-overlay.mdc",
+    "run_tests_with_timeout.bat"
+  ],
+
+  "forbiddenPackPaths": [
+    "pack/templates/AUDIT.md.template"
+  ],
+
+  "auditConfigTemplate": {
+    "templatePath": "pack/templates/docs/AUDIT.config.json.template",
+    "referencePath": "pack/templates/docs/AUDIT.config.bsod.reference.json",
+    "requiredKeys": [
+      "syncAndVerify.autoFixDrift",
+      "domainMap.orphanScanEnabled",
+      "codeChecks.semanticFreshnessCheck",
+      "codeChecks.semanticRequireTestsGitHead",
+      "codeChecks.semanticRequireModulesReviewed",
+      "codeChecks.semanticModulesReviewedSections",
+      "codeChecks.inventoryFile",
+      "codeChecks.inventoryRequireAck",
+      "codeChecks.expandedDomainMapFile",
+      "codeChecks.receiptFile",
+      "codeChecks.allowlistFile",
+      "codeChecks.largeModuleLocThreshold",
+      "codeChecks.deadCodeScan.enabled",
+      "codeChecks.testGapHints.enabled"
+    ]
+  }
+}

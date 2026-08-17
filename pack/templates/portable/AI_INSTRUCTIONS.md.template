@@ -1,0 +1,37 @@
+# AI agent instructions (all tools)
+
+This repository is bootstrapped with the **Agent Starter Pack** so agents start with audit wiring, hygiene defaults, and clear workflows — not ad-hoc fixes later.
+
+## Read first
+
+1. **`AGENTS.md`** — project-specific commands, audits, builds, version sync
+2. **`docs/AUDIT.md`** — audit checklist (Fix + Improve only when user says **audit**)
+3. **`docs/ROADMAP.md`** — parked product work (not audit Improve items)
+
+Starter pack onboarding (install paths, pitfalls):  
+`%USERPROFILE%\.cursor\AgentStarterPack\pack\docs\START_HERE.md`
+
+Portable / multi-tool setup:  
+`%USERPROFILE%\.cursor\AgentStarterPack\docs\PORTABLE_SETUP.md`
+
+## Non-negotiables
+
+- **Audits:** run `run_audit.cmd` (full tests); report **Fix** and **Improve** only — no Phase A/B or add-ons menus
+- **Multi-step work:** one phased plan; runtime order = build order (`PHASED_FEATURE_DESIGN.md` in starter pack)
+- **Loop-back:** if the user repeats the same error, re-read the thread and repo before retrying
+- **Long shell commands:** use agent-hygiene MCP when available (`agent_hygiene_full_check`)
+- **Windows agent builds:** `BUILD_NOPAUSE=1` or `build_ci.bat` — never leave batch files on `pause`
+
+## Tool-specific entry points
+
+| Tool | File in this repo |
+|------|-------------------|
+| Cursor | `.cursor/rules/*.mdc` + global skills |
+| Claude Desktop | `CLAUDE.md` |
+| GitHub Copilot | `.github/copilot-instructions.md` |
+| Windsurf | `.windsurfrules` |
+| Any other agent | This file + `AGENTS.md` |
+
+## Reference implementation
+
+**BSOD Analyzer** (`Desktop\BSODAnalyzer\app\`) — production example of audit + version sync + phased plans.

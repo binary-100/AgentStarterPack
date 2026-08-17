@@ -1,0 +1,44 @@
+---
+description: Agent terminal sessions and non-interactive builds — avoid stale metadata, pause hangs, and zombie UI
+alwaysApply: false
+---
+
+# Terminal & Build Hygiene (agents)
+
+Apply when running shell builds, long commands, or when the user reports "taking longer than expected" / stuck terminal.
+
+## Running builds (agent-initiated)
+
+1. Set **`BUILD_NOPAUSE=1`** (Windows) or use `build_ci.*` / `--ci` / `CI=true` scripts so batch files **do not** wait on `pause`.
+2. Prefer explicit exit: `exit /b %ERRORLEVEL%` (Windows) or `set -e` (Unix).
+3. After build, read terminal output for success/failure — do not assume from UI spinner.
+
+**Windows example:**
+```bat
+set BUILD_NOPAUSE=1
+call build_and_deploy.bat
+```
+
+## After long shell commands
+
+1. Run MCP **`agent_hygiene_full_check`** (or `scan_orphan_agent_processes` after any force-kill).
+2. Check process table — PID from terminal header may be stale; **child py/python may still be alive**.
+3. Read terminal log footer — completed sessions have `exit_code:`; missing footer + dead PID = stale metadata.
+4. If process dead but log stale, call MCP **`fix_stale_terminal_logs`** or run `pack/scripts/fix-stale-terminal.ps1`.
+5. If orphans found, MCP **`cleanup_orphan_agent_processes`** (`dry_run=True` first) or `pack/scripts/cleanup-orphan-processes.ps1`.
+
+## What agents can fix vs cannot
+
+| Layer | Agent can |
+|-------|-----------|
+| OS process | `Stop-Process` / `taskkill` if still running |
+| Agent log (`terminals/*.txt`) | Patch footer or run fix script |
+| Cursor Terminal UI panel | **Not directly** — user may Kill Terminal tab |
+
+Tell the user when UI may still show a zombie tab after log/process are clean.
+
+## New projects
+
+- Copy `pack/templates/build-ci.bat.template` → project `build_ci.bat`.
+- Copy version sync templates for Python apps — see `generic-version-sync.mdc` and `docs/VERSION_SYNC.md`.
+- Never use bare `pause` in agent-driven scripts; gate with `if "%BUILD_NOPAUSE%"=="" pause`.
