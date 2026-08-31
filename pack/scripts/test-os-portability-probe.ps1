@@ -107,7 +107,10 @@ try {
     $end = $reqJson.LastIndexOf('}')
     if ($start -lt 0 -or $end -le $start) { Write-ProbeFail 'check-requirements -Json produced no JSON' }
     $reqObj = ($reqJson.Substring($start, $end - $start + 1)) | ConvertFrom-Json
-    if (-not $reqObj.ok) { Write-ProbeFail 'check-requirements reported required items missing on probe host' }
+    if (-not $reqObj.ok) {
+        $missing = @($reqObj.results | Where-Object { $_.status -eq 'missing' -and $_.required } | ForEach-Object { $_.name })
+        Write-ProbeFail "check-requirements missing required: $($missing -join ', ')"
+    }
     if ($expectNonWindows) {
         $launcherRow = @($reqObj.results | Where-Object { $_.name -eq "'py -3' launcher" } | Select-Object -First 1)
         if (-not $launcherRow) { Write-ProbeFail "preflight missing 'py -3' launcher row" }

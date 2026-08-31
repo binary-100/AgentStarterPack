@@ -224,7 +224,12 @@ function Resolve-PackPythonInvoke {
     }
     foreach ($candidate in $candidates) {
         $exe = $candidate[0]
-        if (-not (Get-Command $exe -ErrorAction SilentlyContinue)) { continue }
+        $exeExists = if ($exe -match '[\\/]' -or $exe -match '^\.') {
+            Test-Path -LiteralPath $exe
+        } else {
+            [bool](Get-Command $exe -ErrorAction SilentlyContinue)
+        }
+        if (-not $exeExists) { continue }
         $prefix = @($candidate[1])
         try {
             $out = & $exe @($prefix + @('--version')) 2>&1 | Out-String

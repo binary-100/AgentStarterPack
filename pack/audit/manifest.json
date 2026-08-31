@@ -1,5 +1,5 @@
 {
-  "version": "2.22.38",
+  "version": "2.22.39",
   "description": "Audit system manifest - every file that must stay in sync. Used by sync-audit-system.ps1 and verify-audit-system.ps1.",
 
   "packMirror": [

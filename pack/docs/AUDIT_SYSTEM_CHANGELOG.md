@@ -6,6 +6,14 @@ Bump **`pack/audit/manifest.json`** `"version"` when you change synced audit fil
 
 ---
 
+## 2.22.39 (2026-08-30)
+
+**Linux CI probe fix:**
+
+- **`Resolve-PackPythonInvoke`** — accept absolute `PythonCommand` paths (Linux CI passes `sys.executable`; `Get-Command` missed it)
+
+---
+
 ## 2.22.38 (2026-08-30)
 
 **Linux CI path fixes (WQ-304 / pack-os-smoke):**
