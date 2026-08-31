@@ -5,7 +5,7 @@
 
 | Field | Value |
 |-------|--------|
-| **Next active ID** | **WQ-006** |
+| **Next active ID** | *(none — triage Inbox or pick from Parked)* |
 | **Last updated** | 2026-08-30 |
 | **Pack version** | 1.8.0 |
 | **Audit engine** | 2.22.37 |
@@ -32,7 +32,7 @@ Work **top to bottom**. Do not skip ahead without user approval or marking the r
 | ID | Task | Status | Notes |
 |----|------|--------|-------|
 | WQ-004 | **OS portability (Windows-only interim doc)** | **Superseded** | 2026-08-30 user reopened OS track → **WQ-304**. Was maintainer “document honest limit” (see `WEEKEND_HANDOFF.md` §3), not a permanent veto. |
-| WQ-006 | **Git commit + remote** | **Next** | User must ask before commit; ~145 untracked files pending. |
+| WQ-006 | **Git commit + remote** | **Done** | 2026-08-30 — commit `48968bf`, `origin` → `https://github.com/binary-100/AgentStarterPack.git`, `master` pushed |
 
 ---
 
