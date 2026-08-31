@@ -52,7 +52,7 @@ try {
     $env:HOME = $fakeHome
     Remove-Item Env:AGENT_STARTER_PACK_USER_ROOT -ErrorAction SilentlyContinue
 
-    . (Get-PackScriptPath -Root $PackRoot -Name 'pack-paths.ps1')
+    . (Join-Path (Join-Path (Join-Path $PackRoot 'pack') 'scripts') 'pack-paths.ps1')
 
     $expectNonWindows = if ($TestOs -eq 'linux') { $true } elseif ($TestOs -eq 'windows') { $false } else { -not (Test-PackIsWindows) }
     if ($TestOs -eq 'linux' -and (Test-PackIsWindows)) {
@@ -99,7 +99,7 @@ try {
         }
     }
 
-    $req = Get-PackScriptPath -Root $PackRoot -Name 'check-requirements.ps1'
+    $req = Join-Path (Join-Path (Join-Path $PackRoot 'pack') 'scripts') 'check-requirements.ps1'
     if (-not (Test-Path -LiteralPath $req)) { Write-ProbeFail 'check-requirements.ps1 missing' }
     $reqJson = & $psPath -NoProfile -ExecutionPolicy Bypass -File $req -Json -PythonCommand $hostPythonCmd 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) { Write-ProbeFail "check-requirements -Json exit $LASTEXITCODE on probe host" }
