@@ -6,6 +6,24 @@
     "runSyncVerify": false,
     "runLegacyVerify": false
   },
+  "layoutPolicy": {
+    "_comment": "Layout hygiene fixture. The named folders do not exist in the committed tree; behavior step 28 creates them, asserts the Improve lines, and removes them.",
+    "enabled": true,
+    "glossaryDoc": "pack/audit/behavior-fixture/docs/AUDIT.md",
+    "glossaryHeading": "## Full checklist",
+    "buildOutputDir": "MyApp_v6",
+    "portableDataDirname": "MyApp_portable",
+    "forbiddenInRepoStableCopy": "MyApp_v6_stable",
+    "ephemeralDirs": ["build"],
+    "contradictionScripts": [
+      {
+        "script": "pack/audit/behavior-fixture/scripts/publish_release.bat",
+        "createsForbiddenDir": "MyApp_v6_stable",
+        "flag": "Improve",
+        "message": "Script creates an in-repo release copy; policy prefers an external release archive"
+      }
+    ]
+  },
   "codeChecks": {
     "importSmoke": { "enabled": false, "exclude": [] },
     "staticPatterns": [],

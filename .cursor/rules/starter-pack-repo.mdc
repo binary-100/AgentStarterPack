@@ -7,9 +7,23 @@ alwaysApply: true
 
 This project **is** the Agent Starter Pack (rules, skills, MCP, install scripts).
 
+**Hard stop:** **`pack-only-edit-boundary.mdc`** — edit **only** the open workspace root (this pack checkout, wherever it lives on disk). Other repos named in docs are read-only references; never modify them from this workspace.
+
+**Recommendations:** **`agent-recommendation-discipline.mdc`** — default first; scope before execute; optional extras need mechanism + blast radius + “skip unless.”
+
+## Rule layers
+
+| Folder | Applies to |
+|--------|------------|
+| **`.cursor/rules/`** (repo root) | This workspace only — edit boundary, recommendation discipline |
+| **`pack/rules/`** | All projects after `install.ps1` — generic only; never workspace-specific boundaries |
+
+Before new agent docs anywhere: **`pack/rules/generic-agent-doc-hygiene.mdc`**.
+
 **Read first:** `pack/docs/START_HERE.md` — install paths, agent pre-flight, bootstrap, audit maintenance, pitfalls.
 
-- Do not mix BSOD Analyzer or other app code here.
+- Do not mix other application code here.
+- Do not run sync/bootstrap scripts that write into other projects unless the user explicitly opens that project for editing.
 - User-global install copies to `%USERPROFILE%\.cursor\AgentStarterPack\`.
 - Verify: `pack\scripts\doctor.ps1 -ProjectRoot (Get-Location).Path` and `run_audit.cmd` (pack self-audit)
 - Export for other PCs: `export.ps1`

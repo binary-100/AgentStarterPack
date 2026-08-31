@@ -1,6 +1,6 @@
 # Portable setup — any AI tool, any project
 
-Use this guide when the agent is **not** in Cursor, or when you want a new repo bootstrapped correctly **before** the iteration cycle that BSOD Analyzer went through.
+Use this guide when the agent is **not** in Cursor, or when you want a new repo bootstrapped correctly **before** ad-hoc iteration cycles.
 
 **Cursor users:** still run **`Install-AgentStarterPack.cmd`** once per PC, then bootstrap each project below.
 
@@ -15,11 +15,48 @@ From day one, every project should have:
 | **`AGENTS.md`** + **`AI_INSTRUCTIONS.md`** | Canonical commands and non-negotiables for any model |
 | **`docs/AUDIT.md`** + **`docs/AUDIT.config.json`** | Closed-scope audits (Fix + Improve only) |
 | **`run_audit.cmd`** + scripts | Machine + semantic audit pipeline |
+| **`docs/WORK_QUEUE.md`** | Maintainer/session task radar (stable WQ IDs) |
 | **`docs/ROADMAP.md`** | Parked product work (separate from audit Improve) |
 | **`docs/KNOWN_LIMITATIONS.md`** | Stop agents re-"fixing" intentional trade-offs |
 | Tool-specific files | Claude, Copilot, Windsurf, Cursor each get an entry point |
 | Version sync (Python) | One `VERSION` source; tests catch drift early |
 | Hygiene MCP (optional) | Terminal/orphan cleanup for long agent shell sessions |
+
+---
+
+## Platform scope
+
+**Two layers — do not conflate them:**
+
+| Layer | Status | Detail |
+|-------|--------|--------|
+| **PowerShell language (5.1 floor, 7+ supported)** | **Cross-host on Windows; PS 7 runs on Linux/macOS too** | Every pack `.ps1` declares `#Requires -Version 5.1` (no 7-only syntax). The full behavior suite passes on **Windows PowerShell 5.1** and **PowerShell 7** (`verify-audit-behavior.ps1 -DualShell`). On your dev machine, **`pwsh` is a fine primary host** — the pack does not require 5.1 for interactive work. |
+| **Pack entry points and install layout** | **Cross-host via `.sh` + `pwsh`** | Windows: `.cmd`/`.bat` wrappers. macOS/Linux: **`install.sh`**, **`Refresh-AgentContext.sh`**, **`Bootstrap-Project.sh`**, **`Check-Requirements.sh`**, **`run_audit.sh`** (thin `pwsh -File` delegates). Remaining `.cmd` files are Windows-only until needed. |
+
+| Supported today | Not supported yet |
+|-----------------|-------------------|
+| Windows 10/11 with PS 5.1 or PS 7 | Full parity for every maintainer `.cmd` on macOS/Linux |
+| macOS/Linux with **pwsh** + **python3** for bootstrap, refresh, check-requirements, pack audit | Cursor session hooks on non-Windows (layout differs) |
+| PS 7 on Linux/macOS for any pack `.ps1` invoked via `pwsh -File` | Windows `py -3` launcher (use `python3` off Windows) |
+| Cursor, Claude Desktop, Copilot, Windsurf via portable entry files | |
+
+Shell helper and nested spawns: **`pack/scripts/pack-paths.ps1`** (`Invoke-PackScript`, `Resolve-PackPythonInvoke`). Track: **`docs/OS_PORTABILITY_PLAN.md`**.
+
+### Verified matrix (automation + entry points)
+
+| Workflow | Windows PS 5.1 / `.cmd` | Windows / Unix `pwsh -File` | Unix `.sh` | Automated gate |
+|----------|-------------------------|-----------------------------|------------|----------------|
+| Install pack | `Install-AgentStarterPack.cmd` | `install.ps1` | `install.sh` | Behavior step 40, 42 |
+| Check requirements | `Check-Requirements.cmd` | `check-requirements.ps1` | `Check-Requirements.sh` | Steps 21, 41, 43 |
+| Refresh agent context | `Refresh-AgentContext.cmd` | `refresh-agent-context.ps1` | `Refresh-AgentContext.sh` | Step 42 |
+| Bootstrap project | `Bootstrap-Project.cmd` | `bootstrap-project.ps1` | `Bootstrap-Project.sh` | Step 42 |
+| Pack maintainer audit | `run_audit_tests.bat` | `run_audit.ps1` (via core) | `run_audit.sh` | Step 42 |
+| Cross-platform path helpers | — | `pack-paths.ps1` | same via `pwsh` | Steps 40–43 |
+| Native Linux smoke | — | — | `pwsh` + probe script | `.github/workflows/pack-os-smoke.yml` (optional) |
+
+**Step 43** mocks non-Windows on Windows via `AGENT_STARTER_PACK_TEST_OS=linux` (test-only; never set in production). **CI** runs `test-os-portability-probe.ps1` on real `ubuntu-latest` when the workflow is enabled.
+
+Multi-tool **model** neutrality is separate and **shipped** — instructions live in `AI_INSTRUCTIONS.md` / `AGENTS.md` / `docs/portable/GENERIC_RULES.md`, not only Cursor `.mdc` rules.
 
 ---
 
@@ -31,6 +68,25 @@ From day one, every project should have:
 Install-AgentStarterPack.cmd
 ```
 
+Run it from wherever the pack folder lives — any drive, a clone, or a USB stick. Pack scripts resolve the pack they were launched from, so no fixed location is required.
+
+**The pack folder travels; the install does not.** Install writes into `%USERPROFILE%\.cursor\` on the machine you run it on, because that is the only place Cursor reads global rules and skills from. So each machine needs its own install — that copy is machine-local and disposable, and the pack folder stays the source of truth.
+
+### Carrying the pack on a USB stick
+
+| Step | Command | Notes |
+|------|---------|-------|
+| 1. Plug in, open the pack folder | — | Drive letter does not matter |
+| 2. Sanity check | `.\run_audit_tests.bat` | Expect exit 0, plus one warning until step 3 |
+| 3. Integrate this machine | `Install-AgentStarterPack.cmd` | Copies rules, skills, MCP, and the pack into `%USERPROFILE%\.cursor\` |
+| 4. Work | project `run_audit.cmd`, `Bootstrap-Project.cmd`, … | Projects use the machine's installed copy, so they keep working after you unplug |
+
+Editing the pack on the stick and pushing to a machine: `pack\scripts\sync-audit-system.ps1`. It only ever copies **from** the pack folder **to** the installed copy, so a stale install on some machine cannot overwrite your stick. (`-PullFromInstalled` reverses that; use it only to recover edits made directly in `%USERPROFILE%\.cursor\AgentStarterPack`.)
+
+Do not bootstrap a project while the pack is unavailable to that machine — an uninstalled pack makes the project's MCP config point at the pack folder's current path, which breaks when the drive letter changes or the stick is removed. Bootstrap warns when this would happen.
+
+`AGENT_STARTER_PACK_ROOT` overrides pack discovery for one shell session — useful for testing a pack folder without installing it. Avoid making it permanent (`setx`) for removable media: the drive letter changes between machines and a stale value is worse than no value.
+
 Restart Cursor if you use it. For Claude Desktop MCP, also run:
 
 ```powershell
@@ -39,10 +95,29 @@ Restart Cursor if you use it. For Claude Desktop MCP, also run:
 
 ### 2. Bootstrap your project
 
-**One-click (Python app, all tools):**
+**Choose `-Targets` first:**
+
+| You use | Recommended bootstrap |
+|---------|------------------------|
+| **Cursor** (primary) or several editors on one repo | `Bootstrap-Project.cmd` or `-Targets All` |
+| **Claude only** | `-Targets Claude` (or `All`) |
+| **Copilot / Windsurf only** | `-Targets Copilot` / `-Targets Windsurf` |
+| **Non-Cursor only** (CLI, ChatGPT, custom bots) | **`Bootstrap-Portable-Project.cmd`** or `-Targets Portable` |
+
+`-Targets Portable` writes **`AI_INSTRUCTIONS.md`**, **`AGENTS.md`**, audit wiring, and **`docs/WORK_QUEUE.md`** — **no** `CLAUDE.md`, Copilot file, Windsurf file, or Cursor **`version-sync.mdc`**. Every project still gets **`.cursor/rules/audit.mdc`** (audit standard; inert for non-Cursor agents).
+
+At session start for Portable projects, attach **`pack/docs/portable/GENERIC_RULES.md`** plus this repo's **`AI_INSTRUCTIONS.md`**.
+
+**One-click — Cursor + all editor entry files (Python app):**
 
 ```text
 Bootstrap-Project.cmd D:\path\to\your-repo YourProjectName
+```
+
+**One-click — non-Cursor / portable-only (Python app):**
+
+```text
+Bootstrap-Portable-Project.cmd D:\path\to\your-repo YourProjectName
 ```
 
 **PowerShell (full control):**
@@ -60,7 +135,7 @@ Bootstrap-Project.cmd D:\path\to\your-repo YourProjectName
 | Parameter | Values | Notes |
 |-----------|--------|-------|
 | `-Stack` | `Python`, `Generic` | Python adds version sync, `build_ci.bat`, stub `main.py` |
-| `-Targets` | `All`, `Cursor`, `Claude`, `Copilot`, `Windsurf` | Combinable: `-Targets Claude,Copilot` |
+| `-Targets` | `All`, `Cursor`, `Portable`, `Claude`, `Copilot`, `Windsurf` | Combinable: `-Targets Claude,Copilot`. `Portable` means the tool-agnostic `AI_INSTRUCTIONS.md` and no editor-specific files (that file is written for every project) |
 | `-Force` | switch | Overwrite existing bootstrapped files |
 
 ### 3. Customize (required)
@@ -94,6 +169,7 @@ your-repo/
 ├── docs/
 │   ├── AUDIT.md
 │   ├── AUDIT.config.json
+│   ├── AGENT_CONTEXT.json       # context stamp (stub until first refresh)
 │   ├── ROADMAP.md
 │   ├── KNOWN_LIMITATIONS.md
 │   └── portable/mcp-claude-desktop.json
@@ -116,14 +192,15 @@ your-repo/
 ### Claude Desktop
 
 1. Bootstrap with `-Targets Claude` or `All`
-2. Register MCP:
+2. Verify project adapters and optionally register MCP:
 
 ```powershell
-pack\scripts\register-portable-mcp.ps1 -Tool Claude -InstallDeps
+& "$env:USERPROFILE\.cursor\AgentStarterPack\pack\scripts\register-tool-adapters.ps1" `
+    -ProjectRoot "D:\path\to\your-repo" -Tool Claude -InstallMcp -NoPause
 ```
 
 Or merge **`docs/portable/mcp-claude-desktop.json`** into  
-`%APPDATA%\Claude\claude_desktop_config.json` manually.
+`%APPDATA%\Claude\claude_desktop_config.json` manually via **`register-portable-mcp.ps1 -Tool Claude`**.
 
 3. Restart Claude Desktop
 4. Claude reads **`CLAUDE.md`** → follow **`AGENTS.md`**
@@ -131,13 +208,31 @@ Or merge **`docs/portable/mcp-claude-desktop.json`** into
 ### GitHub Copilot
 
 1. Bootstrap with `-Targets Copilot` or `All`
-2. Copilot reads **`.github/copilot-instructions.md`** (repo-level instructions)
-3. Ensure **`AGENTS.md`** stays accurate — Copilot defers to it for commands
+2. Verify adapter file:
+
+```powershell
+& "$env:USERPROFILE\.cursor\AgentStarterPack\pack\scripts\register-tool-adapters.ps1" `
+    -ProjectRoot "D:\path\to\your-repo" -Tool Copilot -NoPause
+```
+
+Or **`Register-Tool-Adapters.cmd D:\path\to\your-repo Copilot`** from the pack root.
+
+3. Copilot reads **`.github/copilot-instructions.md`** (repo-level instructions)
+4. Ensure **`AGENTS.md`** stays accurate — Copilot defers to it for commands
 
 ### Windsurf
 
 1. Bootstrap with `-Targets Windsurf` or `All`
-2. **`.windsurfrules`** in repo root points to **`AGENTS.md`**
+2. Verify adapter file:
+
+```powershell
+& "$env:USERPROFILE\.cursor\AgentStarterPack\pack\scripts\register-tool-adapters.ps1" `
+    -ProjectRoot "D:\path\to\your-repo" -Tool Windsurf -NoPause
+```
+
+Or **`Register-Tool-Adapters.cmd D:\path\to\your-repo Windsurf`**.
+
+3. **`.windsurfrules`** in repo root points to **`AGENTS.md`**
 
 ### Any other agent (ChatGPT, custom bots, CI agents)
 
@@ -146,6 +241,22 @@ Or merge **`docs/portable/mcp-claude-desktop.json`** into
 3. Scripts (`run_audit.cmd`, `run_tests.bat`) work from any terminal
 
 There is still **no universal auto-installer** for every IDE — bootstrap gives you **files and scripts** that every tool can consume.
+
+### Global rules without Cursor (`install.ps1`)
+
+Cursor loads always-on rules from `%USERPROFILE%\.cursor\rules\` after install. **Other tools do not.**
+
+The pack ships plain-markdown exports (WQ-003 Phase 2):
+
+| File | Purpose |
+|------|---------|
+| `%USERPROFILE%\.cursor\AgentStarterPack\pack\docs\portable\GENERIC_RULES.md` | All generic rules (after install on this PC) |
+| Same path under your **pack checkout** | When working from USB / Desktop folder without profile install |
+| `pack/docs/portable/skills/*.md` | Skill text mirrors |
+
+Regenerate after rule edits on the maintainer repo: `pack\scripts\sync-portable-docs.ps1` (also runs during `sync-audit-system.ps1`).
+
+**Non-Cursor session start:** attach or paste `GENERIC_RULES.md` (or needed sections) plus this project's `AI_INSTRUCTIONS.md` and `AGENTS.md`.
 
 ---
 
@@ -168,7 +279,7 @@ Without MCP: `pack\scripts\cleanup-orphan-processes.ps1`
 
 ---
 
-## Avoiding the BSOD-style fix cycle
+## Avoiding the ad-hoc fix cycle
 
 Lessons baked into bootstrap:
 
@@ -182,7 +293,7 @@ Lessons baked into bootstrap:
 | Interactive build hangs | `build_ci.bat` template + `BUILD_NOPAUSE=1` in all agent docs |
 | Wrong tool entry point | Per-tool files + **`AI_INSTRUCTIONS.md`** hub |
 
-**Reference:** BSOD Analyzer `app/` — production example after these patterns matured.
+**In-repo example:** `pack/audit/behavior-fixture/` — minimal audit harness after these patterns matured.
 
 ---
 
@@ -191,6 +302,45 @@ Lessons baked into bootstrap:
 1. Re-run **`Install-AgentStarterPack.cmd`** on your PC
 2. In the project: **`scripts\sync_audit_system.cmd`**
 3. Re-run **`run_audit.cmd`** if audit templates changed
+
+Or do steps 2–3's sync in one command and get a brief for your agents:
+
+```bat
+Refresh-AgentContext.cmd "C:\Users\alice\Projects\MyApp"
+```
+
+---
+
+## Telling an already-open chat that things changed
+
+No agent — Cursor, Claude, Copilot, Windsurf, or your own — reloads its instructions when files on
+disk change. A chat opened before an upgrade keeps working from the old rules until you tell it not to.
+
+**You should not have to remember any of this.** From audit engine 2.22.7 a project's own audit reports
+an Improve when its context stamp is behind the pack, and the wording tells the agent to *offer to run
+the refresh for you* — so the normal path is that your agent proposes the command and you approve it,
+with nothing to copy or type. The rest of this section is what sits under that, and what to do when you
+want to drive it yourself or update a chat in another window.
+
+`Refresh-AgentContext.cmd <project>` writes three files under the project's `docs/`:
+
+| File | For |
+|------|-----|
+| `AGENT_CONTEXT.json` | Machines — pack version, audit engine version, rules hash, per-layer state, `changedLayers` |
+| `AGENT_REFRESH.md` | Humans and agents — what changed, what to re-read, and the paste line |
+| `AGENT_PASTE.txt` | Copying — the paste line by itself, one ASCII line, no BOM |
+
+Getting it into the chat, easiest first:
+
+1. **Cursor:** type **refresh pack context** — the global rule sends the agent to the brief, nothing to copy.
+2. **Clipboard:** the command already copied the line; press Ctrl+V.
+3. **File:** open `docs/AGENT_PASTE.txt` and copy the whole line.
+
+Avoid selecting it from the console window — wrapped output is where a copy picks up line breaks. The
+line asks the agent to reply with the pack and audit engine versions; if it answers without them, it
+did not read the files, so paste again instead of continuing.
+
+Other tools read the same files; the contract is on disk, not in any vendor API.
 
 ---
 

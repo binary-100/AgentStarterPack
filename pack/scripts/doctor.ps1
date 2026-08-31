@@ -1,3 +1,4 @@
+#Requires -Version 5.1
 # Verify Agent Starter Pack installation (paths, MCP, deps, live smoke test)
 param(
     [switch]$UserScope,
@@ -27,21 +28,53 @@ function Test-PathReport($label, $path) {
     else { Write-Miss "$label : $path" }
 }
 
-Write-Host "Agent Starter Pack doctor v$packVersion`n"
+Write-Host "Agent Starter Pack doctor v$packVersion"
+
+# Which shell hosted this run. The pack pins its own nested calls to 5.1, but running a script directly
+# from a pwsh prompt hosts it on 7 - so the same checkout can behave differently depending on how it was
+# launched, and the difference is silent. Encoding bugs got in exactly that way.
+$shell = Get-PackShellInfo
+$hostLine = "Host shell: PowerShell $($shell.hostVersion) ($($shell.hostEdition)) - pack floor is $($shell.floorVersion)"
+if ($shell.isCore) {
+    Write-Host "$hostLine [!] verify on 5.1 before shipping: pack\scripts\verify-audit-behavior.ps1"
+} elseif ($shell.pwshAvailable) {
+    Write-Host "$hostLine; pwsh available for a cross-version run (-DualShell)"
+} else {
+    Write-Host $hostLine
+}
+Write-Host ''
 
 if ($UserScope -or (-not $UserScope -and -not $ProjectScope)) {
     Write-Host "User scope (~/.cursor):"
-    Test-PathReport "skill agent-code-audit" "$env:USERPROFILE\.cursor\skills\agent-code-audit\SKILL.md"
-    Test-PathReport "skill agent-terminal-hygiene" "$env:USERPROFILE\.cursor\skills\agent-terminal-hygiene\SKILL.md"
-    Test-PathReport "skill agent-gui-test-hygiene" "$env:USERPROFILE\.cursor\skills\agent-gui-test-hygiene\SKILL.md"
-    Test-PathReport "rule audit-protocol" "$env:USERPROFILE\.cursor\rules\audit-protocol.mdc"
-    Test-PathReport "rule generic-terminal" "$env:USERPROFILE\.cursor\rules\generic-terminal-and-build-hygiene.mdc"
-    Test-PathReport "rule agent-defaults" "$env:USERPROFILE\.cursor\rules\agent-defaults-always.mdc"
+    $userCursor = Get-AgentStarterPackUserRoot
+    if (-not $userCursor) { $userCursor = Get-DefaultCursorUserRoot }
+    if (-not $userCursor) {
+        Write-Miss 'cannot resolve Cursor user root (~/.cursor)'
+        $userCursor = Join-Path $env:USERPROFILE '.cursor'
+    }
+    # Enumerated from the pack, never listed by hand: the hardcoded list checked 5 of the 9 rules
+    # install.ps1 copies, so four could go missing from the profile and doctor still said [OK].
+    $packSkillsDir = Join-Path $packRoot 'pack\skills'
+    $packRulesDir = Join-Path $packRoot 'pack\rules'
+    if (Test-Path $packSkillsDir) {
+        Get-ChildItem $packSkillsDir -Directory | Sort-Object Name | ForEach-Object {
+            Test-PathReport "skill $($_.Name)" (Join-Path $userCursor "skills\$($_.Name)\SKILL.md")
+        }
+    } else {
+        Write-Warn "pack\skills not found beside doctor.ps1 - cannot verify installed skills"
+    }
+    if (Test-Path $packRulesDir) {
+        Get-ChildItem $packRulesDir -Filter *.mdc | Sort-Object Name | ForEach-Object {
+            Test-PathReport "rule $($_.BaseName)" (Join-Path $userCursor "rules\$($_.Name)")
+        }
+    } else {
+        Write-Warn "pack\rules not found beside doctor.ps1 - cannot verify installed rules"
+    }
     Test-PathReport "canonical pack" (Join-Path $installedRoot "pack")
     Test-PathReport "MCP server" (Join-Path $installedRoot "mcp\agent_hygiene_server.py")
     Write-Host ""
 
-    $mcpPath = Join-Path $env:USERPROFILE ".cursor\mcp.json"
+    $mcpPath = Join-Path $userCursor 'mcp.json'
     if (Test-Path $mcpPath) {
         try {
             $mcp = Get-Content $mcpPath -Raw | ConvertFrom-Json
@@ -65,15 +98,20 @@ if ($UserScope -or (-not $UserScope -and -not $ProjectScope)) {
     }
     Write-Host ""
 
-    $pyCmd = if (Get-Command py -ErrorAction SilentlyContinue) { "py" } else { "python" }
-    $importTest = & $pyCmd -3 -c "import mcp; print('mcp_ok')" 2>&1
-    if ($LASTEXITCODE -eq 0 -and "$importTest" -match "mcp_ok") {
-        Write-Ok "Python package 'mcp' importable"
-    } else {
-        Write-Warn "Python package 'mcp' not found - run install.ps1 -InstallMcpDeps"
+    $pyProbe = Resolve-PackPythonInvoke
+
+    # One source of truth for environment requirements: doctor reports, check-requirements decides.
+    $preflight = Join-Path $PSScriptRoot "check-requirements.ps1"
+    if (Test-Path $preflight) {
+        Invoke-PackScript -PassOutput -NoProfile -ScriptPath $preflight -Quiet
+        if ($LASTEXITCODE -ne 0) {
+            Write-Miss "environment requirements - fix the items listed above"
+        } else {
+            Write-Ok "environment requirements (Python, audit engine; mcp and git optional)"
+        }
     }
 
-    if (-not $SkipSmoke) {
+    if (-not $SkipSmoke -and $pyProbe) {
         $server = Join-Path $installedRoot "mcp\agent_hygiene_server.py"
         if (Test-Path $server) {
             $mcpDir = (Split-Path $server -Parent) -replace "'", "''"
@@ -84,13 +122,16 @@ import agent_hygiene_server as h
 r = h.agent_hygiene_full_check()
 print('smoke_ok' if 'terminals' in r else 'smoke_fail')
 "@
-            $smoke = & $pyCmd -3 -c $pyCode 2>&1
+            $pyArgs = @($pyProbe.prefix + @('-c', $pyCode))
+            $smoke = & $pyProbe.exe @pyArgs 2>&1
             if ($LASTEXITCODE -eq 0 -and "$smoke" -match "smoke_ok") {
                 Write-Ok "MCP smoke test (agent_hygiene_full_check)"
             } else {
                 Write-Warn "MCP smoke test failed: $smoke"
             }
         }
+    } elseif (-not $SkipSmoke -and -not $pyProbe) {
+        Write-Warn 'MCP smoke test skipped (no Python interpreter found)'
     }
     Write-Host ""
 }

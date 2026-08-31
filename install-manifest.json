@@ -1,6 +1,25 @@
 {
-    "scope":  "Both",
-    "project_root":  "c:\\Users\\binar\\OneDrive\\Desktop\\BSODAnalyzer",
-    "version":  "1.0.0",
-    "installed_at":  "2026-06-08T06:06:13.5786137Z"
+    "version":  "1.7.0",
+    "installed_at":  "2026-08-29T19:25:03.9395316Z",
+    "project_root":  "C:\\Users\\binar\\OneDrive\\Desktop\\AgentStarterPack",
+    "mcp":  true,
+    "skills":  [
+                   "agent-gui-test-hygiene\\SKILL.md",
+                   "agent-terminal-hygiene\\SKILL.md",
+                   "agent-code-audit\\SKILL.md"
+               ],
+    "scope":  "User",
+    "rules":  [
+                  "agent-defaults-always.mdc",
+                  "audit-protocol.mdc",
+                  "full-paths-in-chat.mdc",
+                  "generic-agent-doc-hygiene.mdc",
+                  "generic-deep-task-execution.mdc",
+                  "generic-phased-feature-design.mdc",
+                  "generic-terminal-and-build-hygiene.mdc",
+                  "generic-version-sync.mdc",
+                  "loop-back-protocol.mdc",
+                  "new-project-bootstrap.mdc"
+              ],
+    "canonical":  "C:\\Users\\binar\\.cursor\\AgentStarterPack"
 }

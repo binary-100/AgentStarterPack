@@ -1,12 +1,11 @@
 {
-  "generatedAt": "2026-08-16T22:03:48.450168+00:00",
-  "productionModules": 4,
+  "generatedAt": "2026-08-31T01:13:26.876293+00:00",
+  "productionModules": 3,
   "testFiles": 2,
-  "productionLoc": 5,
-  "markdownFiles": 1,
+  "productionLoc": 4,
+  "markdownFiles": 2,
   "productionModuleNames": [
     "app_settings.py",
-    "catalog_cache.py",
     "hardware_cache.py",
     "main.py"
   ]

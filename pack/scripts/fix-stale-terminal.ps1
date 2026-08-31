@@ -1,3 +1,4 @@
+#Requires -Version 5.1
 # Fix Cursor agent terminal logs missing exit_code footer (stale metadata).
 # Usage: .\fix-stale-terminal.ps1 [-TerminalsDir "path\to\terminals"]
 

@@ -4,7 +4,7 @@ When you ask for **an audit**, that means **everything** — one pass, closed sc
 
 Pair with **`docs/AUDIT.config.json`** (from `AUDIT.config.json.template`).
 
-**Reference implementation:** BSOD Analyzer `app/docs/AUDIT.md` + `app/docs/AUDIT.config.json` (also `pack/templates/docs/AUDIT.bsod.reference.md`).
+**Reference:** `pack/templates/docs/AUDIT.app.reference.md` and `pack/audit/behavior-fixture/docs/AUDIT.md`.
 
 ## Coverage contract
 
@@ -29,10 +29,6 @@ scripts\finalize_audit.cmd
 
 Re-run **full `run_audit.cmd`** only if git HEAD or source tree changed since step 1 (no-git repos use a tree fingerprint — re-run step 1 when source changed).
 
-## Checklist sections
-
-Define sections A–N (or your own letters) below. Include a **## Domain map** table mapping every production module to a section.
-
 ## Report format
 
 **Fix** and **Improve** only. If none: **Nothing found.**
@@ -40,6 +36,39 @@ Define sections A–N (or your own letters) below. Include a **## Domain map** t
 ## After an audit
 
 Fix items, then re-run step 1 if tests need refreshing; otherwise update semantic report and **`finalize_audit.cmd`**.
+
+## Checklist sections
+
+Every section here must be reviewed in `docs/.audit_semantic_report.json` before an audit can pass — that is the point of the list. Add, rename, or split sections (letters A–N) as the project grows; sections D–K are the code domains referenced by the domain map below. Deleting a section removes it from the gate, so delete only what genuinely does not apply.
+
+### A. Test harness
+- `run_tests.bat` passes and covers every test file in `tests/`
+- Audit engine self-test passes on this machine
+
+### B. Scope / inventory
+- `docs/.audit_inventory.json` counts acknowledged in the semantic report
+- No production module missing from the domain map below
+- **Folder glossary** present and matching the tree - a reader can tell build output from build input, from runtime user data, from release archive
+- No **in-repo duplicate** of a released copy when policy says the archive lives outside the repo
+- No script **recreates** a path this checklist forbids - if it does, the script or this checklist is wrong
+- Ephemeral dirs (`build`, `dist`) noted as **expected after a build**, not silently deleted and forgotten
+
+### C. Documentation
+- `README.md` describes what the project does and how to run it
+- `AGENTS.md` and `docs/AUDIT.md` match how the project actually works
+
+### D. Core modules
+- Entry module and its helpers behave as documented
+- No dead or duplicated logic left behind by recent changes
+
+### K. Security / data handling
+- No secrets, tokens, or credentials in tracked files
+- No unsafe deserialization (`yaml.load` without `SafeLoader`, `pickle.loads`)
+
+### L. Agent wiring
+- `AGENTS.md` points agents at `run_audit.cmd` and `run_tests.bat`
+- Audit artifacts (`docs/.audit_*`) are gitignored
+- Audit files match the pack: `scripts\sync_audit_system.cmd` reports no drift
 
 ## Domain map
 

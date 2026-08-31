@@ -10,44 +10,45 @@ Prevent **version drift** between runtime code, `VERSION.txt`/release notes, and
 ## Principles
 
 1. **One canonical source** per project (pick one):
-   - Python: `VERSION = "x.y.z"` in the main module (e.g. `app.py`, `bsod_analyzer.py`)
+   - Python: `VERSION = "x.y.z"` in the main module (e.g. `main.py`, `app.py`)
    - Node: `package.json` → `version`
    - Rust: `Cargo.toml` → `version`
-   - Starter pack itself: root `VERSION` file (no duplicate — already correct)
+   - Tooling repo with no source module: a root `VERSION` file
 
 2. **Derived artifacts are generated**, not hand-edited:
    - `VERSION.txt`, distrib `README.txt`, about strings copied at build time
 
-3. **Sync before verify**: `run_tests` / CI runs sync **before** consistency tests.
+3. **Sync before verify**: `run_tests.bat` / `build_ci.bat` runs **`apply_version.py sync`** first (version **and** docs per `docs/VERSION_SYNC.json`).
 
 4. **Idempotent sync**: if already aligned, do not rewrite release dates or churn files.
 
+5. **Build pipeline, not audit**: doc version sync is **`scripts/doc_version_sync.py`** + **`docs/VERSION_SYNC.json`**. Audit Section M can backstop a skipped sync, but it is **off by default** in generated projects (`sectionMachineChecks.M.enabled`) — treat the build step as the only thing that catches stale cites unless you switched M on.
+
 ## Python projects
 
-Copy from starter pack:
+Copy from starter pack (bootstrap `-Stack Python`):
 
-- `pack/templates/apply_version.py.template` → `scripts/apply_version.py` (configure `SOURCE_MODULE`, `PROJECT_NAME`)
-- `pack/templates/test_version_consistency.py.template` → `tests/test_version_consistency.py`
-- `pack/templates/version-sync.mdc.template` → `.cursor/rules/version-sync.mdc`
+- `docs/VERSION_SYNC.json` — doc sync targets
+- `scripts/doc_version_sync.py`, `scripts/apply_version.py`, `scripts/sync_doc_versions.py`
+- `scripts/sync_doc_versions.cmd` — manual doc-only pass
+- `tests/test_version_consistency.py`, `.cursor/rules/version-sync.mdc`
 
-Wire `run_tests.bat`:
+Wire `run_tests.bat` (template already enables sync):
 
 ```bat
 py -3 scripts\apply_version.py sync
 if errorlevel 1 exit /b 1
 ```
 
-**Agents:** edit only the canonical `VERSION` in source module; never hand-edit `VERSION.txt`. After bumping, run `sync` or `run_tests.bat`.
+**Agents:** edit only the canonical `VERSION` in source module; never hand-edit `VERSION.txt` or README version lines. After bumping, run `sync` or `run_tests.bat` / `build_ci.bat`.
 
 ## Node / other stacks
 
 | Stack | Canonical | Sync hook |
 |-------|-----------|-----------|
-| Node | `package.json` | `npm version` / `scripts/sync-version.mjs` in `pretest` |
-| Rust | `Cargo.toml` | `cargo set-version` or build script |
-
-Add a one-line consistency test or `npm run verify:version` that fails CI when derived files drift.
+| Node | `package.json` | `npm version` / custom script in `pretest` + `VERSION_SYNC.json` |
+| Rust | `Cargo.toml` | build script before `cargo build` |
 
 ## Audit
 
-Version drift should be impossible if sync is wired into `run_tests.bat`. See project `docs/AUDIT.md` or `run_audit.cmd`.
+If sync is wired into `run_tests.bat`, doc drift should be rare. Audit Section M may still report stale `vX.Y.Z` when sync was skipped — fix by running the build sync, not by editing audit config.

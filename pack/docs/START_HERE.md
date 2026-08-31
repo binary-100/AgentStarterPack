@@ -3,7 +3,7 @@
 **Audience:** AI coding agents, maintainers, and anyone setting up or using this pack.
 
 **Pack version:** root `VERSION` file (currently **1.7.0**).  
-**Audit engine version:** `pack/audit/manifest.json` → `"version"` (currently **2.21.6**). These numbers track different things — both are normal.
+**Audit engine version:** `pack/audit/manifest.json` → `"version"` (currently **2.22.37**). These numbers track different things — both are normal.
 
 ---
 
@@ -17,9 +17,21 @@ The **Agent Starter Pack** is portable tooling for AI-assisted development acros
 | **Rules & skills** | Always-on defaults, loop-back protocol, terminal/build hygiene, audit skill |
 | **MCP (agent-hygiene)** | Terminal log repair, orphan process scan/cleanup, pre/post shell hygiene |
 | **Templates** | Bootstrap new repos: `AUDIT.md`, `run_audit.cmd`, version sync, CI test/build stubs |
-| **Reference project** | **BSOD Analyzer** (`Desktop\BSODAnalyzer\app\`) — full production implementation |
+| **Behavior fixture** | `pack/audit/behavior-fixture/` — minimal working audit example in the pack repo |
 
-There is **no starter-pack feature roadmap**. The pack is maintained for correctness and agent reliability, not for expanding scope. Product backlogs belong in **each app's** docs (e.g. BSOD `docs/ROADMAP.md`), not here.
+There is **no starter-pack product roadmap** (`docs/ROADMAP.md` is for bootstrapped apps). Maintainer work is tracked in **`docs/WORK_QUEUE.md`** at the pack root (stable WQ IDs — see `generic-work-queue-discipline.mdc`).
+
+---
+
+## Requirements (check before anything else)
+
+```powershell
+.\Check-Requirements.cmd          # add -Fix to install the Python packages
+```
+
+Names every missing prerequisite and the command that installs it. **Required:** PowerShell 5.1+, Python 3.8+ with the `py -3` launcher (every `.cmd` in the pack and in generated projects calls it), and a passing `audit_code_checks.py --self-test`. **Optional:** the `mcp` package (agent-hygiene MCP tools only) and git (without it, audits use a file-tree fingerprint instead of git HEAD for test-pass proof).
+
+`install.ps1` and `bootstrap-project.ps1` run the same check — install stops on a missing required item, bootstrap only warns. Full table: **`INSTALL.md`**.
 
 ---
 
@@ -46,7 +58,13 @@ Both should exit **0**. See **`INSTALL.md`** at the pack root for flags (`-Regis
 | MCP server | `%USERPROFILE%\.cursor\AgentStarterPack\mcp\agent_hygiene_server.py` |
 | MCP config | `%USERPROFILE%\.cursor\mcp.json` |
 
-Portable copy on Desktop (`AgentStarterPack\`) is the **preferred edit location** for pack maintainers; re-run install to push changes to the canonical path.
+The **pack folder** you edit is the source of truth, and it travels: pack scripts resolve the pack they were launched from, so it runs from a clone, an external disk, or a USB stick with no fixed location and no drive-letter assumption.
+
+**The install does not travel.** The paths above live under `%USERPROFILE%\.cursor\` on one machine, so every machine you carry the pack to needs its own `install.ps1` run. That copy is machine-local and disposable; `sync-audit-system.ps1` only pushes pack folder → installed, never the reverse (see `-PullFromInstalled` for recovery).
+
+USB workflow, per-machine steps, and the MCP-path caveat: **`docs/PORTABLE_SETUP.md`**.
+
+**Keeping pack and reference projects aligned:** `pack/docs/PACK_MAINTENANCE.md` — generic rules live in `pack/rules/` only; projects sync via `sync-project-rules.ps1`.
 
 ---
 
@@ -63,8 +81,10 @@ Read in this order when you are new to the pack:
 | 5 | **`pack/docs/AGENT_WORKFLOW.md`** | Before sustained work or any audit |
 | 6 | **`pack/docs/AUDIT_SYSTEM.md`** | Before changing audit tooling or templates |
 | 7 | **`docs/VERSION_SYNC.md`** | Bootstrapping version sync in a Python app |
-| 8 | **`pack/docs/PHASED_FEATURE_DESIGN.md`** | Multi-step features in any project |
-| 9 | **`pack/docs/AUDIT_SYSTEM_CHANGELOG.md`** | Settled audit-system decisions (maintainers) |
+| 8 | **`pack/docs/PACK_MAINTENANCE.md`** | Generic rules vs project rules — sync, no forks |
+| 9 | **`pack/docs/AGENT_COORDINATION_BACKLOG.md`** | Multi-agent coordination — deferred backlog |
+| 10 | **`pack/docs/PHASED_FEATURE_DESIGN.md`** | Multi-step features in any project |
+| 11 | **`pack/docs/AUDIT_SYSTEM_CHANGELOG.md`** | Settled audit-system decisions (maintainers) |
 
 Root **`README.md`** and **`INSTALL.md`** are short entry points that link back here.
 
@@ -81,10 +101,11 @@ Before a multi-step change in **any** project:
 5. Before/after long shell commands → use **agent-hygiene** MCP when available (`agent_hygiene_full_check`).
 6. Windows agent builds → set **`BUILD_NOPAUSE=1`** or use **`build_ci.bat`**; never leave batch files on `pause`.
 7. After edits → run the project's test/build/verify commands before claiming done.
+8. When telling the user where files live on disk → **full absolute paths** in chat (`full-paths-in-chat.mdc`, always on).
 
 ### Working in the starter pack repo itself
 
-This workspace **is** the pack — not BSOD Analyzer or another app.
+This workspace **is** the pack — not a bootstrapped application repo.
 
 - Read **`.cursor/rules/starter-pack-repo.mdc`**
 - Do not mix application code here
@@ -201,36 +222,39 @@ See **`docs/MULTI_INSTANCE_GUIDE.md`** for MCP capabilities table.
 When changing `audit_code_checks.py`, templates, manifest, or sync/verify scripts:
 
 1. Read **`AUDIT_SYSTEM_CHANGELOG.md`** and **`AUDIT_SYSTEM.md`**
-2. Edit on Desktop **`AgentStarterPack`** (or canonical install — keep them aligned)
+2. Edit in the pack **checkout** (wherever it lives); re-install to refresh the profile copy
 3. Bump **`pack/audit/manifest.json`** `"version"`
 4. If adding `AUDIT.config.json` keys → update **`manifest.auditConfigTemplate.requiredKeys`** and **`AUDIT.config.json.template`**
-5. Push BSOD reference config: `sync-audit-system.ps1 -PushFromProject -ProjectRoot ...`
+5. Optional app reference config: `sync-audit-system.ps1 -PushFromProject -ProjectRoot C:\Users\alice\Projects\MyApp`
 6. Run:
 
 ```powershell
 pack\scripts\sync-audit-system.ps1
-pack\scripts\verify-audit-system.ps1 -ProjectRoot PATH_TO_FIXTURE_OR_BSOD
+pack\scripts\verify-audit-system.ps1 -ProjectRoot (Get-Location).Path
 ```
 
 7. Changelog entry in **`AUDIT_SYSTEM_CHANGELOG.md`**
 8. Re-run **`Install-AgentStarterPack.cmd`** on dev machines if user-global copies need refresh
 
-**Never hand-copy** individual pack files between Desktop, installed, and project mirrors — use **`sync-audit-system.ps1`**.
+**Never hand-copy** individual pack files between the checkout, installed, and project mirrors — use **`sync-audit-system.ps1`**.
 
 ---
 
-## Reference implementation
+## Example bootstrapped application
 
-**BSOD Analyzer** (`Desktop\BSODAnalyzer\app\`):
+After **`bootstrap-project.ps1`**, a typical Python app has:
 
 | Piece | Location |
 |-------|----------|
-| Product audit checklist | `app/docs/AUDIT.md` |
-| Machine config | `app/docs/AUDIT.config.json` |
-| Product roadmap (not pack) | `app/docs/ROADMAP.md` |
-| Version sync | `bsod_analyzer.py` → `VERSION`; `scripts/apply_version.py` |
+| Agent entry | `AGENTS.md`, `AI_INSTRUCTIONS.md` |
+| Product audit checklist | `docs/AUDIT.md` |
+| Machine config | `docs/AUDIT.config.json` |
+| Product roadmap (not pack) | `docs/ROADMAP.md` |
+| Version sync | source module (`main.py`) → `VERSION.txt`; `scripts/apply_version.py` |
 
-When audit templates change in BSOD, push to the pack with **`-PushFromProject`**. When the pack changes, projects run **`scripts/sync_audit_system.cmd`**.
+When audit templates change in a mature app, push to the pack with **`-PushFromProject -ProjectRoot …`**. When the pack changes, projects run **`scripts/sync_audit_system.cmd`**.
+
+**In-repo example:** `pack/audit/behavior-fixture/` — minimal audit harness used by pack tests.
 
 ---
 
@@ -243,7 +267,7 @@ When audit templates change in BSOD, push to the pack with **`-PushFromProject`*
 | Semantic report before machine pass | Step 1 first — semantic needs `machineFixesBySection` |
 | Duplicate `agent-code-audit` in project | User-global skill + project `audit.mdc` |
 | Hand-copy pack files | `sync-audit-system.ps1` |
-| Edit `VERSION.txt` by hand in BSOD | Bump `VERSION` in source module; run sync |
+| Edit `VERSION.txt` by hand | Bump `VERSION` in source module; run `apply_version.py sync` |
 | Treat audit Improve as product ROADMAP | Improve = ephemeral audit finding; ROADMAP = parked product work |
 | Starter-pack feature backlog doc | Not needed — pack scope is stable |
 
@@ -268,6 +292,17 @@ pack\scripts\verify-audit-behavior.ps1
 # Export pack zip for another PC
 .\export.ps1
 ```
+
+The export deliberately drops everything that identifies the sending machine: `.audit_*` results,
+`install-manifest.json`, `__pycache__`, and the agent-context stamp (`docs/AGENT_CONTEXT.json`,
+`docs/AGENT_REFRESH.md`, `docs/AGENT_PASTE.txt`). Those record absolute paths and the versions current
+when they were written, so inheriting them is worse than starting without them. On the receiving
+machine, `Refresh-AgentContext.cmd` regenerates the stamp and the first `run_audit.cmd` regenerates
+the audit results.
+
+To exercise a full install without touching your profile, set `AGENT_STARTER_PACK_INSTALL_ROOT` to a
+scratch path before running `install.ps1`; the pack tree, `rules\`, `skills\` and `mcp.json` all
+follow it.
 
 In a bootstrapped project:
 

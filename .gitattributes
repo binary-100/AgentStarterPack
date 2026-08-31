@@ -1,0 +1,9 @@
+# Normalize text in the repo, but pin the endings that break a file outright when converted.
+* text=auto
+
+# A CRLF here makes "#!/usr/bin/env bash" unrunnable on the systems install.sh exists for.
+*.sh text eol=lf
+
+# Batch parsing is line-ending sensitive; keep the Windows entry points CRLF on every checkout.
+*.cmd text eol=crlf
+*.bat text eol=crlf

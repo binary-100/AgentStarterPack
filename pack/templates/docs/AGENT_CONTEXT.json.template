@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 2,
+  "note": "Bootstrap stub. auditEngineVersion is the engine this project was generated from. Run Refresh-AgentContext.cmd (or Update-AgentStack.cmd) from the Agent Starter Pack to populate requiredReads, canonicalProjectRoot, and docs/AGENT_REFRESH.md.",
+  "packVersion": null,
+  "auditEngineVersion": "{{AUDIT_ENGINE_VERSION}}",
+  "installedVersion": null,
+  "rulesRevision": null,
+  "syncedAt": null,
+  "previousSyncedAt": null,
+  "packRootUsed": null,
+  "installedPackRoot": null,
+  "projectRoot": null,
+  "canonicalProjectRoot": null,
+  "isPackRepo": false,
+  "layers": {
+    "globalRules": "unknown",
+    "installedPack": "unknown",
+    "projectRules": "unknown",
+    "auditTemplates": "unknown"
+  },
+  "changedLayers": [],
+  "requiredReads": [],
+  "triggerPhrases": [
+    "refresh pack context",
+    "sync agent context",
+    "context refresh",
+    "pack update"
+  ],
+  "handshake": {
+    "required": true,
+    "fields": ["packVersion", "auditEngineVersion"]
+  }
+}

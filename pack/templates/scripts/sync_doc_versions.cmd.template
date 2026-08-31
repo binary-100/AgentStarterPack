@@ -1,0 +1,5 @@
+@echo off
+REM Build pipeline: sync doc version cites (see docs/VERSION_SYNC.json).
+cd /d "%~dp0.."
+py -3 scripts\sync_doc_versions.py %*
+exit /b %ERRORLEVEL%

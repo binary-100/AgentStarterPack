@@ -1,0 +1,23 @@
+@echo off
+REM Generic stack - tests only (no Python version sync). Copy to project root as run_tests.bat.
+
+cd /d "%~dp0"
+set "PYTHONPATH=."
+set "FAILED=0"
+
+echo Test suite (PYTHONPATH=%CD%)
+echo.
+
+for %%F in (tests\test_*.py) do (
+    echo === %%F ===
+    py -3 "%%F"
+    if errorlevel 1 set FAILED=1
+    echo.
+)
+
+if %FAILED% neq 0 (
+    echo One or more tests failed.
+    exit /b 1
+)
+echo All tests passed.
+exit /b 0

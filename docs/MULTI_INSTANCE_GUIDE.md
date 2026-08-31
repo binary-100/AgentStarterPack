@@ -52,6 +52,54 @@ Adds `.cursor\skills` (except `agent-code-audit`) and `.cursor\rules` in that re
 5. Run `doctor.ps1` from `%USERPROFILE%\.cursor\AgentStarterPack\pack\scripts\`
 6. Bootstrap each project with `Bootstrap-Project.cmd` or `bootstrap-project.ps1`
 
+### Updating a machine that already has the pack
+
+```text
+Update-AgentRules.cmd
+```
+
+Re-runs the user-scope install, then prints what actually moved: rules and skills added or updated,
+pack files added or updated, MCP servers configured, and files in the profile the pack no longer
+ships. It finishes with `doctor.ps1` and a sync verify, and exits non-zero if either reports a
+problem.
+
+Leftovers are reported in two groups, and the distinction matters because one group is deletable and
+the other is yours:
+
+| Group | Meaning |
+|-------|---------|
+| **stale** | A previous install delivered it and this pack no longer ships it. A stale *rule* keeps instructing agents in every project, so these are worth removing |
+| **not from this pack** | Never installed by the pack - your own rules and skills. Never touched |
+
+Add `-Prune` to remove the stale group (`Update-AgentRules.cmd` has no switch of its own; call
+`pack\scripts\update-agents.ps1 -Prune` or `install.ps1 -Scope User -Prune`). Pruning relies on
+`install-manifest.json` recording what each install shipped, so an install predating that record
+removes nothing from `rules\` or `skills\`.
+
+For agents:
+
+| Agent state | What it needs |
+|-------------|---------------|
+| New chat or session | Nothing - it reads the updated rules and skills on start |
+| Chat already in progress | Has the old rule text in context; tell it to re-read `%USERPROFILE%\.cursor\rules` and `pack/docs/START_HERE.md` (the command prints this line when rules changed) |
+| MCP tools | Restart Cursor when a server was added |
+
+### MCP tools need one Python package
+
+`agent-hygiene` will not start without the MCP SDK. Installing the pack does **not** install it
+unless asked:
+
+```powershell
+.\install.ps1 -Scope User -InstallMcpDeps -NoPause
+# or directly:
+py -3 -m pip install --user -r mcp\requirements.txt
+```
+
+`doctor.ps1` reports this as a warning, not a failure - audits and bootstrap work without it.
+Note that `import mcp` is not a valid check from the pack folder: the pack ships its own `mcp\`
+directory, which shadows the real package. Check `from mcp.server.fastmcp import FastMCP` instead,
+run from any other directory.
+
 ### Sync across PCs
 
 - Copy zip from `export.ps1`

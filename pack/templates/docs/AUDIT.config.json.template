@@ -8,6 +8,7 @@
     "txtFile": "VERSION.txt",
     "txtPattern": "^Version:\\s*(\\S+)"
   },
+  "versionSyncConfigFile": "docs/VERSION_SYNC.json",
 
   "tests": {
     "script": "run_tests.bat",
@@ -45,6 +46,18 @@
   "obsoletePaths": {
     "repo": [],
     "desktopFolder": ""
+  },
+
+  "layoutPolicy": {
+    "_comment": "Section B layout hygiene. Reports Improve - never deletes, never prompts. Set enabled true and fill in your own folder names.",
+    "enabled": false,
+    "glossaryDoc": "PROJECT_LAYOUT.md",
+    "glossaryHeading": "## Folder glossary",
+    "buildOutputDir": "",
+    "portableDataDirname": "",
+    "forbiddenInRepoStableCopy": "",
+    "ephemeralDirs": ["build", "dist"],
+    "contradictionScripts": []
   },
 
   "domainMap": {
@@ -104,6 +117,9 @@
       "sections": ["D", "E", "F", "G", "H", "I", "J", "K"],
       "maxModulesListed": 5
     },
+    "testRunnerCoverage": {
+      "enabled": true
+    },
     "auditVersionDocs": {
       "enabled": false,
       "manifestPath": "pack/audit/manifest.json",
@@ -114,11 +130,6 @@
       "enabled": false,
       "scanFiles": []
     },
-    "packReferenceConfig": {
-      "enabled": false,
-      "source": "docs/AUDIT.config.json",
-      "reference": "pack/templates/docs/AUDIT.config.pack.reference.json"
-    },
     "installedVsSource": {
       "enabled": false,
       "manifestPath": "pack/audit/manifest.json",
@@ -127,6 +138,10 @@
     "changelogVersionDocs": {
       "enabled": false,
       "changelogFile": "CHANGELOG.md"
+    },
+    "docVersionSync": {
+      "enabled": false,
+      "extraReplacements": []
     },
     "mcpWiring": {
       "enabled": false,

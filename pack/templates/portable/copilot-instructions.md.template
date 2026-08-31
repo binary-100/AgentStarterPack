@@ -1,6 +1,10 @@
 # Copilot instructions — {{PROJECT_NAME}}
 
+**Session start:** read **`docs/AGENT_SESSION_START.md`** when present (stale/fresh + required reads).
+
 Follow **`AGENTS.md`** and **`AI_INSTRUCTIONS.md`** in this repository.
+
+**Agent runs commands; user verifies outcomes** — run sync/tests/fixes yourself; report exit codes so the user can pivot.
 
 ## Audits
 

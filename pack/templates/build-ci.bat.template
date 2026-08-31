@@ -1,11 +1,11 @@
 @echo off
-REM CI / agent build — no interactive pause. Copy to project root as build_ci.bat
+REM CI / agent build - no interactive pause. Copy to project root as build_ci.bat
 
 cd /d "%~dp0"
-
 set BUILD_NOPAUSE=1
 
-echo Running tests...
+REM Version + docs sync run inside run_tests.bat before tests
+echo Running tests (includes version + doc sync)...
 call run_tests.bat
 if errorlevel 1 (
     echo Tests failed.

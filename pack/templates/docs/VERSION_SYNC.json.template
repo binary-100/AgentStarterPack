@@ -1,0 +1,24 @@
+{
+  "description": "Build pipeline version + documentation sync (not audit config).",
+  "canonical": {
+    "codeFile": "main.py",
+    "codePattern": "^VERSION = \"([^\"]+)\"",
+    "txtFile": "VERSION.txt",
+    "txtPattern": "^Version:\\s*(\\S+)"
+  },
+  "docSync": {
+    "enabled": true,
+    "scanFiles": [
+      "README.md",
+      "AGENTS.md",
+      "AI_INSTRUCTIONS.md",
+      "CLAUDE.md"
+    ],
+    "scanGlobs": ["docs/*.md"],
+    "excludeFiles": [
+      "AUDIT.md",
+      "ROADMAP.md",
+      "KNOWN_LIMITATIONS.md"
+    ]
+  }
+}

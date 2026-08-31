@@ -125,9 +125,9 @@ For sustained features, store the plan in project docs (e.g. `docs/FEATURE_NAME_
 
 ## Reference example
 
-**BSOD Analyzer — Driver verification (crash-linked)**  
-Phases: evidence → suspect list → device mapping → local verification → catalog gate → catalog check → unified report.  
-See project doc when present: `app/docs/DRIVER_VERIFICATION_PLAN.md`.
+**MyApp — Feature X (multi-phase)**  
+Phases: evidence → design → implementation → tests → docs.  
+Store the plan in the app repo: `docs/FEATURE_NAME_PLAN.md` and link from `AGENTS.md`.
 
 ---
 

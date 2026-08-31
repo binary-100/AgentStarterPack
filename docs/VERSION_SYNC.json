@@ -1,0 +1,35 @@
+{
+  "description": "Agent Starter Pack - build pipeline version + maintainer doc sync.",
+  "canonical": {
+    "txtFile": "VERSION",
+    "txtPattern": "^(\\d+\\.\\d+\\.\\d+)"
+  },
+  "maintainerDocSync": {
+    "enabled": true,
+    "packVersionScanFiles": [
+      "README.md",
+      "INSTALL.md",
+      "pack/docs/START_HERE.md",
+      "HANDOVER_NEXT_AGENT.md"
+    ],
+    "auditManifestPath": "pack/audit/manifest.json",
+    "auditVersionScanFiles": [
+      "README.md",
+      "INSTALL.md",
+      "pack/docs/START_HERE.md",
+      "pack/docs/AUDIT_SYSTEM.md",
+      "pack/docs/README.md",
+      "pack/docs/AGENT_WORKFLOW.md",
+      "HANDOVER_NEXT_AGENT.md"
+    ],
+    "auditContextKeywords": ["manifest.json", "audit engine", "starter pack"],
+    "extraReplacements": [
+      {
+        "file": "pack/scripts/bootstrap-project.ps1",
+        "pattern": "bootstrapVersion\\s*=\\s*\"\\d+\\.\\d+\\.\\d+\"",
+        "replace": "bootstrapVersion = \"{packVersion}\"",
+        "versionKind": "pack"
+      }
+    ]
+  }
+}

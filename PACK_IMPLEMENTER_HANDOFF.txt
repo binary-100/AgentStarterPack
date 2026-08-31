@@ -1,0 +1,160 @@
+Agent Starter Pack — Implementer handoff (other system)
+========================================================
+
+STATUS: BOTH TRACKS IMPLEMENTED 2026-08-28 — DO NOT PASTE THE BLOCKS BELOW AGAIN
+--------------------------------------------------------------------------------
+Phase 6a shipped in audit engine 2.21.23; Section 12 (audit layout reporting) in 2.22.0.
+Read PACK_IMPLEMENTER_SPEC.md (status table at the top) and
+HANDOVER_NEXT_AGENT.md before acting on anything in this file.
+
+On the machine that was still on the older pack: merge via git, then run
+install.ps1 -Scope User (or Update-AgentRules.cmd) — do not rebuild either track.
+
+Still unbuilt by design: Phase 6b (MCP tools), Phase 6c (multi-agent mailbox).
+
+**General:** This handoff is for **Agent Starter Pack only** — any bootstrapped project,
+any AI agent/model. Pack source uses **MyApp placeholders only**; no product names.
+
+Use this when opening Agent Starter Pack on another PC and want an agent
+to implement pack work WITHOUT redoing work already done elsewhere.
+
+**Two tracks in the spec:**
+
+| Track | Spec section | When |
+|-------|--------------|------|
+| **Phase 6a** — Agent Context Refresh | Section 4 | Primary — implement first unless user assigns audit only |
+| **Audit layout reporting** | Section 12 | Separate audit-engine bump (2.22.x suggested) — after 6a or parallel |
+
+FILES ON YOUR DESKTOP (exactly two — copy both to the other PC as needed)
+-------------------------------------------------------------------------
+1. PACK_IMPLEMENTER_SPEC.md   — full design + checklists (Phase 6a + Section 12 audit addendum)
+2. PACK_IMPLEMENTER_HANDOFF.txt — this file; paste blocks for the agent chat
+
+Retired names (do not use): PHASE_6_IMPLEMENTATION_SPEC.md, PHASE_6_TELL_YOUR_AGENT.txt
+
+FOR YOU — WHERE TO PUT THE .MD FILE (other system)
+--------------------------------------------------
+
+Before you talk to the agent, copy the spec into the Agent Starter Pack
+repo ROOT (same folder as AGENTS.md and install.ps1):
+
+  FROM:  C:\Users\<you>\OneDrive\Desktop\PACK_IMPLEMENTER_SPEC.md
+  TO:    C:\Users\<you>\OneDrive\Desktop\AgentStarterPack\PACK_IMPLEMENTER_SPEC.md
+
+Example (Command Prompt on the other PC — adjust paths if your repo lives elsewhere):
+
+  copy "%USERPROFILE%\OneDrive\Desktop\PACK_IMPLEMENTER_SPEC.md" ^
+       "%USERPROFILE%\OneDrive\Desktop\AgentStarterPack\PACK_IMPLEMENTER_SPEC.md"
+
+You do NOT put it in pack\docs\ or docs\ — repo root only.
+
+If that repo already has PACK_IMPLEMENTER_SPEC.md from git sync, skip the copy.
+
+Keep this .txt on the Desktop (or anywhere); only the .md needs to go in the repo.
+
+Open the AgentStarterPack folder in Cursor on that machine, then paste the agent block below.
+
+BASELINE (ALREADY DONE — DO NOT RE-BUILD)
+-----------------------------------------
+- Pack VERSION 1.7.0, audit engine 2.21.13
+- Generic-only pack (no product-specific references in starter pack)
+- Edit boundary, recommendation discipline, doc sync via VERSION_SYNC.json
+- install.ps1, Update-AgentRules.cmd, verify-agent-setup.ps1
+- AGENT_CHAT_SYNC.md (interim manual paste until Phase 6a ships)
+- HANDOVER_NEXT_AGENT.md (session handover for pack maintainers)
+
+WHAT TO PASTE INTO THE AGENT CHAT — PHASE 6a TRACK
+--------------------------------------------------
+
+Copy everything between the lines below:
+
+
+--- START COPY (Phase 6a) ---
+
+You are implementing Phase 6a only for Agent Starter Pack.
+
+1. Read PACK_IMPLEMENTER_SPEC.md in the repo root (or the copy on my Desktop).
+2. Read AGENTS.md and HANDOVER_NEXT_AGENT.md for repo layout — do not re-implement Phases 1–5.
+
+Phases 1–5 are already complete on another machine:
+- audit manifest 2.21.13, pack 1.7.0, generic-only
+- version/doc sync = build pipeline (docs/VERSION_SYNC.json)
+- do NOT re-add product-specific reference configs or paths
+
+Implement Phase 6a — Agent Context Refresh (Section 4):
+- pack/scripts/refresh-agent-context.ps1
+- Refresh-AgentContext.cmd at repo root
+- Generated docs/AGENT_CONTEXT.json + docs/AGENT_REFRESH.md per project
+- Bootstrap hook, short trigger in agent-defaults-always.mdc
+- Bump manifest + AUDIT_SYSTEM_CHANGELOG entry
+- verify-audit-system.ps1 and run_audit_tests.bat exit 0
+
+Out of scope unless I ask:
+- Phase 6b (MCP tools)
+- Phase 6c (multi-agent mailbox)
+- Section 12 (audit layout reporting) — separate assignment
+- Re-doing version sync, verify scripts, or generic-only cleanup
+
+When done, report: files added/changed, manifest version, verify results, and one example paste line from generated AGENT_REFRESH.md.
+
+--- END COPY (Phase 6a) ---
+
+
+WHAT TO PASTE — AUDIT LAYOUT TRACK (Section 12, optional / separate)
+---------------------------------------------------------------------
+
+Use when Phase 6a is done OR when I assign audit-engine work only.
+Do not mix with 6a in one PR unless I explicitly ask.
+
+--- START COPY (Audit layout Section 12) ---
+
+You are implementing Section 12 of PACK_IMPLEMENTER_SPEC.md in Agent Starter Pack only.
+
+Baseline: audit manifest 2.21.13, pack 1.7.0. Bump to 2.22.x (or next) with changelog.
+
+Problem to fix:
+- Audits on bootstrapped projects over-focus on "machine cruft Fix = delete dist/build" and miss structural Improve items.
+- Layout clarity (build output vs runtime user-data vs release archive) must be **Improve** in audit output.
+- Audit detects and reports; it does NOT auto-delete folders or prompt the user for cleanup permission.
+- Pack templates: **MyApp placeholders only** — no product-specific names or paths in pack source.
+
+Read Section 12 fully. Deliver (generic MyApp placeholders only):
+1. AUDIT_SYSTEM.md + AGENT_WORKFLOW.md — layout hygiene = Improve taxonomy
+2. agent-code-audit skill template — mandatory §B layout pass
+3. AUDIT.md template §B — folder glossary / duplicate-stable / ephemeral dirs
+4. Optional layoutPolicy in AUDIT.config.json.template
+5. run_audit_core.ps1 — layout checks + machineImprovesBySection (or Improve channel)
+6. behavior-fixture + run_audit_tests.bat coverage
+7. verify-audit-system.ps1 exit 0
+
+Out of scope: auto-delete cruft, product-specific paths in pack, Phase 6a context refresh.
+
+When done, report: manifest version, files changed, fixture test output, example Improve lines from fixture run.
+
+--- END COPY (Audit layout Section 12) ---
+
+
+OPTIONAL: If you skipped the copy step above
+--------------------------------------------
+
+Same as "FOR YOU" section — destination is always:
+
+  <AgentStarterPack repo root>\PACK_IMPLEMENTER_SPEC.md
+
+Not pack\docs\ — not docs\ — repo root only.
+
+
+AFTER PHASE 6a IS BUILT ON THAT SYSTEM
+--------------------------------------
+
+- Merge via git (preferred) so this Desktop machine gets the same files
+- Do NOT implement Phase 6 again here unless the other branch was never merged
+- Run install.ps1 -Scope User on each PC after merge
+
+AFTER SECTION 12 (AUDIT LAYOUT) IS BUILT
+----------------------------------------
+
+- Merge via git; run sync-audit-system.ps1 on a bootstrapped test project (behavior fixture or local MyApp tree)
+- Confirm §B semantic reports layout **Improve** without the user having to ask for a folder-structure review first
+
+Questions about scope → PACK_IMPLEMENTER_SPEC.md Section 8 (6a) or Section 12.6 (audit layout)

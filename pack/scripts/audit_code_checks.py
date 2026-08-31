@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Machine code checks for audit — import smoke, static patterns, agent manifest.
+"""Machine code checks for audit - import smoke, static patterns, agent manifest.
 
 Reads docs/AUDIT.config.json (codeChecks section). Emits JSON on stdout for
 run_audit_core.ps1. Exit 1 if any fix-level issue.
@@ -7,6 +7,8 @@ run_audit_core.ps1. Exit 1 if any fix-level issue.
 Extra modes:
   --verify-semantic-report   Validate docs/.audit_semantic_report.json vs manifest
   --write-semantic-template  Write empty semantic report template for agent fill-in
+  --sync-doc-versions        Update maintainer doc version cites from VERSION + manifest
+  --verify-doc-versions      Exit 1 if maintainer docs cite stale version numbers
   --lightweight              Skip import smoke (debug / -SkipTests path)
   --self-test                Fast parser self-test
 """
@@ -24,17 +26,20 @@ from pathlib import Path
 
 
 def load_config(app_root: Path) -> dict:
+    # utf-8-sig everywhere this module reads project files: Windows PowerShell 5.1 writes a BOM for
+    # -Encoding UTF8, so files produced by pack scripts (or edited in a Windows editor) carry one.
+    # Plain "utf-8" made json.loads fail with "Unexpected UTF-8 BOM" on every bootstrapped project.
     cfg_path = app_root / "docs" / "AUDIT.config.json"
     if not cfg_path.is_file():
         return {}
-    return json.loads(cfg_path.read_text(encoding="utf-8"))
+    return json.loads(cfg_path.read_text(encoding="utf-8-sig"))
 
 
 def parse_checklist_sections(audit_md: Path) -> dict[str, dict]:
     """Parse ### A. Title sections from AUDIT.md checklist into letter -> {title, checklistItems}."""
     if not audit_md.is_file():
         return {}
-    lines = audit_md.read_text(encoding="utf-8").splitlines()
+    lines = audit_md.read_text(encoding="utf-8-sig").splitlines()
     start = next(
         (
             i
@@ -63,11 +68,83 @@ def parse_checklist_sections(audit_md: Path) -> dict[str, dict]:
     return sections
 
 
+CHECKLIST_PATH_TOKEN_RE = re.compile(
+    r"`([^`]+)`|"
+    r"\b(?:pack/)?(?:[\w\-]+/)*[\w\-]+\.(?:ps1|cmd|bat|py|md|json|mdc)\b",
+    re.I,
+)
+
+
+def normalize_checklist_path(path: str) -> str:
+    return path.strip().replace("\\", "/")
+
+
+def parse_checklist_paths(checklist_items: list[str]) -> list[str]:
+    """Extract file paths from checklist bullets (Section E PS scripts, etc.)."""
+    paths: list[str] = []
+    seen: set[str] = set()
+    for item in checklist_items:
+        for match in CHECKLIST_PATH_TOKEN_RE.finditer(item):
+            raw = normalize_checklist_path(match.group(1) or match.group(0))
+            if raw and raw not in seen:
+                seen.add(raw)
+                paths.append(raw)
+    return paths
+
+
+def checklist_path_reviewed(expected: str, reviewed: set[str]) -> bool:
+    """True when expected path or its basename appears in modulesReviewed[]."""
+    exp = normalize_checklist_path(expected)
+    base = exp.split("/")[-1]
+    for r in reviewed:
+        rn = normalize_checklist_path(r)
+        if rn == exp or rn.endswith("/" + exp) or exp.endswith("/" + rn):
+            return True
+        if rn == base or rn.endswith("/" + base):
+            return True
+    return False
+
+
+def verify_checklist_paths_reviewed(
+    checklist_sections: dict[str, dict],
+    sections: dict,
+    cfg: dict,
+) -> list[str]:
+    """Require modulesReviewed[] for checklist file paths (sections without domain-map modules)."""
+    cc = cfg.get("codeChecks") or {}
+    if not cc.get("semanticRequireModulesReviewed", True):
+        return []
+    letters = cc.get("semanticChecklistPathSections") or []
+    fixes: list[str] = []
+    for letter in letters:
+        chk = checklist_sections.get(letter) or {}
+        expected = parse_checklist_paths(chk.get("checklistItems") or [])
+        if not expected:
+            continue
+        entry = sections.get(letter) or {}
+        reviewed = entry.get("modulesReviewed")
+        if not isinstance(reviewed, list):
+            fixes.append(
+                f"Semantic report - section {letter} missing modulesReviewed[] "
+                f"(list all {len(expected)} checklist paths reviewed this session)"
+            )
+            continue
+        got = {normalize_checklist_path(str(x)) for x in reviewed if str(x).strip()}
+        missing = [p for p in expected if not checklist_path_reviewed(p, got)]
+        if missing:
+            fixes.append(
+                f"Semantic report - section {letter} modulesReviewed missing checklist paths "
+                f"{', '.join(missing[:6])}"
+                + (f" (+{len(missing) - 6} more)" if len(missing) > 6 else "")
+            )
+    return fixes
+
+
 def parse_domain_map(audit_md: Path) -> dict[str, list[str]]:
     """Map section letter -> module filenames from the domain map table."""
     if not audit_md.is_file():
         return {}
-    lines = audit_md.read_text(encoding="utf-8").splitlines()
+    lines = audit_md.read_text(encoding="utf-8-sig").splitlines()
     start = next((i for i, ln in enumerate(lines) if ln.startswith("## Domain map")), -1)
     if start < 0:
         return {}
@@ -137,11 +214,28 @@ def semantic_report_path(app_root: Path, cfg: dict) -> Path:
 
 
 def resolve_repo_root(app_root: Path) -> Path:
-    if (app_root / "docs" / "AUDIT.md").is_file():
-        parent = app_root.parent
-        if (parent / "README.md").is_file() or (parent / ".git").is_dir():
-            return parent.resolve()
-    return app_root.resolve()
+    """Repo root for git, version-doc, and evidence lookups.
+
+    This rule must stay in step with run_audit.ps1.template: two layers deriving the repo root from
+    different rules is how the audit ended up scanning a folder above the project. The old rule here
+    promoted the parent whenever it held a README.md, which swept in every sibling of a flat app
+    that happened to live under a folder with a README, while the wrapper stayed on the app root.
+    Behavior step 23 asserts both layers agree. Deliberately derived from app_root rather than taken
+    from the wrapper: the behavior fixture's wrapper declares an outer repo root, and honouring that
+    would tie its test-pass proof to the pack's git HEAD instead of the fixture's own files.
+    """
+    app_root = app_root.resolve()
+    # .git is a file in worktrees and submodules, so test existence rather than is_dir().
+    if (app_root / ".git").exists():
+        return app_root
+    parent = app_root.parent
+    if (
+        app_root.name.lower() == "app"
+        and (app_root / "docs" / "AUDIT.md").is_file()
+        and (parent / ".git").exists()
+    ):
+        return parent.resolve()
+    return app_root
 
 
 CLEAN_SUMMARY_RE = re.compile(
@@ -164,6 +258,14 @@ def summary_has_cite(summary: str) -> bool:
 
 
 def read_canonical_version(app_root: Path, cfg: dict) -> str | None:
+    try:
+        from doc_version_sync import read_canonical_version as _read_vs
+
+        v = _read_vs(app_root)
+        if v:
+            return v
+    except ImportError:
+        pass
     vs = cfg.get("versionSync")
     if not vs:
         return None
@@ -270,7 +372,7 @@ def collect_code_machine_fixes(
     fixes: list[str] = []
     if cc.get("importSmoke", {}).get("enabled", True) and not lightweight:
         exclude = set((cc.get("importSmoke") or {}).get("exclude", []))
-        fixes.extend(import_smoke(app_root, exclude))
+        fixes.extend(import_smoke(app_root, exclude, cfg))
     if not lightweight:
         allowlist = load_audit_allowlist(app_root, cfg)
         fixes.extend(scan_static_patterns(app_root, cc.get("staticPatterns") or [], allowlist))
@@ -313,10 +415,54 @@ def map_fixes_to_sections(fixes: list[str]) -> dict[str, list[str]]:
     return by_sec
 
 
+def check_test_runner_coverage(app_root: Path, cfg: dict) -> list[str]:
+    """A runner that exits 0 without running anything used to satisfy the whole test gate.
+
+    Only the exit code was checked, so replacing run_tests.bat with `exit /b 0` printed
+    "Tests: OK" while tests/ sat untouched. AUDIT.md already asks a reviewer to confirm the
+    runner covers every test file; this is that promise, machine-checked.
+    """
+    cc = cfg.get("codeChecks") or {}
+    if not (cc.get("testRunnerCoverage") or {}).get("enabled", True):
+        return []
+    script_rel = (cfg.get("tests") or {}).get("script")
+    if not script_rel:
+        return []
+    script = app_root / script_rel.replace("\\", "/")
+    if not script.is_file():
+        return []
+    test_files = sorted(app_root.glob("tests/test_*.py"))
+    if not test_files:
+        return []
+    text = script.read_text(encoding="utf-8-sig", errors="replace")
+    # A runner is allowed to delegate, so follow one level of in-project scripts it calls.
+    nested_re = re.compile(
+        r"(?im)(?:^|\s)(?:call|cmd\s+/c|-File)\s+\"?([\w\-.$%~]*[\w\-.]+\.(?:bat|cmd|ps1))\"?"
+    )
+    for match in nested_re.finditer(text):
+        candidate = match.group(1).replace("%~dp0", "").replace("\\", "/").lstrip("/")
+        nested = app_root / candidate
+        if nested.is_file() and nested.resolve() != script.resolve():
+            text += "\n" + nested.read_text(encoding="utf-8-sig", errors="replace")
+    # Globbed or discovered test runs cover files the runner never names.
+    if re.search(r"test_\*\.py|pytest|unittest\s+discover|-m\s+unittest", text, re.IGNORECASE):
+        return []
+    missing = [p.name for p in test_files if p.name not in text]
+    if not missing:
+        return []
+    shown = ", ".join(missing[:3])
+    if len(missing) > 3:
+        shown += f" +{len(missing) - 3} more"
+    return [
+        f"Test runner - {script_rel} never runs {shown} - "
+        "name them or run tests\\test_*.py so the pass covers them"
+    ]
+
+
 def verify_domain_map_modules_exist(
     app_root: Path, cfg: dict, domain_sections: dict[str, list[str]]
 ) -> list[str]:
-    """Domain map lists modules — verify each concrete *.py exists on disk."""
+    """Domain map lists modules - verify each concrete *.py exists on disk."""
     if not domain_sections:
         return []
     dm = cfg.get("domainMap") or {}
@@ -349,22 +495,54 @@ def _domain_scan_dir(app_root: Path, cfg: dict) -> Path:
     return app_root if rel in (".", "") else app_root / rel
 
 
+def _domain_scan_dirs(app_root: Path, cfg: dict) -> list[Path]:
+    """Every directory this project calls its own code.
+
+    scanDir alone described a single-folder layout. moduleSearchDirs was trusted to *resolve* modules
+    named in the domain map but never scanned, so a project whose code lives in subfolders was
+    inventoried on scanDir only: the pack's own audit reported 1 production module and 38 lines while
+    holding a 2000-line engine under pack/scripts, and the orphan scan could not see an unmapped
+    module there. Projects that leave moduleSearchDirs at ["."] are unaffected.
+    """
+    dm = cfg.get("domainMap") or {}
+    rels = [dm.get("scanDir") or "."] + list(dm.get("moduleSearchDirs") or [])
+    dirs: list[Path] = []
+    seen: set[Path] = set()
+    for rel in rels:
+        rel = str(rel).replace("\\", "/").strip()
+        p = app_root if rel in (".", "") else app_root / rel
+        if not p.is_dir():
+            continue
+        try:
+            key = p.resolve()
+        except OSError:
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        dirs.append(p)
+    return dirs
+
+
 def _production_py_files(app_root: Path, cfg: dict) -> list[Path]:
     dm = cfg.get("domainMap") or {}
     exclude = set(dm.get("excludeModules") or [])
-    scan_dir = _domain_scan_dir(app_root, cfg)
-    if not scan_dir.is_dir():
-        return []
-    return sorted(
-        p for p in scan_dir.glob(dm.get("scanGlob") or "*.py") if p.is_file() and p.name not in exclude
-    )
+    glob_pat = dm.get("scanGlob") or "*.py"
+    found: dict[str, Path] = {}
+    for scan_dir in _domain_scan_dirs(app_root, cfg):
+        for p in scan_dir.glob(glob_pat):
+            # Modules are identified by filename throughout the domain map, so first match wins and
+            # a duplicate name across folders cannot silently double-count.
+            if p.is_file() and p.name not in exclude and p.name not in found:
+                found[p.name] = p
+    return [found[name] for name in sorted(found)]
 
 
 def expand_domain_map_modules(
     app_root: Path, cfg: dict, domain_sections: dict[str, list[str]]
 ) -> dict[str, list[str]]:
     """Resolve wildcard entries (e.g. gui_*, firmware_peripheral_*.py) to concrete filenames."""
-    scan_dir = _domain_scan_dir(app_root, cfg)
+    scan_dirs = _domain_scan_dirs(app_root, cfg)
     expanded: dict[str, list[str]] = {}
     for letter, modules in domain_sections.items():
         names: list[str] = []
@@ -372,7 +550,9 @@ def expand_domain_map_modules(
             if not mod.endswith(".py"):
                 continue
             if "*" in mod:
-                if scan_dir.is_dir():
+                # Wildcards must see the same folders as the orphan scan, or a pattern matches
+                # nothing while the module it was meant to cover is reported as an orphan.
+                for scan_dir in scan_dirs:
                     for p in sorted(scan_dir.glob(mod)):
                         if p.is_file():
                             names.append(p.name)
@@ -396,7 +576,7 @@ def all_mapped_module_names(expanded: dict[str, list[str]]) -> set[str]:
 def scan_domain_map_orphans(
     app_root: Path, cfg: dict, expanded: dict[str, list[str]]
 ) -> list[str]:
-    """Disk → map: production *.py not covered by expanded domain map."""
+    """Disk -> map: production *.py not covered by expanded domain map."""
     dm = cfg.get("domainMap") or {}
     if not dm or dm.get("orphanScanEnabled", True) is False:
         return []
@@ -462,7 +642,7 @@ def load_audit_inventory(app_root: Path, cfg: dict) -> dict | None:
     if not path.is_file():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8-sig"))
     except (json.JSONDecodeError, OSError):
         return None
 
@@ -485,7 +665,7 @@ def check_large_modules_improve(
             letter = mod_letter.get(py.name, "G")
             improve.append(
                 f"Section {letter} - `{py.name}` ~{loc} LOC exceeds {threshold} "
-                "(maintainability — split per module plan)"
+                "(maintainability - split per module plan)"
             )
     return improve
 
@@ -509,7 +689,7 @@ def load_audit_allowlist(app_root: Path, cfg: dict) -> dict:
     if not path.is_file():
         return {"exceptPass": []}
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
         return data if isinstance(data, dict) else {"exceptPass": []}
     except (json.JSONDecodeError, OSError):
         return {"exceptPass": []}
@@ -609,23 +789,8 @@ def load_manifest(app_root: Path) -> dict:
         return {}
 
 
-def get_current_tests_proof_head(app_root: Path, cfg: dict) -> str | None:
-    repo_root = resolve_repo_root(app_root)
-    if (repo_root / ".git").is_dir():
-        try:
-            r = subprocess.run(
-                ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if r.returncode == 0 and r.stdout.strip():
-                return r.stdout.strip()
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-    dm = cfg.get("domainMap") or {}
-    scan_dir = _domain_scan_dir(app_root, cfg)
-    glob_pat = dm.get("scanGlob") or "*.py"
+def audit_proof_paths(app_root: Path, cfg: dict) -> list[Path]:
+    """Files the test-pass proof covers: the runner, the audit contract, and production code."""
     paths: list[Path] = []
     test_script = (cfg.get("tests") or {}).get("script")
     if test_script:
@@ -636,16 +801,77 @@ def get_current_tests_proof_head(app_root: Path, cfg: dict) -> str | None:
         p = app_root / rel
         if p.is_file():
             paths.append(p)
-    if scan_dir.is_dir():
-        paths.extend(sorted(scan_dir.glob(glob_pat)))
-    import hashlib
+    paths.extend(_production_py_files(app_root, cfg))
+    return paths
 
+
+def proof_rel_key(app_root: Path, path: Path) -> str:
+    try:
+        rel = path.relative_to(app_root).as_posix()
+    except ValueError:
+        rel = path.as_posix()
+    return rel.lower()
+
+
+def compute_tree_fingerprint(app_root: Path, cfg: dict) -> str | None:
+    """Hash the *contents* of the audited files.
+
+    Size and mtime were the old inputs and both are wrong here: mtimes do not survive a copy to
+    another drive (this pack ships on removable media), and they can be restored, so a proof
+    built on them can be stale and identical at the same time. Get-AuditTreeFingerprint in
+    run_audit_core.ps1 builds the identical string - keep the two in step.
+    """
+    app_root = app_root.resolve()
+    entries: dict[str, Path] = {}
+    for p in audit_proof_paths(app_root, cfg):
+        if p.is_file():
+            entries[proof_rel_key(app_root, p.resolve())] = p
+    # sha256 of nothing is a constant, so an empty set would pass as a proof that matches forever.
+    if not entries:
+        return None
     h = hashlib.sha256()
-    for p in sorted({x.resolve() for x in paths if x.is_file()}):
-        st = p.stat()
-        h.update(f"{p}|{st.st_size}|{st.st_mtime_ns}".encode("utf-8"))
-    digest = h.hexdigest()
-    return f"tree:{digest}" if digest else None
+    for rel in sorted(entries):
+        fh = hashlib.sha256()
+        with open(entries[rel], "rb") as handle:
+            for chunk in iter(lambda: handle.read(65536), b""):
+                fh.update(chunk)
+        h.update(f"{rel}|{fh.hexdigest()}\n".encode("utf-8"))
+    return h.hexdigest()
+
+
+def git_head(repo_root: Path) -> str | None:
+    if not (repo_root / ".git").exists():
+        return None
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def get_current_tests_proof_head(app_root: Path, cfg: dict) -> str | None:
+    """Proof that the tree an agent reviewed is the tree the tests passed on.
+
+    HEAD alone was not enough. It does not move for uncommitted edits, so a project could pass
+    an audit, change code without committing, and keep reporting the pass - and because git is
+    only consulted when it answers, the strict path was the one that ran where git was absent.
+    The fingerprint is the proof; HEAD is prefixed when git answers so a commit invalidates it
+    too, which covers files the fingerprint's globs do not reach.
+    """
+    fingerprint = compute_tree_fingerprint(app_root, cfg)
+    head = git_head(resolve_repo_root(app_root))
+    if fingerprint is None:
+        return head
+    if head:
+        return f"{head}+tree:{fingerprint}"
+    return f"tree:{fingerprint}"
 
 
 def verify_semantic_freshness(app_root: Path, cfg: dict, data: dict) -> list[str]:
@@ -748,7 +974,7 @@ def verify_duplicate_summaries(sections: dict, required_sections: list[str]) -> 
     if len(summaries) >= 8 and len(set(summaries)) == 1:
         return [
             "Semantic report - all section summaries identical "
-            "(bulk paste forbidden — per-section deep scan required)"
+            "(bulk paste forbidden - per-section deep scan required)"
         ]
     return []
 
@@ -761,7 +987,7 @@ def write_audit_receipt(app_root: Path, cfg: dict, manifest: dict) -> Path:
     sem_at = ""
     if sem_path.is_file():
         try:
-            sem_at = json.loads(sem_path.read_text(encoding="utf-8")).get("generatedAt") or ""
+            sem_at = json.loads(sem_path.read_text(encoding="utf-8-sig")).get("generatedAt") or ""
         except (json.JSONDecodeError, OSError):
             pass
     payload = {
@@ -786,7 +1012,7 @@ def load_machine_fixes_from_manifest(app_root: Path) -> dict[str, list[str]]:
     if not path.is_file():
         return {}
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
         raw = data.get("machineFixesBySection") or {}
         return {k: list(v) for k, v in raw.items() if v}
     except (json.JSONDecodeError, OSError, TypeError):
@@ -802,6 +1028,66 @@ def merge_fixes_by_section(*maps: dict[str, list[str]]) -> dict[str, list[str]]:
                 if item not in bucket:
                     bucket.append(item)
     return out
+
+
+def load_machine_improves_from_manifest(app_root: Path) -> dict[str, list[str]]:
+    path = app_root / "docs" / ".audit_agent_manifest.json"
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+        raw = data.get("machineImprovesBySection") or {}
+        return {k: list(v) for k, v in raw.items() if v}
+    except (json.JSONDecodeError, OSError, TypeError):
+        return {}
+
+
+def verify_semantic_vs_machine_improves(
+    app_root: Path,
+    cfg: dict,
+    sections: dict,
+    required_sections: list[str],
+) -> list[str]:
+    """Machine Improve lines must be answered in that section's summary, not silently dropped.
+
+    Fix lines already block a clean summary. Improve lines did not, so a layout finding could sit in
+    the manifest while the agent closed the section on the cruft it had deleted.
+    """
+    cc = cfg.get("codeChecks") or {}
+    if not cc.get("semanticRequireMachineImproveMention", True):
+        return []
+    by_sec = load_machine_improves_from_manifest(app_root)
+    fixes: list[str] = []
+    for letter in sorted(by_sec.keys()):
+        if required_sections and letter not in required_sections:
+            continue
+        entry = sections.get(letter) or {}
+        summary = (entry.get("summary") or "").strip()
+        if not summary:
+            continue
+        lowered = summary.lower()
+        if "layout" in lowered:
+            continue
+        # Or name what the machine flagged - a specific cite beats the keyword. Only tokens that
+        # look like a path or folder name count, so ordinary prose in the message cannot match.
+        cited = False
+        for line in by_sec[letter]:
+            for token in re.findall(r"[\w.\-]*[\\/_][\w.\-\\/_]*", line):
+                token = token.strip("\\/_-.")
+                if len(token) < 4:
+                    continue
+                if token.lower() in lowered:
+                    cited = True
+                    break
+            if cited:
+                break
+        if not cited:
+            fixes.append(
+                f"Semantic report - section {letter} does not address "
+                f"{len(by_sec[letter])} machine Improve line(s) - mention layout or cite them "
+                f"(see machineImprovesBySection.{letter} in docs/.audit_agent_manifest.json)"
+            )
+    return fixes
 
 
 def verify_semantic_vs_machine(
@@ -843,6 +1129,13 @@ def verify_semantic_report(
     domain_sections: dict[str, list[str]] | None = None,
 ) -> list[str]:
     fixes: list[str] = []
+    if not required_sections:
+        # With no sections the loop below verifies nothing and the audit reports a clean pass
+        # having reviewed nothing at all. An empty gate is never a pass.
+        return [
+            "Audit scope - no checklist sections found - add '## Checklist sections' with "
+            "'### A. Title' entries to docs/AUDIT.md (the semantic gate has nothing to verify)"
+        ]
     path = semantic_report_path(app_root, cfg)
     if not path.is_file():
         fixes.append(
@@ -852,7 +1145,7 @@ def verify_semantic_report(
         )
         return fixes
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
     except (json.JSONDecodeError, OSError) as exc:
         fixes.append(f"Semantic report invalid - {path.name} - {exc}")
         return fixes
@@ -882,12 +1175,18 @@ def verify_semantic_report(
     if domain_sections:
         expanded = expand_domain_map_modules(app_root, cfg, domain_sections)
         fixes.extend(verify_modules_reviewed(expanded, sections, cfg))
+    audit_md = app_root / "docs" / "AUDIT.md"
+    checklist_sections = parse_checklist_sections(audit_md)
+    fixes.extend(verify_checklist_paths_reviewed(checklist_sections, sections, cfg))
     fixes.extend(verify_duplicate_summaries(sections, required_sections))
     fixes.extend(verify_section_n_semantic(app_root, cfg, sections))
     fixes.extend(
         verify_semantic_vs_machine(
             app_root, cfg, sections, required_sections, lightweight, domain_sections
         )
+    )
+    fixes.extend(
+        verify_semantic_vs_machine_improves(app_root, cfg, sections, required_sections)
     )
     return fixes
 
@@ -901,7 +1200,7 @@ def verify_section_l_wiring(app_root: Path, cfg: dict) -> list[str]:
     for name in lcfg.get("forbiddenRules") or [
         "code-audit-checklist.mdc",
         "generic-code-audit-checklist.mdc",
-        "bsod-analyzer-audit-overlay.mdc",
+        "product-audit-overlay.mdc",
     ]:
         if (rules_dir / name).is_file():
             fixes.append(f"Section L - forbidden rule app/.cursor/rules/{name}")
@@ -978,7 +1277,11 @@ def verify_section_n_semantic(
 ) -> list[str]:
     fixes: list[str] = []
     ncfg = (cfg.get("codeChecks") or {}).get("sectionMachineChecks", {}).get("N") or {}
-    if not ncfg.get("enabled", True):
+    # Opt-in, not opt-out. Section N is not a checklist heading in any shipped AUDIT.md, so with a
+    # default of True a config that never mentioned N could still demand an N entry the moment git
+    # showed a version commit - and the report template had no N stub to fill. Where N is switched
+    # on deliberately, main() adds it to the required sections so the template does stub it.
+    if not ncfg.get("enabled", False):
         return fixes
     repo_root = resolve_repo_root(app_root)
     paths = ncfg.get("gitLogPaths") or ["VERSION.txt"]
@@ -989,11 +1292,11 @@ def verify_section_n_semantic(
     if ncfg.get("blockCleanSummaryIfGitHits", True) and is_clean_summary(summary):
         fixes.append(
             "Section N - recent VERSION/release file commits in git; "
-            "summary cannot be 'Nothing found.' — cite files reviewed for this release"
+            "summary cannot be 'Nothing found.' - cite files reviewed for this release"
         )
     elif summary and not is_clean_summary(summary) and not summary_has_cite(summary):
         fixes.append(
-            "Section N - recent VERSION changes; summary must cite changed files (e.g. `bsod_analyzer.py`)"
+            "Section N - recent VERSION changes; summary must cite changed files (e.g. `main.py`)"
         )
     if ncfg.get("blockCleanSummaryIfGitHits", True) and not is_clean_summary(summary):
         evidence = entry.get("evidence") or []
@@ -1072,11 +1375,11 @@ def verify_section_c_packaging(app_root: Path, cfg: dict) -> list[str]:
         p = app_root / rel.replace("\\", "/")
         if not p.is_file():
             fixes.append(f"Section C - missing packaging file {rel}")
-    dist_marker = (ccfg.get("distMarker") or "BSODAnalyzer_v6/BSODAnalyzer.exe").replace(
+    dist_marker = (ccfg.get("distMarker") or "dist/MyApp/MyApp.exe").replace(
         "\\", "/"
     )
     dist_exe = app_root / dist_marker
-    dist_dir_name = dist_marker.split("/")[0] if "/" in dist_marker else "BSODAnalyzer_v6"
+    dist_dir_name = dist_marker.split("/")[0] if "/" in dist_marker else "dist/MyApp"
     dist_dir = app_root / dist_dir_name
     if dist_exe.is_file() or dist_dir.is_dir():
         for rel in ccfg.get("bundledRuntimePaths") or []:
@@ -1151,7 +1454,9 @@ def verify_section_m_html_stale(app_root: Path, cfg: dict) -> list[str]:
     return fixes
 
 
-def collect_config_machine_checks(cfg: dict) -> dict[str, list[str]]:
+def collect_config_machine_checks(
+    cfg: dict, domain_sections: dict[str, list[str]] | None = None
+) -> dict[str, list[str]]:
     """Map enabled AUDIT.config.json capabilities to checklist sections (run_audit_core + codeChecks)."""
     by_sec: dict[str, list[str]] = {}
 
@@ -1162,7 +1467,7 @@ def collect_config_machine_checks(cfg: dict) -> dict[str, list[str]]:
 
     vs = cfg.get("versionSync")
     if vs:
-        add("A", "versionSync code↔VERSION.txt")
+        add("A", "versionSync code<->VERSION.txt")
         if vs.get("distTxtFile"):
             add("A", "versionSync dist VERSION.txt")
             add("C", "versionSync dist VERSION.txt")
@@ -1197,14 +1502,18 @@ def collect_config_machine_checks(cfg: dict) -> dict[str, list[str]]:
         add("B", "domain map expanded wildcards")
         if (cfg.get("domainMap") or {}).get("moduleSearchDirs"):
             add("B", "domain map moduleSearchDirs")
-        for letter in "DEFGHIJK":
-            add(letter, "domain map module existence")
+        if domain_sections:
+            for letter, mods in domain_sections.items():
+                if mods:
+                    add(letter, "domain map module existence")
     inv = (cc.get("inventoryFile") or "docs/.audit_inventory.json") if cc else "docs/.audit_inventory.json"
     if cc.get("inventoryRequireAck", True):
         add("B", "audit inventory ack")
     if cc.get("semanticRequireModulesReviewed", True):
         for letter in cc.get("semanticModulesReviewedSections") or list("DEFGHIJK"):
             add(str(letter), "semantic modulesReviewed verify")
+        for letter in cc.get("semanticChecklistPathSections") or []:
+            add(str(letter), "semantic checklist paths modulesReviewed verify")
     if cc.get("semanticFreshnessCheck", True):
         for letter in "ABCDEFGHIJKLMN":
             add(letter, "semantic freshness vs test pass")
@@ -1238,7 +1547,12 @@ def collect_config_machine_checks(cfg: dict) -> dict[str, list[str]]:
         add("L", "verify-audit-system.ps1")
     smc = cc.get("sectionMachineChecks") or {}
     if (cc.get("importSmoke") or {}).get("enabled", True):
-        add("A", "import smoke (root *.py)")
+        extra = list((cfg.get("domainMap") or {}).get("moduleSearchDirs") or [])
+        ism_dirs = list((cc.get("importSmoke") or {}).get("searchDirs") or [])
+        if extra or ism_dirs:
+            add("A", "import smoke (root + moduleSearchDirs)")
+        else:
+            add("A", "import smoke (root *.py)")
     for rule in cc.get("staticPatterns") or []:
         add(str(rule.get("section", "?")), f"staticPattern:{rule.get('id', '?')}")
     for letter, files in (cc.get("sectionTests") or {}).items():
@@ -1272,6 +1586,11 @@ def collect_config_machine_checks(cfg: dict) -> dict[str, list[str]]:
     if cc.get("semanticBlockCleanWhenMachineFails", True):
         for letter in "ABCDEFGHIJKLMN":
             add(letter, "semantic vs machine alignment")
+    if cc.get("semanticRequireMachineImproveMention", True):
+        for letter in "ABCDEFGHIJKLMN":
+            add(letter, "semantic vs machine Improve alignment")
+    if (cfg.get("layoutPolicy") or {}).get("enabled"):
+        add("B", "layout policy (glossary, duplicate copies, ephemeral dirs, contradiction scripts)")
     return by_sec
 
 
@@ -1279,9 +1598,10 @@ def build_machine_coverage(
     agent_sections: dict[str, dict],
     cfg: dict,
     semantic_hints: dict[str, list],
+    domain_sections: dict[str, list[str]] | None = None,
 ) -> dict[str, dict]:
     cc = cfg.get("codeChecks") or {}
-    config_machine = collect_config_machine_checks(cfg)
+    config_machine = collect_config_machine_checks(cfg, domain_sections)
     coverage: dict[str, dict] = {}
     for letter, sec in agent_sections.items():
         machine = list(config_machine.get(letter, []))
@@ -1438,6 +1758,71 @@ def check_pack_version_docs_improve(app_root: Path, cfg: dict) -> list[str]:
     return improve
 
 
+def _collect_app_version_doc_paths(app_root: Path, repo_root: Path, avd: dict) -> list[Path]:
+    exclude = set(
+        avd.get("excludeFiles") or ["AUDIT.md", "ROADMAP.md", "KNOWN_LIMITATIONS.md"]
+    )
+    seen: set[Path] = set()
+    out: list[Path] = []
+
+    def add(path: Path) -> None:
+        if not path.is_file() or path.name in exclude:
+            return
+        rp = path.resolve()
+        if rp in seen:
+            return
+        seen.add(rp)
+        out.append(path)
+
+    for rel in avd.get("scanFiles") or []:
+        norm = rel.replace("\\", "/")
+        add(repo_root / norm)
+        if app_root != repo_root:
+            add(app_root / norm)
+    for pattern in avd.get("scanGlobs") or []:
+        pat = pattern.replace("\\", "/")
+        for base in (app_root, repo_root):
+            if base.is_dir():
+                for p in base.glob(pat):
+                    add(p)
+    return out
+
+
+def check_app_version_docs_improve(app_root: Path, cfg: dict) -> list[str]:
+    """Improve when app docs cite vX.Y.Z that differs from versionSync canonical."""
+    improve: list[str] = []
+    avd = (cfg.get("codeChecks") or {}).get("appVersionDocs") or {}
+    if not avd.get("enabled", False):
+        return improve
+    canonical = read_canonical_version(app_root, cfg)
+    if not canonical:
+        return improve
+    repo_root = resolve_repo_root(app_root)
+    reported: set[tuple[str, str]] = set()
+    for path in _collect_app_version_doc_paths(app_root, repo_root, avd):
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        try:
+            rel = str(path.relative_to(repo_root))
+        except ValueError:
+            rel = str(path.relative_to(app_root))
+        for m in VERSION_IN_DOC_RE.finditer(text):
+            found = m.group(1)
+            if found == canonical:
+                continue
+            key = (rel, found)
+            if key in reported:
+                continue
+            reported.add(key)
+            improve.append(
+                f"Section M - stale app version v{found} in {rel} "
+                f"(canonical v{canonical} from versionSync)"
+            )
+    return improve
+
+
 def check_pack_reference_config_improve(app_root: Path, cfg: dict) -> list[str]:
     """Improve when pack self-audit config diverges from the pack reference template."""
     improve: list[str] = []
@@ -1459,8 +1844,21 @@ def check_pack_reference_config_improve(app_root: Path, cfg: dict) -> list[str]:
     if src != ref:
         improve.append(
             "Section L - docs/AUDIT.config.json differs from "
-            "pack/templates/docs/AUDIT.config.pack.reference.json — sync reference copy"
+            "pack/templates/docs/AUDIT.config.pack.reference.json - sync reference copy"
         )
+    # The checklist has a reference copy too, and nothing compared it: it had drifted 16 lines from
+    # docs/AUDIT.md, so the template shipped to new pack-style projects described a different audit.
+    src_md = repo_root / (prc.get("sourceMd") or "docs/AUDIT.md").replace("\\", "/")
+    ref_md = repo_root / (
+        prc.get("referenceMd") or "pack/templates/docs/AUDIT.pack.reference.md"
+    ).replace("\\", "/")
+    if src_md.is_file() and ref_md.is_file():
+        left = src_md.read_text(encoding="utf-8-sig").replace("\r\n", "\n").strip()
+        right = ref_md.read_text(encoding="utf-8-sig").replace("\r\n", "\n").strip()
+        if left != right:
+            improve.append(
+                f"Section L - {src_md.name} differs from {ref_md.name} - sync reference copy"
+            )
     return improve
 
 
@@ -1475,7 +1873,7 @@ def _installed_pack_root() -> Path | None:
 
 
 def check_installed_vs_source_improve(app_root: Path, cfg: dict) -> list[str]:
-    """Improve when Desktop/workspace pack differs from ~/.cursor/AgentStarterPack."""
+    """Improve when the source pack folder differs from ~/.cursor/AgentStarterPack."""
     improve: list[str] = []
     ivs = (cfg.get("codeChecks") or {}).get("installedVsSource") or {}
     if not ivs.get("enabled", False):
@@ -1492,7 +1890,7 @@ def check_installed_vs_source_improve(app_root: Path, cfg: dict) -> list[str]:
     if local_ver and installed_ver and local_ver != installed_ver:
         improve.append(
             f"Section F - installed audit engine {installed_ver} != workspace {local_ver} "
-            "— run install.ps1 -Scope User"
+            "- run install.ps1 -Scope User"
         )
     for rel in ivs.get("compareFiles") or []:
         local_f = repo_root / rel.replace("\\", "/")
@@ -1502,7 +1900,7 @@ def check_installed_vs_source_improve(app_root: Path, cfg: dict) -> list[str]:
         if hashlib.sha256(local_f.read_bytes()).digest() != hashlib.sha256(inst_f.read_bytes()).digest():
             improve.append(
                 f"Section F - installed copy differs from workspace for {rel} "
-                "— run install.ps1 -Scope User"
+                "- run install.ps1 -Scope User"
             )
             break
     return improve
@@ -1605,11 +2003,23 @@ def check_section_n_improve(app_root: Path, cfg: dict) -> list[str]:
         return improve
     repo_root = resolve_repo_root(app_root)
     paths = ncfg.get("gitLogPaths") or ["VERSION.txt"]
-    if git_recent_changes(repo_root, paths, int(ncfg.get("gitMaxCommits", 5))):
-        improve.append(
-            "Section N - recent VERSION/release commits in git; "
-            "agent must review release delta in semantic report"
-        )
+    if not git_recent_changes(repo_root, paths, int(ncfg.get("gitMaxCommits", 5))):
+        return improve
+    # Asking for the review is only useful until it exists. Repeating it on a report that already
+    # reviews section N leaves an Improve line nobody can close, which is how people learn to skim
+    # the list. verify_section_n_semantic still enforces the quality of that review.
+    try:
+        data = json.loads(semantic_report_path(app_root, cfg).read_text(encoding="utf-8-sig"))
+    except (json.JSONDecodeError, OSError):
+        data = {}
+    entry = ((data.get("sections") or {}).get("N")) or {}
+    summary = (entry.get("summary") or "").strip()
+    if entry.get("reviewed") and summary and not is_clean_summary(summary):
+        return improve
+    improve.append(
+        "Section N - recent VERSION/release commits in git; "
+        "agent must review release delta in semantic report"
+    )
     return improve
 
 
@@ -1629,8 +2039,10 @@ def write_semantic_template(app_root: Path, cfg: dict, required_sections: list[s
         "instructions": (
             "Set reviewed=true and summary per section. Use 'Nothing found.' when clean ONLY if "
             "docs/.audit_agent_manifest.json machineFixesBySection has no entries for that section. "
-            "Copy testsGitHead from manifest. For sections D–K list every domain-map module in "
-            "modulesReviewed[]. Section B: copy inventoryAck from docs/.audit_inventory.json. "
+            "Copy testsGitHead from manifest. For sections D-K list every domain-map module in "
+            "modulesReviewed[]. For sections in semanticChecklistPathSections (pack: E), list every "
+            "checklist file path in modulesReviewed[]. Section B: copy inventoryAck from "
+            "docs/.audit_inventory.json. "
             "When not clean, cite files in summary AND evidence[] "
             "({type: file|test|command|behavior, ref: path or note})."
         ),
@@ -1657,10 +2069,14 @@ def fill_semantic_fixture(
     path = semantic_report_path(app_root, cfg)
     if not path.exists():
         write_semantic_template(app_root, cfg, required_sections)
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8-sig"))
     exp_rel = (cfg.get("codeChecks") or {}).get("expandedDomainMapFile") or "docs/.audit_domain_expanded.json"
-    expanded_raw = json.loads((app_root / exp_rel).read_text(encoding="utf-8"))
+    expanded_raw = json.loads((app_root / exp_rel).read_text(encoding="utf-8-sig"))
     expanded = expanded_raw.get("sections") or {}
+    audit_md = app_root / "docs" / "AUDIT.md"
+    checklist_sections = parse_checklist_sections(audit_md)
+    cc = cfg.get("codeChecks") or {}
+    checklist_letters = set(cc.get("semanticChecklistPathSections") or [])
     inv = load_audit_inventory(app_root, cfg) or {}
     manifest = load_manifest(app_root)
     data["testsGitHead"] = manifest.get("testsGitHead") or data.get("testsGitHead") or ""
@@ -1668,7 +2084,13 @@ def fill_semantic_fixture(
         entry["reviewed"] = True
         entry["summary"] = "Nothing found."
         entry["evidence"] = []
-        entry["modulesReviewed"] = list(expanded.get(letter, []))
+        mods = list(expanded.get(letter, []))
+        if letter in checklist_letters:
+            chk = checklist_sections.get(letter) or {}
+            for p in parse_checklist_paths(chk.get("checklistItems") or []):
+                if p not in mods:
+                    mods.append(p)
+        entry["modulesReviewed"] = mods
     if "B" in (data.get("sections") or {}):
         data["sections"]["B"]["inventoryAck"] = {
             "productionModules": inv.get("productionModules", 0),
@@ -1679,24 +2101,79 @@ def fill_semantic_fixture(
     return path
 
 
-def import_smoke(app_root: Path, exclude: set[str]) -> list[str]:
+def import_smoke(app_root: Path, exclude: set[str], cfg: dict | None = None) -> list[str]:
     fixes: list[str] = []
-    env = {**os.environ, "PYTHONPATH": str(app_root), "QT_QPA_PLATFORM": "offscreen"}
-    for py in sorted(app_root.glob("*.py")):
-        if py.name in exclude:
+    cc = (cfg or {}).get("codeChecks") or {}
+    ism = cc.get("importSmoke") or {}
+    if ism.get("enabled", True) is False:
+        return fixes
+
+    search_dirs: list[Path] = []
+    dm = (cfg or {}).get("domainMap") or {}
+    scan_rel = (dm.get("scanDir") or ".").replace("\\", "/").strip() or "."
+    scan_dir = app_root if scan_rel in (".", "") else app_root / scan_rel
+    if scan_dir.is_dir():
+        search_dirs.append(scan_dir.resolve())
+    if ism.get("useModuleSearchDirs", True):
+        for rel in dm.get("moduleSearchDirs") or []:
+            rel_norm = str(rel).replace("\\", "/").strip()
+            if not rel_norm or rel_norm == ".":
+                continue
+            candidate = (app_root / rel_norm).resolve()
+            if candidate.is_dir() and candidate not in search_dirs:
+                search_dirs.append(candidate)
+    for rel in ism.get("searchDirs") or []:
+        rel_norm = str(rel).replace("\\", "/").strip()
+        if not rel_norm or rel_norm == ".":
             continue
-        mod = py.stem
-        r = subprocess.run(
-            [sys.executable, "-c", f"import {mod}"],
-            cwd=str(app_root),
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-        if r.returncode != 0:
-            err = (r.stderr or r.stdout or "import failed").strip().splitlines()[-1]
-            fixes.append(f"Import smoke - {py.name} - {err}")
+        candidate = (app_root / rel_norm).resolve()
+        if candidate.is_dir() and candidate not in search_dirs:
+            search_dirs.append(candidate)
+    if not search_dirs:
+        search_dirs = [app_root.resolve()]
+
+    seen: set[str] = set()
+    for scan_dir in search_dirs:
+        env_base = {**os.environ, "QT_QPA_PLATFORM": "offscreen"}
+        py_paths = sorted(scan_dir.glob("*.py"))
+        for py in py_paths:
+            rel_key = str(py.relative_to(app_root)).replace("\\", "/")
+            if py.name in exclude or rel_key in seen:
+                continue
+            seen.add(rel_key)
+            mod = py.stem
+            env = {
+                **env_base,
+                "PYTHONPATH": str(scan_dir) + os.pathsep + str(app_root),
+            }
+            r = subprocess.run(
+                [sys.executable, "-c", f"import {mod}"],
+                cwd=str(app_root),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            if r.returncode != 0:
+                err = (r.stderr or r.stdout or "import failed").strip().splitlines()[-1]
+                fixes.append(f"Import smoke - {rel_key} - {err}")
     return fixes
+
+
+def expand_brace_glob(pattern: str) -> list[str]:
+    """Expand shell-style {a,b} alternatives, which pathlib.rglob does not understand.
+
+    This pack's one content rule was written as "*.{md,ps1,mdc,cmd,bat,json,py}". rglob treats that
+    as a literal filename, so the rule matched zero files and reported clean for as long as it
+    existed. Expanding here keeps the config readable and makes the pattern mean what it looks like.
+    """
+    match = re.search(r"\{([^{}]*)\}", pattern)
+    if not match:
+        return [pattern]
+    head, tail = pattern[: match.start()], pattern[match.end() :]
+    out: list[str] = []
+    for alt in match.group(1).split(","):
+        out.extend(expand_brace_glob(f"{head}{alt.strip()}{tail}"))
+    return out
 
 
 def scan_static_patterns(
@@ -1721,7 +2198,33 @@ def scan_static_patterns(
         except re.error as exc:
             fixes.append(f"Static check config - {rid} - bad regex: {exc}")
             continue
-        for py in app_root.rglob(glob_pat):
+        expanded_globs = expand_brace_glob(glob_pat)
+        if any("{" in g or "}" in g for g in expanded_globs):
+            # Unbalanced braces cannot expand, and rglob treats what is left as a literal filename,
+            # so the rule would match nothing and report clean forever.
+            fixes.append(
+                f"Static check config - {rid} - glob '{glob_pat}' has unbalanced braces, so it "
+                "matches nothing - fix the pattern"
+            )
+            continue
+        candidates: list[Path] = []
+        seen: set[str] = set()
+        for expanded in expanded_globs:
+            for hit in app_root.rglob(expanded):
+                key = str(hit).lower()
+                if key not in seen:
+                    seen.add(key)
+                    candidates.append(hit)
+        # Opt-in, because an empty scope is legitimate: a Generic project has no *.py for the safety
+        # patterns to scan. Set requireMatches on a rule whose scope must exist, and a glob that
+        # stops matching is reported instead of quietly passing.
+        if rule.get("requireMatches") and not any(c.is_file() for c in candidates):
+            fixes.append(
+                f"Static check config - {rid} - glob '{glob_pat}' matched no files, so this "
+                "check never runs - fix the glob or remove the rule"
+            )
+            continue
+        for py in candidates:
             if not py.is_file():
                 continue
             rel = py.relative_to(app_root)
@@ -1729,7 +2232,7 @@ def scan_static_patterns(
                 continue
             rel_str = str(rel).replace("\\", "/")
             try:
-                text = py.read_text(encoding="utf-8", errors="replace")
+                text = py.read_text(encoding="utf-8-sig", errors="replace")
             except OSError as exc:
                 fixes.append(f"Static check - {rel} - unreadable: {exc}")
                 continue
@@ -1773,7 +2276,7 @@ def verify_sections_have_tests(
 
 
 def run_self_test() -> int:
-    md = """## Full checklist (A–N, all mandatory)
+    md = """## Full checklist (A-N, all mandatory)
 
 ### A. Tests & version
 - run_tests.bat
@@ -1785,7 +2288,7 @@ def run_self_test() -> int:
 | Module / area | Section |
 |---------------|---------|
 | `app_settings.py`, `catalog_cache.py`, `hardware_cache.py` | F |
-| `bsod_analyzer.py` | D |
+| `main.py` | D |
 """
     with tempfile.TemporaryDirectory() as tmp:
         audit_md = Path(tmp) / "AUDIT.md"
@@ -1799,7 +2302,7 @@ def run_self_test() -> int:
             errors.append("checklist A missing bullets")
         for letter, expected in {
             "F": {"app_settings.py", "catalog_cache.py", "hardware_cache.py"},
-            "D": {"bsod_analyzer.py"},
+            "D": {"main.py"},
         }.items():
             got = set(parsed.get(letter, []))
             if not expected.issubset(got):
@@ -1819,6 +2322,14 @@ def run_self_test() -> int:
             errors.append("summary_has_cite failed on good cite")
         if summary_has_cite("vague issue with no path"):
             errors.append("summary_has_cite false positive")
+        e_paths = parse_checklist_paths(
+            [
+                "`pack/scripts/run_audit_core.ps1`, `sync-audit-system.ps1`",
+                "`install.ps1`, `bootstrap-project.ps1`",
+            ]
+        )
+        if "pack/scripts/run_audit_core.ps1" not in e_paths or "install.ps1" not in e_paths:
+            errors.append(f"parse_checklist_paths: {e_paths}")
         with tempfile.TemporaryDirectory() as ev_tmp:
             ev_root = Path(ev_tmp)
             (ev_root / "docs").mkdir()
@@ -1865,6 +2376,16 @@ def run_self_test() -> int:
             )
             if len(dm_fix) != 1 or "missing.py" not in dm_fix[0]:
                 errors.append(f"verify_domain_map_modules_exist: {dm_fix}")
+        cfg_with_dm = {"domainMap": {"scanDir": "."}, "codeChecks": {}}
+        mc = collect_config_machine_checks(cfg_with_dm, parsed)
+        if "domain map module existence" in mc.get("A", []):
+            errors.append("machineCoverage: section A has no domain modules")
+        if "domain map module existence" not in mc.get("F", []):
+            errors.append("machineCoverage: section F missing domain map module existence")
+        if "domain map module existence" not in mc.get("D", []):
+            errors.append("machineCoverage: section D missing domain map module existence")
+        if "domain map module existence" in mc.get("K", []):
+            errors.append("machineCoverage: section K has no domain modules")
         try:
             exec_re = re.compile(r"(?<!\.)exec\(")
         except re.error as exc:
@@ -1887,6 +2408,9 @@ def main() -> int:
         return run_self_test()
 
     app_root = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path.cwd()
+    if "--print-repo-root" in sys.argv:
+        print(resolve_repo_root(app_root))
+        return 0
     full_tests_ran = "--full-tests-ran" in sys.argv
     lightweight = "--lightweight" in sys.argv
     verify_report = "--verify-semantic-report" in sys.argv
@@ -1896,8 +2420,20 @@ def main() -> int:
     write_receipt = "--write-audit-receipt" in sys.argv
     fill_fixture = "--fill-semantic-fixture-test" in sys.argv
     print_tests_head = "--print-tests-git-head" in sys.argv
+    sync_doc_versions_flag = "--sync-doc-versions" in sys.argv
+    verify_doc_versions_flag = "--verify-doc-versions" in sys.argv
 
     cfg = load_config(app_root)
+
+    if sync_doc_versions_flag or verify_doc_versions_flag:
+        from doc_version_sync import sync_documentation_versions
+
+        result = sync_documentation_versions(
+            app_root, dry_run=verify_doc_versions_flag
+        )
+        print(json.dumps(result, indent=2))
+        return 0 if result.get("ok") else 1
+
     cc = cfg.get("codeChecks") or {}
     audit_md = app_root / "docs" / "AUDIT.md"
     checklist_sections = parse_checklist_sections(audit_md)
@@ -1908,6 +2444,20 @@ def main() -> int:
     agent_sections, required_sections = build_agent_sections(
         checklist_sections, domain_sections, section_tests, semantic_hints
     )
+    # Section N (release hygiene) has a machine check but no checklist heading, so it never reached
+    # required_sections: --write-template produced no N stub while the check demanded N content, a
+    # Fix with no remedy. Where the check is enabled, N is a section like any other.
+    if (cc.get("sectionMachineChecks") or {}).get("N", {}).get("enabled", False):
+        if "N" not in agent_sections:
+            agent_sections["N"] = {
+                "title": "Release hygiene (version, changelog, manifest)",
+                "checklistItems": [],
+                "modules": [],
+                "machineTests": [],
+                "semanticReview": semantic_hints.get("N", []),
+            }
+        if "N" not in required_sections:
+            required_sections = sorted(set(required_sections) | {"N"})
 
     if write_inventory:
         inv = write_audit_inventory(app_root, cfg)
@@ -1931,6 +2481,16 @@ def main() -> int:
         return 0
 
     if fill_fixture:
+        # This flag marks every checklist section reviewed with no findings. That is a harness
+        # shortcut for the behavior fixtures, and it is also a one-command way to fake a whole
+        # semantic review, so it stays behind an opt-in the suite sets and nobody else does.
+        if os.environ.get("AUDIT_FIXTURE_TEST") != "1":
+            print(
+                "Refusing --fill-semantic-fixture-test: it marks every section reviewed with no "
+                "findings, which is a test harness shortcut, not an audit. The suite sets "
+                "AUDIT_FIXTURE_TEST=1; to review a real project, fill the semantic report."
+            )
+            return 2
         path = fill_semantic_fixture(app_root, cfg, required_sections, expanded_domain)
         print(f"Filled semantic fixture report: {path}")
         return 0
@@ -1958,6 +2518,7 @@ def main() -> int:
 
     fixes.extend(verify_sections_have_tests(domain_sections, section_tests))
     fixes.extend(verify_section_test_files(app_root, section_tests))
+    fixes.extend(check_test_runner_coverage(app_root, cfg))
     improve.extend(check_section_n_improve(app_root, cfg))
     improve.extend(check_audit_version_docs_improve(app_root, cfg))
     improve.extend(check_pack_version_docs_improve(app_root, cfg))
@@ -1981,7 +2542,9 @@ def main() -> int:
     report_rel = (cc.get("semanticReportFile") or "docs/.audit_semantic_report.json").replace(
         "\\", "/"
     )
-    machine_coverage = build_machine_coverage(agent_sections, cfg, semantic_hints)
+    machine_coverage = build_machine_coverage(
+        agent_sections, cfg, semantic_hints, domain_sections
+    )
     machine_fixes_by_section = map_fixes_to_sections(
         [f for f in fixes if not f.startswith("Incomplete audit")]
     )

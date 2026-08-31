@@ -1,17 +1,59 @@
 param(
-    [string]$RepoRoot = (Get-Location).Path,
+    [string]$AppRoot = (Get-Location).Path,
     [switch]$FinalizeOnly,
     [switch]$SkipTests
 )
 
+$AppRoot = (Resolve-Path -LiteralPath $AppRoot).Path
+
+# Flat layout (the bootstrap default) puts docs\AUDIT.md at the project root, so the app root IS the
+# repo root. Only the nested <repo>\app layout has a separate one. Taking the parent unconditionally
+# pointed the audit at the folder ABOVE the project: it scanned sibling projects' .md and .env files,
+# looked for README.md in the wrong place, and handed the wrong -ProjectRoot to
+# sync-audit-system.ps1, which then reported every project file as drift.
+#
+# Nested layout must be proven, not guessed from the folder name. The name check below is still
+# case-insensitive (Windows paths are), so what keeps a perfectly ordinary flat project named "App"
+# from auditing its parent is the git evidence: a repo root that owns an app subfolder is a git
+# repo, and the app subfolder is not. Test-Path also covers .git as a file (worktrees, submodules).
+# audit_code_checks.py resolve_repo_root() applies the same rule; keep the two in step.
+$RepoRoot = $AppRoot
+if (-not (Test-Path -LiteralPath (Join-Path $AppRoot '.git'))) {
+    $parent = Split-Path -Parent $AppRoot
+    if ($parent -and
+        (Split-Path -Leaf $AppRoot) -eq 'app' -and
+        (Test-Path -LiteralPath (Join-Path $AppRoot 'docs\AUDIT.md')) -and
+        (Test-Path -LiteralPath (Join-Path $parent '.git'))) {
+        $RepoRoot = $parent
+    }
+}
+
 function Resolve-AuditCore {
-    . (Join-Path $PSScriptRoot 'pack-paths.ps1')
-    foreach ($base in (Get-AgentStarterPackCandidates)) {
+    # Portable: explicit override first, then the pack installed for this user profile.
+    $candidates = @()
+    if ($env:AGENT_STARTER_PACK_ROOT) { $candidates += $env:AGENT_STARTER_PACK_ROOT }
+    if ($env:CURSOR_STARTER_PACK_ROOT) { $candidates += $env:CURSOR_STARTER_PACK_ROOT }
+    $candidates += Join-Path $env:USERPROFILE '.cursor\AgentStarterPack'
+    $candidates += Join-Path $env:USERPROFILE '.cursor\agent-starter-pack'
+    foreach ($base in $candidates) {
+        if (-not $base) { continue }
         $core = Join-Path $base 'pack\scripts\run_audit_core.ps1'
         if (Test-Path -LiteralPath $core) { return $core }
     }
-    Write-Error 'run_audit_core.ps1 not found. Install Agent Starter Pack (Install-AgentStarterPack.cmd).'
+    return $null
 }
 
 $core = Resolve-AuditCore
-& powershell -NoProfile -ExecutionPolicy Bypass -File $core -RepoRoot $RepoRoot @PSBoundParameters
+if (-not $core) {
+    Write-Error 'run_audit_core.ps1 not found. Run install.ps1 from the pack (Install-AgentStarterPack.cmd), or set AGENT_STARTER_PACK_ROOT to the pack folder.'
+    exit 1
+}
+
+if ($FinalizeOnly) {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $core -RepoRoot $RepoRoot -AppRoot $AppRoot -FinalizeOnly
+} elseif ($SkipTests) {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $core -RepoRoot $RepoRoot -AppRoot $AppRoot -SkipTests
+} else {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $core -RepoRoot $RepoRoot -AppRoot $AppRoot
+}
+exit $LASTEXITCODE

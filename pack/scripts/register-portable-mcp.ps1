@@ -1,3 +1,4 @@
+#Requires -Version 5.1
 # Register agent-hygiene MCP for non-Cursor AI tools
 param(
     [ValidateSet("Claude", "All")]
@@ -71,6 +72,7 @@ if ($Tool -eq "Claude" -or $Tool -eq "All") {
 
 Write-Host ""
 Write-Host "See docs/PORTABLE_SETUP.md for other tools."
+Write-Host "Project adapters: pack\scripts\register-tool-adapters.ps1 -ProjectRoot YOUR_REPO"
 
 if (-not $NoPause) {
     Read-Host "Press Enter to close"

@@ -4,7 +4,7 @@ When you ask for **an audit** of this repo, that means **everything** — one pa
 
 Pair with **`docs/AUDIT.config.json`**.
 
-**Product reference:** BSOD Analyzer `app/docs/AUDIT.md` (application audit, not this pack meta-audit).
+**Application audit example:** `pack/templates/docs/AUDIT.app.reference.md` and `pack/audit/behavior-fixture/docs/AUDIT.md` (not this pack meta-audit).
 
 ## Coverage contract
 
@@ -44,19 +44,29 @@ Re-run full **`run_audit.cmd`** if git HEAD or source tree changed since step 1.
 
 ### E. PowerShell audit engine
 - `pack/scripts/run_audit_core.ps1`, `sync-audit-system.ps1`, `verify-audit-system.ps1`, `verify-audit-behavior.ps1`
+- `install.ps1`, `Install-AgentStarterPack.cmd`, `bootstrap-project.ps1`
+- `export.ps1` ships every file `manifest.json` marks required (the export fails loudly otherwise)
+
+Semantic gate: list **every path above** in `modulesReviewed[]` for section E (see `semanticChecklistPathSections` in `docs/AUDIT.config.json`).
 
 ### F. Install / bootstrap
 - `install.ps1`, `Install-AgentStarterPack.cmd`, `bootstrap-project.ps1`
-- `VERSION` matches install manifest
+- `export.ps1` ships every file `manifest.json` marks required (the export fails loudly otherwise)
+- Nothing machine-local reaches the profile or the zip: no `.pyc`, `.tmp`, or `.audit_*` artifacts
 
 ### G. MCP hygiene server
 - `mcp/agent_hygiene_server.py` + `mcp/requirements.txt` (pin `mcp<2` for FastMCP)
 
 ### H. Templates & portable bootstrap
-- `pack/templates/` complete; no orphan `pack/templates/AUDIT.md.template`
+- `pack/templates/AGENTS.md.template`, `pack/templates/portable/AI_INSTRUCTIONS.md.template`, `pack/templates/docs/AUDIT.config.json.template`
+- No orphan `pack/templates/AUDIT.md.template` at templates root (reference lives under `pack/templates/docs/`)
+
+Semantic gate: list **every template path above** in `modulesReviewed[]` for section H.
 
 ### I. Documentation
-- `pack/docs/START_HERE.md`, `AUDIT_SYSTEM.md`, `docs/PORTABLE_SETUP.md`
+- `pack/docs/START_HERE.md`, `pack/docs/AUDIT_SYSTEM.md`, `docs/PORTABLE_SETUP.md`
+
+Semantic gate: list **every path above** in `modulesReviewed[]` for section I.
 
 ### L. Agent wiring
 - Use pack skill `agent-code-audit` — no duplicate project copy
@@ -65,6 +75,11 @@ Re-run full **`run_audit.cmd`** if git HEAD or source tree changed since step 1.
 
 ### M. Version / changelog
 - `VERSION`, `CHANGELOG.md`, `pack/docs/AUDIT_SYSTEM_CHANGELOG.md` aligned with manifest
+
+### N. Release hygiene
+- Recent commits touching `VERSION`, `CHANGELOG.md`, or the audit manifest are reflected in the docs
+- Required here because `sectionMachineChecks.N` is enabled in `docs/AUDIT.config.json`; it is off by
+  default elsewhere, and enabling it adds N to the report template
 
 ## Report format
 
@@ -76,6 +91,10 @@ Re-run full **`run_audit.cmd`** if git HEAD or source tree changed since step 1.
 |---------------|---------|
 | `install_launcher.py` | F |
 | `audit_code_checks.py` | D |
+| `doc_version_sync.py` | D |
+| `sync_doc_versions.py` | D |
 | `agent_hygiene_server.py` | G |
 
-Note: `moduleSearchDirs` in `AUDIT.config.json` resolves `pack/scripts` and `mcp`.
+Note: `moduleSearchDirs` in `AUDIT.config.json` lists `pack/scripts` and `mcp`; those folders are both resolved *and* inventoried, so an unmapped module there is reported as a Section B orphan.
+
+**Known scope limit:** this map covers Python only. The pack's PowerShell — `run_audit_core.ps1`, `sync-audit-system.ps1`, `bootstrap-project.ps1`, `install.ps1` and the rest, roughly **4,900 lines** across `pack/scripts/` — is not inventoried, because the code checks (import smoke, dead-code scan, static patterns) are Python-specific. That code is covered by the behavior suite in `run_audit_tests.bat`, not by this inventory. Do not read a clean Section B as "all pack code inspected."

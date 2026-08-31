@@ -1,0 +1,184 @@
+{
+  "configVersion": 1,
+  "projectName": "MyApp",
+
+  "versionSync": {
+    "codeFile": "main.py",
+    "codePattern": "^VERSION = \"([^\"]+)\"",
+    "txtFile": "VERSION.txt",
+    "txtPattern": "^Version:\\s*(\\S+)"
+  },
+  "versionSyncConfigFile": "docs/VERSION_SYNC.json",
+
+  "tests": {
+    "script": "run_tests.bat",
+    "env": {}
+  },
+
+  "requiredPaths": {
+    "app": [
+      "run_tests.bat",
+      "run_audit.cmd",
+      "docs/AUDIT.md",
+      "docs/AUDIT.config.json",
+      ".cursor/rules/audit.mdc",
+      "scripts/sync_audit_system.cmd"
+    ],
+    "repo": ["README.md"]
+  },
+
+  "staleDocs": {
+    "pattern": "",
+    "excludeFiles": ["AUDIT.md"],
+    "excludeDirs": ["audit_archive"],
+    "scanRepoMd": true,
+    "scanAppDocsMd": false,
+    "extraFiles": []
+  },
+
+  "cruft": {
+    "dirs": ["dist", "build"],
+    "globFiles": [],
+    "logDirs": ["repo", "app"],
+    "cacheExcludeRegex": "\\\\tests\\\\|_internal\\\\"
+  },
+
+  "obsoletePaths": {
+    "repo": [],
+    "desktopFolder": ""
+  },
+
+  "layoutPolicy": {
+    "_comment": "Worked example of the Section B layout pass. Reports Improve only - the audit never deletes or restructures anything.",
+    "enabled": true,
+    "glossaryDoc": "PROJECT_LAYOUT.md",
+    "glossaryHeading": "## Folder glossary",
+    "buildOutputDir": "MyApp_v6",
+    "portableDataDirname": "MyApp_portable",
+    "forbiddenInRepoStableCopy": "MyApp_v6_stable",
+    "ephemeralDirs": ["build", "dist"],
+    "contradictionScripts": [
+      {
+        "script": "scripts/publish_release.bat",
+        "createsForbiddenDir": "MyApp_v6_stable",
+        "flag": "Improve",
+        "message": "Script creates an in-repo release copy; policy prefers an external release archive"
+      }
+    ]
+  },
+
+  "domainMap": {
+    "auditMd": "docs/AUDIT.md",
+    "sectionHeading": "## Domain map",
+    "scanGlob": "*.py",
+    "scanDir": ".",
+    "moduleSearchDirs": ["."],
+    "excludeModules": [],
+    "wildcardPatterns": [],
+    "orphanScanEnabled": true
+  },
+
+  "stables": {
+    "enabled": false,
+    "desktopFolder": "",
+    "expected": []
+  },
+
+  "secretsScan": {
+    "enabled": true,
+    "extensions": [".py", ".ps1", ".md", ".json", ".env", ".bat", ".cmd", ".txt", ".yaml", ".yml"],
+    "excludePathRegex": "\\\\tests\\\\fixtures\\\\|_internal\\\\|audit_archive\\\\"
+  },
+
+  "syncAndVerify": {
+    "runSyncVerify": true,
+    "runLegacyVerify": true,
+    "autoFixDrift": true
+  },
+
+  "codeChecks": {
+    "importSmoke": { "enabled": true, "exclude": [] },
+    "semanticReportFile": "docs/.audit_semantic_report.json",
+    "semanticReportRequireCites": true,
+    "semanticReportRequireEvidence": true,
+    "semanticReportEvidenceMinWhenNotClean": 1,
+    "semanticReportEvidenceRequireFileWhenNotClean": true,
+    "semanticReportRequiredInRunAudit": true,
+    "semanticBlockCleanWhenMachineFails": true,
+    "semanticFreshnessCheck": true,
+    "semanticRequireTestsGitHead": true,
+    "semanticRequireModulesReviewed": true,
+    "semanticModulesReviewedSections": ["D", "E", "F", "G", "H", "I", "J", "K"],
+    "inventoryFile": "docs/.audit_inventory.json",
+    "inventoryRequireAck": true,
+    "expandedDomainMapFile": "docs/.audit_domain_expanded.json",
+    "receiptFile": "docs/.audit_receipt.json",
+    "allowlistFile": "docs/audit_allowlist.json",
+    "largeModuleLocThreshold": 2000,
+    "deadCodeScan": {
+      "enabled": true,
+      "maxReports": 8
+    },
+    "testGapHints": {
+      "enabled": true,
+      "sections": ["D", "E", "F", "G", "H", "I", "J", "K"],
+      "maxModulesListed": 5
+    },
+    "testRunnerCoverage": {
+      "enabled": true
+    },
+    "auditVersionDocs": {
+      "enabled": false,
+      "manifestPath": "pack/audit/manifest.json",
+      "scanFiles": [],
+      "contextKeywords": ["manifest.json", "audit engine"]
+    },
+    "packVersionDocs": {
+      "enabled": false,
+      "scanFiles": []
+    },
+    "changelogVersionDocs": {
+      "enabled": false,
+      "changelogFile": "CHANGELOG.md"
+    },
+    "installedVsSource": {
+      "enabled": false,
+      "manifestPath": "pack/audit/manifest.json",
+      "compareFiles": []
+    },
+    "docVersionSync": {
+      "enabled": false,
+      "extraReplacements": []
+    },
+    "mcpWiring": {
+      "enabled": false,
+      "requirementsFile": "mcp/requirements.txt",
+      "serverName": "agent-hygiene",
+      "requireImport": false
+    },
+    "sectionMachineChecks": {
+      "L": {
+        "enabled": true,
+        "forbiddenRules": [
+          "code-audit-checklist.mdc",
+          "generic-code-audit-checklist.mdc",
+          "product-audit-overlay.mdc"
+        ],
+        "forbidDuplicateSkill": "agent-code-audit",
+        "agentsMdRequiredPhrases": ["run_audit.cmd", "run_tests.bat"],
+        "gitignoreAuditArtifacts": [
+          "docs/.audit_agent_manifest.json",
+          "docs/.audit_semantic_report.json",
+          "docs/.audit_timing.jsonl",
+          "docs/.audit_inventory.json",
+          "docs/.audit_domain_expanded.json",
+          "docs/.audit_receipt.json"
+        ]
+      },
+      "N": { "enabled": false }
+    },
+    "staticPatterns": [],
+    "sectionTests": {},
+    "semanticReviewHints": {}
+  }
+}

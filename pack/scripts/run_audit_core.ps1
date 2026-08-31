@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Generic audit machine checks — driven by docs/AUDIT.config.json in the app root.
+  Generic audit machine checks - driven by docs/AUDIT.config.json in the app root.
   All projects use this core; project config defines paths, patterns, and domain map rules.
 #>
 param(
@@ -13,6 +13,11 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
+
+# At script scope, not inside Get-PackRoot: dot-sourcing within a function scopes the definitions to
+# that function, so the shared helpers were invisible everywhere else in this file.
+. (Join-Path $PSScriptRoot 'pack-paths.ps1')
+
 $RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
 $AppRoot = (Resolve-Path -LiteralPath $AppRoot).Path
 Set-Location $AppRoot
@@ -91,12 +96,31 @@ function Get-AuditTreeFingerprint([string]$AppRoot, $Cfg) {
             }
         }
     }
+    # sha256 of nothing is a constant, so an empty set would pass as a proof that matches forever.
+    if ($paths.Count -eq 0) { return $null }
+    # Contents, not size and mtime: mtimes do not survive a copy to another drive and can be
+    # restored, so an mtime proof can be stale and matching at the same time. Must stay
+    # byte-identical to compute_tree_fingerprint in audit_code_checks.py.
+    $appFull = (Resolve-Path -LiteralPath $AppRoot).Path.TrimEnd('\')
+    $byRel = @{}
+    foreach ($f in $paths) {
+        $full = (Resolve-Path -LiteralPath $f).Path
+        if ($full.StartsWith(($appFull + '\'), [StringComparison]::OrdinalIgnoreCase)) {
+            $rel = $full.Substring($appFull.Length + 1)
+        } else {
+            $rel = $full
+        }
+        $rel = ($rel -replace '\\', '/').ToLowerInvariant()
+        $byRel[$rel] = (Get-FileHash -LiteralPath $full -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+    # Ordinal sort: Sort-Object is culture-aware and orders punctuation differently from Python's
+    # sorted(), and both sides have to hash the same sequence.
+    $rels = [string[]]@($byRel.Keys)
+    [Array]::Sort($rels, [System.StringComparer]::Ordinal)
     $sha = [System.Security.Cryptography.SHA256]::Create()
     $ms = New-Object System.IO.MemoryStream
-    foreach ($f in ($paths | Sort-Object)) {
-        $item = Get-Item -LiteralPath $f
-        $line = "$($item.FullName)|$($item.Length)|$($item.LastWriteTimeUtc.Ticks)"
-        $bytes = [Text.Encoding]::UTF8.GetBytes($line)
+    foreach ($rel in $rels) {
+        $bytes = [Text.Encoding]::UTF8.GetBytes("$rel|$($byRel[$rel])`n")
         $ms.Write($bytes, 0, $bytes.Length)
     }
     $hash = $sha.ComputeHash($ms.ToArray())
@@ -114,11 +138,18 @@ function Get-TestsProofHeadFromPython([string]$AppRoot) {
 }
 
 function Get-TestsProofHead([string]$RepoRoot, [string]$AppRoot, $Cfg) {
-    $git = Get-RepoGitHead $RepoRoot
-    if ($git) { return $git }
+    # Python owns this computation: audit_code_checks.py recomputes the same proof when it
+    # verifies semantic freshness, and it resolves the repo from AppRoot. Asking Python first
+    # keeps both sides identical even when AppRoot sits inside an outer git repo it cannot see.
     $pyHead = Get-TestsProofHeadFromPython $AppRoot
     if ($pyHead) { return $pyHead }
-    return Get-AuditTreeFingerprint $AppRoot $Cfg
+    # HEAD is a prefix, never the whole proof: it does not move for uncommitted edits, so on its
+    # own it let a reviewed-and-passed project change code and keep the pass.
+    $fp = Get-AuditTreeFingerprint $AppRoot $Cfg
+    $git = Get-RepoGitHead $RepoRoot
+    if (-not $fp) { return $git }
+    if ($git) { return "$git+$fp" }
+    return $fp
 }
 
 function Test-ManifestFinalizeAllowed([string]$AppRoot, [string]$RepoRoot, $Cfg) {
@@ -176,7 +207,7 @@ function Write-SemanticNextSteps {
         Write-Host '  2. Edit docs\.audit_semantic_report.json - all required sections'
     }
     Write-Host '  3. scripts\verify_semantic_audit.cmd'
-    Write-Host '  4. scripts\finalize_audit.cmd   (or run_audit.cmd -FinalizeOnly — skips tests if git HEAD unchanged)'
+    Write-Host '  4. scripts\finalize_audit.cmd   (or run_audit.cmd -FinalizeOnly - skips tests if git HEAD unchanged)'
     Write-Host '  5. Or run full run_audit.cmd again if the tree changed since tests ran'
 }
 
@@ -185,7 +216,8 @@ function Update-ManifestMachineFixes(
     [System.Collections.Generic.List[string]]$AllFixes,
     [hashtable]$CodeMachineFixes = $null,
     [string]$TestsGitHead = '',
-    [string]$TestsPassedAt = ''
+    [string]$TestsPassedAt = '',
+    [hashtable]$MachineImproves = $null
 ) {
     if (-not $ManifestPath -or -not (Test-Path -LiteralPath $ManifestPath)) { return }
     try {
@@ -223,6 +255,17 @@ function Update-ManifestMachineFixes(
         $man = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
         $man | Add-Member -NotePropertyName machineFixesBySection -NotePropertyValue $out -Force
         $man | Add-Member -NotePropertyName machineSectionsWithFixes -NotePropertyValue $sectionsWithFixes -Force
+        # Improve lines get their own channel: an agent that only reads machineFixesBySection sees
+        # "delete dist/" and calls the section done, which is how layout review kept getting skipped.
+        $improveOut = @{}
+        if ($MachineImproves) {
+            foreach ($k in $MachineImproves.Keys) {
+                $vals = @($MachineImproves[$k] | Where-Object { $_ })
+                if ($vals.Count -gt 0) { $improveOut[$k] = $vals }
+            }
+        }
+        $man | Add-Member -NotePropertyName machineImprovesBySection -NotePropertyValue $improveOut -Force
+        $man | Add-Member -NotePropertyName machineSectionsWithImproves -NotePropertyValue @($improveOut.Keys | Sort-Object) -Force
         $man | Add-Member -NotePropertyName auditGateFixes -NotePropertyValue @($gateFixes) -Force
         if ($TestsGitHead) {
             $man | Add-Member -NotePropertyName testsGitHead -NotePropertyValue $TestsGitHead -Force
@@ -262,9 +305,13 @@ function Write-AuditTimingLog([int]$ExitCode, [string]$ProjectLabel) {
     try {
         $dir = Split-Path -Parent $timingPath
         if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
-        Add-Content -LiteralPath $timingPath -Value ($entry | ConvertTo-Json -Compress) -Encoding UTF8
+        Add-Utf8NoBomLine -Path $timingPath -Line ($entry | ConvertTo-Json -Compress)
         Write-Host "Audit timing: docs\.audit_timing.jsonl (${total}s total)"
-    } catch { }
+    } catch {
+        # Timing is diagnostic, so a failure here must not fail the audit - but swallowing it silently
+        # hid the log disappearing entirely, which only a behavior test noticed.
+        Write-Host "[WARN] could not write docs\.audit_timing.jsonl - $_"
+    }
 }
 
 function Write-AuditReport {
@@ -323,6 +370,16 @@ Write-Host "Repo: $RepoRoot"
 Write-Host "App:  $AppRoot"
 Write-Host ""
 
+# Prefix for remediation text, so a Fix line names a path this project actually has. Hardcoded
+# "app\" here came from the nested-only era and told flat projects - what bootstrap generates - to
+# fix app\docs\AUDIT.md and run app\scripts\sync_audit_system.cmd, neither of which exists there.
+$appPrefix = ''
+try {
+    if ((Resolve-Path -LiteralPath $AppRoot).Path -ne (Resolve-Path -LiteralPath $RepoRoot).Path) {
+        $appPrefix = (Split-Path -Leaf $AppRoot) + '\'
+    }
+} catch { $appPrefix = '' }
+
 if (-not $cfg) {
     Write-AuditReport
     Write-AuditTimingLog 1 $projectLabel
@@ -344,9 +401,12 @@ $testsPassed = $false
 if ($FinalizeOnly) {
     Write-Host 'Mode: FinalizeOnly (skip tests; reuse manifest test-pass proof)'
     if (Test-ManifestFinalizeAllowed $AppRoot $RepoRoot $cfg) { $testsPassed = $true }
-} elseif (-not $SkipTests) {
-    $script:TestsGitHead = Get-TestsProofHead $RepoRoot $AppRoot $cfg
 }
+# A full run captures the proof after the tests pass (see the tests phase below), not here.
+# Capturing it pre-test recorded the tree as it was before the test script ran, and a test script
+# that runs a version or doc sync rewrites files the proof covers. With a git repo the proof is a
+# stable HEAD so it never showed, but in fingerprint mode - any project that has not run git init -
+# the verifier's post-test recompute could never match, leaving the semantic gate permanently stale.
 Stop-AuditPhase 'init'
 
 # --- Version sync ---
@@ -391,6 +451,9 @@ if (-not $FinalizeOnly -and -not $SkipTests -and $cfg.tests -and $cfg.tests.scri
             $cfg.tests.env.PSObject.Properties | ForEach-Object { Set-Item -Path "Env:$($_.Name)" -Value $_.Value }
         }
         $env:PYTHONPATH = $AppRoot
+        # Without this the audit's own test run leaves __pycache__ behind, which the cruft check
+        # then reports - a Fix item the audit creates for itself and the user can never clear.
+        $env:PYTHONDONTWRITEBYTECODE = '1'
         $testLog = Join-Path $env:TEMP "audit_tests_$PID.log"
         Write-Host "Running $($cfg.tests.script) ..."
         $p = Start-Process cmd.exe -ArgumentList '/c',"$($cfg.tests.script) > `"$testLog`" 2>&1" -WorkingDirectory $AppRoot -Wait -PassThru -NoNewWindow
@@ -398,6 +461,11 @@ if (-not $FinalizeOnly -and -not $SkipTests -and $cfg.tests -and $cfg.tests.scri
         else {
             Write-Host 'Tests: OK'
             $testsPassed = $true
+            # Stamp the moment the tests passed, not the end of the run. Stamping it at the end put
+            # testsPassedAt *after* the semantic template this same run writes, so an auditor who
+            # filled that template in place was told the deep scan predated the test pass - a false
+            # stale signal on the documented workflow.
+            $script:TestsPassedAt = (Get-Date).ToUniversalTime().ToString('o')
             if (-not $script:TestsGitHead) { $script:TestsGitHead = Get-TestsProofHead $RepoRoot $AppRoot $cfg }
         }
     } else { Add-Fix "Missing test script - $($cfg.tests.script)" }
@@ -410,7 +478,7 @@ Start-AuditPhase 'machine_checks'
 if ($cfg.requiredPaths) {
     foreach ($rel in @($cfg.requiredPaths.app)) {
         $p = Join-Path $AppRoot ($rel -replace '/', '\')
-        if (-not (Test-Path -LiteralPath $p)) { Add-Fix "Missing path - app\$($rel -replace '/','\')" }
+        if (-not (Test-Path -LiteralPath $p)) { Add-Fix "Missing path - $appPrefix$($rel -replace '/','\')" }
     }
     foreach ($rel in @($cfg.requiredPaths.repo)) {
         $p = Join-Path $RepoRoot ($rel -replace '/', '\')
@@ -455,11 +523,11 @@ if ($cfg.staleDocs -and $cfg.staleDocs.pattern -and ($cfg.staleDocs.pattern.ToSt
 if ($cfg.cruft) {
     foreach ($bad in @($cfg.cruft.dirs)) {
         $p = Join-Path $AppRoot ($bad -replace '/', '\')
-        if (Test-Path -LiteralPath $p) { Add-Fix "Build cruft - app\$bad - delete" }
+        if (Test-Path -LiteralPath $p) { Add-Fix "Build cruft - $appPrefix$bad - delete" }
     }
     foreach ($glob in @($cfg.cruft.globFiles)) {
         if (Get-ChildItem -LiteralPath $AppRoot -Filter $glob -File -ErrorAction SilentlyContinue) {
-            Add-Fix "Stale files - app\$glob - delete"
+            Add-Fix "Stale files - $appPrefix$glob - delete"
         }
     }
     $logCount = 0
@@ -474,7 +542,98 @@ if ($cfg.cruft) {
     $pycache = @(Get-ChildItem -LiteralPath $AppRoot -Directory -Recurse -Filter '__pycache__' -ErrorAction SilentlyContinue |
         Where-Object { $_.FullName -notmatch $cacheEx })
     if ($pycache.Count -gt 0) { Add-Fix "Cache cruft - $($pycache.Count) __pycache__ dir(s) - delete" }
-    if (Test-Path -LiteralPath (Join-Path $AppRoot '.pytest_cache')) { Add-Fix 'Cache cruft - app\.pytest_cache - delete' }
+    if (Test-Path -LiteralPath (Join-Path $AppRoot '.pytest_cache')) { Add-Fix "Cache cruft - $appPrefix.pytest_cache - delete" }
+}
+
+# --- Layout hygiene (Section B) ---
+# Cruft above answers "delete this"; it says nothing about whether the tree is understandable. A
+# project can pass every delete check and still have three folders whose names do not say which is
+# build output, which is runtime user data, and which is a duplicate release copy. Those are Improve
+# lines - the audit reports them, the user decides. Nothing here deletes or prompts.
+$script:LayoutImproves = [System.Collections.Generic.List[string]]::new()
+function Add-LayoutImprove([string]$m) {
+    if (-not $script:LayoutImproves.Contains($m)) { [void]$script:LayoutImproves.Add($m) }
+    Add-Improve $m
+}
+function Add-LayoutFix([string]$m) {
+    if (-not $script:LayoutImproves.Contains($m)) { [void]$script:LayoutImproves.Add($m) }
+    Add-Fix $m
+}
+
+if ($cfg.layoutPolicy -and $cfg.layoutPolicy.enabled) {
+    $lp = $cfg.layoutPolicy
+
+    if ($lp.glossaryDoc -and $lp.glossaryDoc.ToString().Trim()) {
+        $glossaryRel = $lp.glossaryDoc.ToString() -replace '/', '\'
+        $glossaryPath = Join-Path $RepoRoot $glossaryRel
+        if (-not (Test-Path -LiteralPath $glossaryPath)) {
+            Add-LayoutImprove "Layout - $glossaryRel missing - add a folder glossary (build output vs runtime data vs archive)"
+        } elseif ($lp.glossaryHeading -and $lp.glossaryHeading.ToString().Trim()) {
+            $heading = $lp.glossaryHeading.ToString()
+            $glossaryText = Get-Content -LiteralPath $glossaryPath -Raw -Encoding UTF8
+            if ($glossaryText -notmatch [regex]::Escape($heading)) {
+                Add-LayoutImprove "Layout - $glossaryRel has no '$heading' section - document what each folder is for"
+            }
+        }
+    }
+
+    if ($lp.forbiddenInRepoStableCopy -and $lp.forbiddenInRepoStableCopy.ToString().Trim()) {
+        $dupRel = $lp.forbiddenInRepoStableCopy.ToString() -replace '/', '\'
+        if (Test-Path -LiteralPath (Join-Path $AppRoot $dupRel)) {
+            Add-LayoutImprove "Layout - duplicate stable copy in repo - $appPrefix$dupRel - policy prefers an external release archive"
+        }
+    }
+
+    if ($lp.buildOutputDir -and $lp.buildOutputDir.ToString().Trim()) {
+        $buildRel = $lp.buildOutputDir.ToString() -replace '/', '\'
+        $buildPath = Join-Path $AppRoot $buildRel
+        if (Test-Path -LiteralPath $buildPath) {
+            # One dirname in two places (beside the source tree and beside the shipped binary) reads
+            # as two products to anyone who did not build it.
+            if ($lp.portableDataDirname -and $lp.portableDataDirname.ToString().Trim()) {
+                $dataName = $lp.portableDataDirname.ToString() -replace '/', '\'
+                $besideSource = Test-Path -LiteralPath (Join-Path $AppRoot $dataName)
+                $besideBinary = Test-Path -LiteralPath (Join-Path $buildPath $dataName)
+                if ($besideSource -and $besideBinary) {
+                    Add-LayoutImprove "Layout - $dataName exists both beside the source tree and inside $buildRel - name or document which is runtime user data"
+                }
+            }
+        }
+    }
+
+    # Ephemeral dirs are normal after a build. Worth naming so nobody treats a rebuild as a
+    # regression - but only Fix when the build output is actually committed.
+    foreach ($eph in @($lp.ephemeralDirs)) {
+        if (-not $eph) { continue }
+        $ephRel = $eph.ToString() -replace '/', '\'
+        $ephPath = Join-Path $AppRoot $ephRel
+        if (-not (Test-Path -LiteralPath $ephPath)) { continue }
+        $tracked = $false
+        if (Test-Path -LiteralPath (Join-Path $RepoRoot '.git')) {
+            $prev = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            try {
+                $lsOut = & git -C $RepoRoot ls-files --error-unmatch -- "$ephRel/*" 2>$null
+                $tracked = ($LASTEXITCODE -eq 0 -and $lsOut)
+            } catch { $tracked = $false } finally { $ErrorActionPreference = $prev }
+        }
+        if ($tracked) {
+            Add-LayoutFix "Layout - $appPrefix$ephRel is committed to git - build output belongs in .gitignore"
+        } else {
+            Add-LayoutImprove "Layout - $appPrefix$ephRel present (expected after a build) - document as ephemeral or delete before release"
+        }
+    }
+
+    # A script that recreates what the checklist forbids means one of the two is wrong.
+    foreach ($cs in @($lp.contradictionScripts)) {
+        if (-not $cs -or -not $cs.script) { continue }
+        $scriptRel = $cs.script.ToString() -replace '/', '\'
+        if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot $scriptRel))) { continue }
+        $target = if ($cs.createsForbiddenDir) { $cs.createsForbiddenDir.ToString() } else { '' }
+        $msg = if ($cs.message) { $cs.message.ToString() } else { "Script recreates a path the layout policy forbids$(if ($target) { ": $target" })" }
+        $line = "Layout - $scriptRel - $msg"
+        if ("$($cs.flag)" -eq 'Fix') { Add-LayoutFix $line } else { Add-LayoutImprove $line }
+    }
 }
 
 # --- Secrets ---
@@ -511,7 +670,7 @@ if ($cfg.obsoletePaths) {
 
 # --- Forbidden audit artifacts ---
 $packRoot = Get-PackRoot -PreferAppRoot $AppRoot
-$forbidden = @('code-audit-checklist.mdc', 'generic-code-audit-checklist.mdc', 'bsod-analyzer-audit-overlay.mdc', 'run_tests_with_timeout.bat')
+$forbidden = @('code-audit-checklist.mdc', 'generic-code-audit-checklist.mdc', 'product-audit-overlay.mdc', 'run_tests_with_timeout.bat')
 if ($packRoot) {
     $manifestPath = Join-Path $packRoot 'pack\audit\manifest.json'
     if (Test-Path -LiteralPath $manifestPath) {
@@ -531,6 +690,47 @@ foreach ($or in $forbidden) {
 Get-ChildItem -LiteralPath (Join-Path $AppRoot 'docs') -Filter 'CODE_AUDIT*.md' -File -ErrorAction SilentlyContinue |
     Where-Object { $_.DirectoryName -notmatch 'audit_archive' } |
     ForEach-Object { Add-Fix "Old audit doc - $($_.Name) - move to audit_archive" }
+
+# --- Agent context freshness ---
+# The refresh brief only helps if someone learns it is stale, and until now the only way to find out
+# was to run the refresh - which is the thing you would have needed the warning to tell you to do.
+# The audit is where users and agents already look, so the staleness lands here. The remediation is
+# addressed to the agent on purpose: it should offer to run Refresh-AgentContext.cmd and let the user
+# approve the run, rather than handing over a command to type. Improve, not Fix - a stale stamp breaks
+# nothing, and it clears itself on the next refresh. Silent when the project has no stamp at all.
+if ($manifest -and $manifest.version) {
+    $ctxPath = Join-Path $AppRoot 'docs\AGENT_CONTEXT.json'
+    if (Test-Path -LiteralPath $ctxPath) {
+        try {
+            $ctx = Get-Content -LiteralPath $ctxPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $stamped = $ctx.auditEngineVersion
+            if (-not $stamped) {
+                Add-Improve "Agent context never refreshed - docs\AGENT_CONTEXT.json is still the bootstrap stub - agent: offer to run Refresh-AgentContext.cmd for this project, then read docs\AGENT_REFRESH.md"
+            } elseif ($stamped -ne $manifest.version) {
+                Add-Improve "Agent context stale - stamped $stamped, audit engine is $($manifest.version) - agent: offer to run Refresh-AgentContext.cmd for this project, then read docs\AGENT_REFRESH.md"
+            }
+        } catch {
+            Add-Improve "Agent context unreadable - docs\AGENT_CONTEXT.json did not parse - agent: offer to run Refresh-AgentContext.cmd to regenerate it"
+        }
+    }
+}
+
+# --- Agent handoffs (layout + completion; never auto-delete) ---
+if ($packRoot) {
+    $handoffScript = Join-Path $packRoot 'pack\scripts\verify-agent-handoffs.ps1'
+    if (Test-Path -LiteralPath $handoffScript) {
+        try {
+            $hoLines = Invoke-PackScript -PassOutput -NoProfile -ScriptPath $handoffScript -ProjectRoot $AppRoot -AuditMode 2>&1
+            foreach ($line in @($hoLines)) {
+                $t = [string]$line
+                if ($t -match '^\[FIX\]\s*(.+)') { Add-Fix $Matches[1].Trim() }
+                elseif ($t -match '^\[IMPROVE\]\s*(.+)') { Add-Improve $Matches[1].Trim() }
+            }
+        } catch {
+            Add-Improve "Handoff verify failed - $($_.Exception.Message)"
+        }
+    }
+}
 
 # --- Stables ---
 if ($cfg.stables -and $cfg.stables.enabled) {
@@ -553,15 +753,23 @@ if ($cfg.stables -and $cfg.stables.enabled) {
 if ($cfg.domainMap) {
     $dm = $cfg.domainMap
     $auditMd = Join-Path $AppRoot ($dm.auditMd -replace '/', '\')
-    $scanDir = Join-Path $AppRoot ($dm.scanDir -replace '/', '.')
+    $scanDir = Join-Path $AppRoot ($dm.scanDir -replace '/', '\')
     if (-not (Test-Path -LiteralPath $auditMd)) {
         Add-Fix "Domain map - missing $($dm.auditMd)"
     } else {
-        $allLines = Get-Content -LiteralPath $auditMd
+        # -Encoding UTF8 is required, not cosmetic: without it PowerShell 5.1 reads a BOM-less UTF-8
+        # AUDIT.md as ANSI, so every em dash became three characters and that corruption was copied
+        # verbatim into docs\.audit_agent_manifest.json - the file the next agent reads as its brief.
+        $allLines = Get-Content -LiteralPath $auditMd -Encoding UTF8
         $heading = if ($dm.sectionHeading) { $dm.sectionHeading } else { '## Domain map' }
+        # The line must START with the heading. A plain substring match also hit prose that merely
+        # mentions "## Domain map" mid-sentence (the AUDIT.md template does), so the chunk stopped
+        # at the next heading and the real table below was never read - every module then looked
+        # unmapped. Trailing text stays allowed: "## Domain map (example - replace ...)".
+        $headingRe = '^\s*' + [regex]::Escape($heading)
         $startIdx = -1
         for ($i = 0; $i -lt $allLines.Count; $i++) {
-            if ($allLines[$i] -match [regex]::Escape($heading)) { $startIdx = $i; break }
+            if ($allLines[$i] -match $headingRe) { $startIdx = $i; break }
         }
         $domainText = if ($startIdx -ge 0) {
             $chunk = @()
@@ -619,7 +827,7 @@ if ($packRoot) {
 
 Stop-AuditPhase 'machine_checks'
 
-# --- Code checks (sections D–K: import smoke, static patterns, section tests) ---
+# --- Code checks (sections D-K: import smoke, static patterns, section tests) ---
 Start-AuditPhase 'code_checks'
 $codeScript = $null
 if ($cfg.codeChecks) {
@@ -629,6 +837,11 @@ if ($cfg.codeChecks) {
         Add-Fix 'Code checks - audit_code_checks.py missing - reinstall starter pack'
     } else {
         Write-Host 'Running audit_code_checks.py ...'
+        # Do not pass a repo root here. Python resolves it from AppRoot by the same rule as
+        # run_audit.ps1.template, and it must keep doing so: a bespoke wrapper (the behavior
+        # fixture) declares an outer RepoRoot, and forcing that on Python would tie the fixture's
+        # test-pass proof to the pack's git HEAD, where edits to fixture code stop invalidating it.
+        # Behavior step 23 asserts the two layers agree on a generated project.
         $codeArgs = @('-3', $codeScript, $AppRoot)
         if ($testsPassed) { $codeArgs += '--full-tests-ran' }
         if ($SkipTests) { $codeArgs += '--lightweight' }
@@ -725,30 +938,66 @@ if ($cfg.syncAndVerify) {
             }
             Write-Host 'Running sync-audit-system.ps1 -VerifyOnly ...'
             if ($autoFix) {
-                & powershell -NoProfile -ExecutionPolicy Bypass -File $sync -VerifyOnly -AutoFix -ProjectRoot $RepoRoot | Out-Host
+                Invoke-PackScript -PassOutput -NoProfile -ScriptPath $sync -VerifyOnly -AutoFix -ProjectRoot $RepoRoot | Out-Host
             } else {
-                & powershell -NoProfile -ExecutionPolicy Bypass -File $sync -VerifyOnly -ProjectRoot $RepoRoot | Out-Host
+                Invoke-PackScript -PassOutput -NoProfile -ScriptPath $sync -VerifyOnly -ProjectRoot $RepoRoot | Out-Host
             }
             if ($LASTEXITCODE -ne 0) {
-                Add-Fix 'Audit sync drift - run app\scripts\sync_audit_system.cmd'
+                Add-Fix "Audit sync drift - run $($appPrefix)scripts\sync_audit_system.cmd"
                 $syncBlocked = $true
             } else { Write-Host 'sync-audit-system: OK' }
         }
     }
     if ($cfg.syncAndVerify.runLegacyVerify) {
         if ($semanticIncomplete) {
-            Write-Host 'Skipping verify-audit-system.ps1 (semantic pass incomplete — finish semantic report first; verify runs on complete pass).'
+            Write-Host 'Skipping verify-audit-system.ps1 (semantic pass incomplete - finish semantic report first; verify runs on complete pass).'
             Add-Improve 'Section L - verify-audit-system.ps1 skipped (semantic pass incomplete) - finalize semantic report to run harness checks'
         } elseif ($syncBlocked) {
-            Write-Host 'Skipping verify-audit-system.ps1 (sync drift — run scripts\sync_audit_system.cmd first).'
+            Write-Host 'Skipping verify-audit-system.ps1 (sync drift - run scripts\sync_audit_system.cmd first).'
             Add-Improve 'Section L - verify-audit-system.ps1 skipped (sync drift) - run scripts\sync_audit_system.cmd first'
         } else {
             $verify = Join-Path $packRoot 'pack\scripts\verify-audit-system.ps1'
             if (Test-Path -LiteralPath $verify) {
+                # The behavior suite is the pack engine's own test suite, and it bootstraps probe
+                # projects inside the pack folder. Auditing a product must not run it: it says
+                # nothing about this project, costs ~30s, writes into the pack, and re-enters this
+                # script. The engine is still proven here - by its own self-test, below.
+                #
+                # "Is the repo being audited the pack that supplies this engine?" - not merely
+                # "does a manifest.json exist somewhere below it", which also matched a product
+                # repo that vendors a pack copy at its root.
+                $isPackSelfAudit = $false
+                if ($packRoot) {
+                    try {
+                        $isPackSelfAudit =
+                            (Resolve-Path -LiteralPath $RepoRoot).Path -eq (Resolve-Path -LiteralPath $packRoot).Path
+                    } catch { $isPackSelfAudit = $false }
+                }
                 Write-Host 'Running verify-audit-system.ps1 (Section L harness check; independent of product Fix lines) ...'
-                & powershell -NoProfile -ExecutionPolicy Bypass -File $verify -ProjectRoot $RepoRoot | Out-Host
-                if ($LASTEXITCODE -ne 0) { Add-Fix 'Audit wiring - verify-audit-system.ps1 failed — run sync + verify after audit-system edits' }
-                else { Write-Host 'verify-audit-system: OK' }
+                if ($isPackSelfAudit) {
+                    Invoke-PackScript -PassOutput -NoProfile -ScriptPath $verify -ProjectRoot $RepoRoot | Out-Host
+                } else {
+                    Invoke-PackScript -PassOutput -NoProfile -ScriptPath $verify -ProjectRoot $RepoRoot -SkipBehavior | Out-Host
+                }
+                if ($LASTEXITCODE -ne 0) {
+                    if ($isPackSelfAudit) {
+                        Add-Fix 'Audit wiring - verify-audit-system.ps1 failed - run sync + verify after audit-system edits'
+                    } else {
+                        # Aimed at the right person: these checks cover the starter pack's own files,
+                        # so a product auditor cannot fix them from inside their project.
+                        Add-Fix 'Audit wiring - verify-audit-system.ps1 failed against the starter pack itself - run sync-audit-system.ps1 then verify-audit-system.ps1 in the pack folder (not a defect in this project)'
+                    }
+                } else { Write-Host 'verify-audit-system: OK' }
+                if (-not $isPackSelfAudit) {
+                    $codePy = Join-Path $packRoot 'pack\scripts\audit_code_checks.py'
+                    if (Test-Path -LiteralPath $codePy) {
+                        Write-Host 'Running audit_code_checks.py --self-test (engine proof for this machine) ...'
+                        & py -3 $codePy --self-test | Out-Host
+                        if ($LASTEXITCODE -ne 0) {
+                            Add-Fix 'Audit engine - audit_code_checks.py --self-test failed - audit results are not trustworthy on this machine'
+                        } else { Write-Host 'audit engine self-test: OK' }
+                    }
+                }
             }
         }
     }
@@ -758,14 +1007,17 @@ Stop-AuditPhase 'sync_verify'
 
 Write-AuditReport
 $manifestOut = Join-Path $AppRoot 'docs\.audit_agent_manifest.json'
-$testsPassedAt = ''
-if ($testsPassed -and -not $SkipTests -and -not $FinalizeOnly -and $script:TestsGitHead) {
-    $testsPassedAt = (Get-Date).ToUniversalTime().ToString('o')
-    $script:TestsPassedAt = $testsPassedAt
-} elseif ($FinalizeOnly -and $script:TestsPassedAt) {
-    $testsPassedAt = $script:TestsPassedAt
+# Do not introduce a local $testsPassedAt here: PowerShell variable names are case-insensitive, so
+# it IS $script:TestsPassedAt, and resetting it silently discarded the stamp taken when the tests
+# passed. FinalizeOnly keeps the value Test-ManifestFinalizeAllowed loaded from the manifest.
+if (-not $FinalizeOnly -and -not ($testsPassed -and -not $SkipTests -and $script:TestsGitHead)) {
+    $script:TestsPassedAt = ''
 }
-Update-ManifestMachineFixes $manifestOut $Fix $script:CodeMachineFixes $script:TestsGitHead $testsPassedAt
+$machineImproves = @{}
+if ($script:LayoutImproves -and $script:LayoutImproves.Count -gt 0) {
+    $machineImproves['B'] = @($script:LayoutImproves)
+}
+Update-ManifestMachineFixes $manifestOut $Fix $script:CodeMachineFixes $script:TestsGitHead $script:TestsPassedAt $machineImproves
 if ($Fix.Count -eq 0 -and $codeScript -and (Test-Path -LiteralPath $codeScript)) {
     & py -3 $codeScript $AppRoot --write-audit-receipt 2>&1 | Out-Null
 }

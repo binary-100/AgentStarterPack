@@ -4,7 +4,27 @@ Portable toolkit: **audits (Fix + Improve)**, **terminal hygiene MCP**, **CI bui
 
 **Full guide:** [pack/docs/START_HERE.md](pack/docs/START_HERE.md)
 
-**Pack version:** see root `VERSION` (**1.7.0**). Audit engine version: `pack/audit/manifest.json` (**2.21.6**).
+**Pack version:** see root `VERSION` (**1.7.0**). Audit engine version: `pack/audit/manifest.json` (**2.22.37**).
+
+---
+
+## Requirements
+
+Run this first on a new machine — it names what is missing and prints the command that fixes it:
+
+```powershell
+.\Check-Requirements.cmd          # add -Fix to install the Python packages
+```
+
+| Requirement | Needed for | If missing |
+|-------------|-----------|------------|
+| Windows PowerShell 5.1+ | every pack script | ships with Windows 10/11 |
+| Python 3.8+ with the **`py -3`** launcher | audits, doc version sync, MCP server | `winget install -e --id Python.Python.3.12` |
+| pip | installing the MCP packages | `py -3 -m ensurepip --upgrade` |
+| Python package `mcp` — **optional** | agent-hygiene MCP tools | `install.ps1 -InstallMcpDeps` or `Check-Requirements.cmd -Fix` |
+| git — **optional** | audit test-pass proof (falls back to a file-tree fingerprint) | `winget install -e --id Git.Git` |
+
+`install.ps1` runs the same check first and stops if a required item is missing (`-SkipPreflight` overrides).
 
 ---
 
@@ -22,8 +42,13 @@ Portable toolkit: **audits (Fix + Improve)**, **terminal hygiene MCP**, **CI bui
 Optional flags on first install:
 
 ```powershell
-.\install.ps1 -Scope Both -RegisterMcp -InstallMcpDeps -NoPause
+.\install.ps1 -Scope User -RegisterMcp -InstallMcpDeps -NoPause
 ```
+
+`-Scope User` installs the global rules, skills, and MCP wiring. Add `-Scope Both` only when the
+current folder is a project that should also get a local copy of the rules — run from the starter
+pack folder it writes them into the pack's own `.cursor\rules\`, which is reserved for that
+workspace's rules.
 
 ---
 
@@ -52,8 +77,8 @@ Or **`Bootstrap-Project.cmd D:\your\repo YourApp`** from the starter pack folder
 
 Legacy manual copy from `pack/templates/`:
 
-- `AUDIT.md.template` → `docs/AUDIT.md`
-- `AUDIT.config.json.template` → `docs/AUDIT.config.json`
+- `docs/AUDIT.md.template` → `docs/AUDIT.md`
+- `docs/AUDIT.config.json.template` → `docs/AUDIT.config.json`
 - `run_audit.cmd.template` → `run_audit.cmd`
 - `run_audit.ps1.template` → `scripts/run_audit.ps1`
 - `audit.mdc.template` → `.cursor/rules/audit.mdc`

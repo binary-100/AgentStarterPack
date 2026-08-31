@@ -32,9 +32,20 @@ mcp = FastMCP(
         "Terminal hygiene for Cursor agents: diagnose stale terminal logs, "
         "repair missing exit_code footers, kill stuck OS processes, "
         "scan/cleanup orphan py/python children after force-killed shells. "
-        "Start with agent_hygiene_full_check. Does not control Cursor UI panels."
+        "Pack context: check_pack_freshness and get_agent_refresh_brief read "
+        "docs/AGENT_CONTEXT.json (same contract as Refresh-AgentContext.cmd). "
+        "Start with agent_hygiene_full_check when unsure. Does not control Cursor UI panels."
     ),
 )
+
+
+def _freshness_module():
+    script_dir = Path(__file__).resolve().parent.parent / "pack" / "scripts"
+    if script_dir.is_dir() and str(script_dir) not in sys.path:
+        sys.path.insert(0, str(script_dir))
+    import agent_context_freshness as mod  # noqa: WPS433
+
+    return mod
 
 
 def _projects_root() -> Path:
@@ -395,7 +406,7 @@ def scan_orphan_agent_processes(
 ) -> str:
     """Find orphan py/python children and low-CPU suspect hung test processes.
 
-    Use after force-killing a stuck terminal parent — children often survive.
+    Use after force-killing a stuck terminal parent - children often survive.
     Protected: agent_hygiene_server and MCP server processes.
     """
     return json.dumps(
@@ -447,6 +458,22 @@ def cleanup_orphan_agent_processes(
         },
         indent=2,
     )
+
+
+@mcp.tool()
+def check_pack_freshness(project_root: str = "") -> str:
+    """Return whether agent context is stale vs the installed pack (reads docs/AGENT_CONTEXT.json)."""
+    mod = _freshness_module()
+    root = project_root.strip() or None
+    return json.dumps(mod.check_freshness(root), indent=2)
+
+
+@mcp.tool()
+def get_agent_refresh_brief(project_root: str = "") -> str:
+    """Return docs/AGENT_REFRESH.md body and freshness summary; run refresh CLI if missing."""
+    mod = _freshness_module()
+    root = project_root.strip() or None
+    return json.dumps(mod.get_refresh_brief(root), indent=2)
 
 
 @mcp.tool()

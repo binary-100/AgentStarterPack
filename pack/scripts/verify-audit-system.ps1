@@ -1,7 +1,12 @@
 #Requires -Version 5.1
 param(
     [switch]$FixHints,
-    [string]$ProjectRoot = ""
+    [string]$ProjectRoot = "",
+    # The behavior suite is the pack engine's own test suite: it bootstraps and audits probe
+    # projects inside the pack folder. A downstream project's audit has no business running it
+    # (and step 23 would re-enter this script), so those callers pass -SkipBehavior and prove the
+    # engine with audit_code_checks.py --self-test instead.
+    [switch]$SkipBehavior
 )
 
 $ErrorActionPreference = 'Continue'
@@ -53,14 +58,14 @@ function Test-AuditConfigTemplateKeys([string]$PackRoot, $manifest) {
             try {
                 $rcfg = Get-Content $ref -Raw | ConvertFrom-Json
                 foreach ($key in $req) {
-                    if (Test-JsonPath $rcfg $key) { Ok "BSOD reference has $key" }
-                    else { Fail "AUDIT.config.bsod.reference.json missing key: $key (run sync -PushFromProject)" }
+                    if (Test-JsonPath $rcfg $key) { Ok "app reference has $key" }
+                    else { Fail "AUDIT.config.app.reference.json missing key: $key (run sync -PushFromProject or update reference)" }
                 }
             } catch {
-                Fail "Invalid BSOD reference config: $ref - $_"
+                Fail "Invalid app reference config: $ref - $_"
             }
         } else {
-            Warn "BSOD reference config not present: $ref (optional until PushFromProject)"
+            Warn "App reference config not present: $ref (optional until PushFromProject)"
         }
     }
 }
@@ -96,7 +101,7 @@ foreach ($root in (Get-PackRoots)) {
     if (Test-Path $sysMd) {
         $sysText = Get-Content $sysMd -Raw
         if ($sysText -notmatch "starter pack $([regex]::Escape($ver))") {
-            Fail "AUDIT_SYSTEM.md header must mention starter pack $ver"
+            Fail "AUDIT_SYSTEM.md header must mention starter pack $ver (run sync-doc-versions.ps1)"
         } else { Ok 'AUDIT_SYSTEM.md version matches manifest' }
     }
     $chg = Join-Path $root 'pack\docs\AUDIT_SYSTEM_CHANGELOG.md'
@@ -126,8 +131,16 @@ foreach ($root in (Get-PackRoots)) {
     Write-Host ''
 }
 
-$userCursor = Join-Path $env:USERPROFILE '.cursor'
+$userCursor = Get-AgentStarterPackUserRoot
 Write-Host "User Cursor: $userCursor"
+
+# A profile with no install is not broken - it has not been integrated yet. Report that once,
+# and only enforce per-file content checks against a profile the pack was actually installed into.
+$profileIntegrated = Test-AgentStarterPackInstalled
+if (-not $profileIntegrated) {
+    Warn "Pack not installed for this profile - run install.ps1 to integrate it with agents on this machine (pack itself verified above)"
+}
+
 if (Test-Path (Join-Path $userCursor 'rules\code-audit-checklist.mdc')) {
     Fail 'Delete: .cursor\rules\code-audit-checklist.mdc'
 }
@@ -141,7 +154,7 @@ if (Test-Path $skill) {
         if ($c -match $pat) { Fail "Old audit text in skill: $pat" }
     }
     if ($c -match 'Fix and Improve|closed scope|AUDIT\.config') { Ok 'agent-code-audit skill' }
-} else {
+} elseif ($profileIntegrated) {
     Warn "Skill not installed: $skill"
 }
 $defaults = Join-Path $userCursor 'rules\agent-defaults-always.mdc'
@@ -158,7 +171,7 @@ if (Test-Path $protocol) {
     if ($c -notmatch 'SkipTests|skip tests') { Fail 'audit-protocol.mdc missing -SkipTests rule' }
     elseif ($c -match 'machine checks only|debug audit script') { Fail 'audit-protocol.mdc has SkipTests loophole' }
     else { Ok 'audit-protocol one-standard text' }
-} else {
+} elseif ($profileIntegrated) {
     Warn 'audit-protocol.mdc not installed'
 }
 $loopBack = Join-Path $userCursor 'rules\loop-back-protocol.mdc'
@@ -166,8 +179,8 @@ if (Test-Path $loopBack) {
     $c = Get-Content $loopBack -Raw
     if ($c -notmatch 'all projects|every project') { Fail 'loop-back-protocol.mdc missing all-projects scope' }
     else { Ok 'loop-back-protocol (all projects)' }
-} else {
-    Fail 'Missing loop-back-protocol.mdc — run sync-audit-system.ps1'
+} elseif ($profileIntegrated) {
+    Fail 'Missing loop-back-protocol.mdc - run sync-audit-system.ps1'
 }
 Write-Host ''
 
@@ -182,9 +195,14 @@ if ($ProjectRoot -and (Test-Path $ProjectRoot)) {
     $flatCfg = Join-Path $ProjectRoot 'docs\AUDIT.config.json'
     if (Test-Path $appCfg) { Ok 'AUDIT.config.json' } elseif (Test-Path $flatCfg) { Ok 'AUDIT.config.json' }
     else { Fail 'Missing docs/AUDIT.config.json' }
-    $core = Join-Path (Get-InstalledAgentStarterPack) 'pack\scripts\run_audit_core.ps1'
-    if (Test-Path $core) { Ok 'run_audit_core.ps1 installed' } else { Fail 'Missing run_audit_core.ps1 - reinstall starter pack' }
-    foreach ($or in @('code-audit-checklist.mdc', 'generic-code-audit-checklist.mdc', 'bsod-analyzer-audit-overlay.mdc')) {
+    $coreCandidates = @(Join-Path $ProjectRoot 'pack\scripts\run_audit_core.ps1')
+    $resolvedPack = Get-AgentStarterPackRoot
+    if ($resolvedPack) { $coreCandidates += (Join-Path $resolvedPack 'pack\scripts\run_audit_core.ps1') }
+    $coreCandidates += (Join-Path (Get-InstalledAgentStarterPack) 'pack\scripts\run_audit_core.ps1')
+    $core = $coreCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    if ($core) { Ok "run_audit_core.ps1: $core" }
+    else { Fail 'Missing run_audit_core.ps1 - run install.ps1, or set AGENT_STARTER_PACK_ROOT to a pack folder' }
+    foreach ($or in @('code-audit-checklist.mdc', 'generic-code-audit-checklist.mdc', 'product-audit-overlay.mdc')) {
         foreach ($base in @("$ProjectRoot\.cursor\rules", "$ProjectRoot\app\.cursor\rules")) {
             $p = Join-Path $base $or
             if (Test-Path $p) { Fail "Old project rule: $p" }
@@ -202,8 +220,8 @@ if (Test-Path $sync) {
     Write-Host 'Sync drift check:'
     $syncArgs = @('-VerifyOnly')
     if ($ProjectRoot) { $syncArgs += '-ProjectRoot', $ProjectRoot }
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $sync @syncArgs
-    if ($LASTEXITCODE -ne 0) { $fail++ }
+    $syncExit = Invoke-PackScript -NoProfile -ScriptPath $sync @syncArgs
+    if ($syncExit -ne 0) { $fail++ }
     Write-Host ''
 }
 
@@ -211,10 +229,13 @@ $behavior = Join-Path $PSScriptRoot 'verify-audit-behavior.ps1'
 if (-not (Test-Path $behavior)) {
     $behavior = Join-Path (Get-PackRoots | Select-Object -First 1) 'pack\scripts\verify-audit-behavior.ps1'
 }
-if (Test-Path $behavior) {
+if ($SkipBehavior) {
+    Write-Host 'Behavior self-test: skipped (-SkipBehavior; pack maintainer check - run verify-audit-behavior.ps1 from the pack folder)'
+    Write-Host ''
+} elseif (Test-Path $behavior) {
     Write-Host 'Behavior self-test:'
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $behavior
-    if ($LASTEXITCODE -ne 0) { $fail++ }
+    $behaviorExit = Invoke-PackScript -NoProfile -ScriptPath $behavior
+    if ($behaviorExit -ne 0) { $fail++ }
     Write-Host ''
 }
 

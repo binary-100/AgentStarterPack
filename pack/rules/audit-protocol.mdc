@@ -8,7 +8,7 @@ alwaysApply: false
 On **audit**, **full scan**, **find problems**, **check everything**, or repeated **still broken** / **anything else**:
 
 1. **Loop back** — per **`loop-back-protocol.mdc`** (all projects) if this is a repeat ask.
-2. Read **`pack/docs/AGENT_WORKFLOW.md`** (audit section: Fix/Improve).
+2. Read **`pack/docs/AGENT_WORKFLOW.md`** (audit section: Fix/Improve) — in the starter pack itself, or at `%USERPROFILE%\.cursor\AgentStarterPack\pack\docs\AGENT_WORKFLOW.md` from any other project.
 3. If **`docs/AUDIT.md`** or **`app/docs/AUDIT.md`** exists → product scope: step 1 **`run_audit.cmd`** (full tests, never `-SkipTests`); step 2 semantic report; step 3 **`finalize_audit.cmd`** (or `-FinalizeOnly`).
 4. If audit **system** scope → **`verify-audit-system.ps1`**; do not claim product pass.
 5. Load skill **`agent-code-audit`**.

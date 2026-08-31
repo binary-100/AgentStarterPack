@@ -1,6 +1,9 @@
 # Product roadmap — {{PROJECT_NAME}}
 
-Parked product work lives here. **Not** the same as audit **Improve** items (those come from `run_audit.cmd` and are ephemeral).
+Parked **product** work lives here. **Not** the same as:
+
+- **`docs/WORK_QUEUE.md`** — maintainer/session radar (stable WQ IDs; nothing drops when priorities shift)
+- Audit **Improve** items from a single `run_audit.cmd` run (ephemeral)
 
 ## Active queue
 

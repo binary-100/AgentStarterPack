@@ -1,3 +1,4 @@
+#Requires -Version 5.1
 # Build Install-AgentStarterPack.exe (optional; .cmd installer works without this)
 param(
     [string]$OutDir = (Join-Path $PSScriptRoot "dist")

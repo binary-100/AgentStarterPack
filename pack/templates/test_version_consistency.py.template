@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 # --- CONFIG (match scripts/apply_version.py) ---
-SOURCE_MODULE = ROOT / "{{SOURCE_MODULE}}"  # e.g. bsod_analyzer.py
+SOURCE_MODULE = ROOT / "{{SOURCE_MODULE}}"  # e.g. main.py
 VERSION_READ = re.compile(r'^VERSION = "([^"]+)"', re.M)
 
 
@@ -29,7 +29,7 @@ def test_version_matches_version_txt() -> None:
     assert m, f"No VERSION in {SOURCE_MODULE.name}"
     ver = m.group(1)
     vtxt = ROOT / "VERSION.txt"
-    assert vtxt.is_file(), "Missing VERSION.txt — run: py -3 scripts/apply_version.py sync"
+    assert vtxt.is_file(), "Missing VERSION.txt - run: py -3 scripts/apply_version.py sync"
     parsed = _parse_version_txt(vtxt.read_text(encoding="utf-8"))
     assert parsed == ver, f"VERSION.txt has {parsed}, {SOURCE_MODULE.name} has {ver}"
 

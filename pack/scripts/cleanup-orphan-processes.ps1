@@ -1,3 +1,4 @@
+#Requires -Version 5.1
 # Find and optionally kill orphan py/python processes left after force-killed agent terminals.
 # Usage:
 #   .\cleanup-orphan-processes.ps1              # report only

@@ -5,6 +5,10 @@
 ### A. Tests stub
 - run_tests.bat
 
+### B. Scope / layout
+- folder glossary matches the tree
+- no in-repo duplicate of the release archive
+
 ### F. Settings stub
 - portable paths
 
@@ -15,5 +19,5 @@
 
 | Module / area | Section |
 |---------------|---------|
-| `app_settings.py`, `catalog_cache.py`, `hardware_cache.py` | F |
+| `app_settings.py`, `hardware_cache.py` | F |
 | `main.py` | D |

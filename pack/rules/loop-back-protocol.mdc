@@ -11,6 +11,7 @@ When the user **repeats** the same problem, error, or question — or shows frus
 
 - “Still broken”, “same error”, “you already tried that”
 - “Anything else?”, “what did you miss?”, “check everything again”
+- “Too fast”, “not deep enough”, “you didn’t actually do X” — run **`generic-deep-task-execution.mdc`**; do not ask the user to rephrase
 - “We keep going in circles” / same goal asked again after you said done
 
 ## Required steps

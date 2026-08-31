@@ -1,0 +1,41 @@
+# Optional maintainer smoke: pack scripts on Linux + pwsh (WQ-304 Phase 6).
+# Does not replace the full Windows behavior suite (verify-audit-behavior.ps1).
+
+name: Pack OS smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - 'pack/scripts/**'
+      - 'pack/scripts/pwsh-wrap.sh'
+      - '*.sh'
+      - 'install.ps1'
+      - '.github/workflows/pack-os-smoke.yml'
+
+jobs:
+  linux-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PowerShell
+        uses: PowerShell/PowerShell@v1
+        with:
+          pwsh-version: '7.4.6'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: OS portability probe (native Linux)
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File pack/scripts/test-os-portability-probe.ps1 -PackRoot $PWD
+
+      - name: Check requirements JSON
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File pack/scripts/check-requirements.ps1 -Json

@@ -1,0 +1,36 @@
+# Work completion — {{PROJECT_NAME}}
+
+**Canonical rules:** `%USERPROFILE%\.cursor\AgentStarterPack\pack\docs\WORK_COMPLETION.md` (read that first).
+
+This file is the **project overlay** — paths and test entry only. Do not duplicate lifecycle rules here.
+
+---
+
+## Project paths
+
+| Item | Path |
+|------|------|
+| Project root | `{{PROJECT_ROOT}}` |
+| Work queue | `{{PROJECT_ROOT}}\docs\WORK_QUEUE.md` |
+| Active handoffs | `{{PROJECT_ROOT}}\docs\handoffs\active\` |
+| Handoff archive | `{{PROJECT_ROOT}}\docs\handoff_archive\` |
+| Audit | `{{PROJECT_ROOT}}\run_audit.cmd` |
+
+Replace `{{PROJECT_ROOT}}` with your machine path if this template was not customized at bootstrap.
+
+---
+
+## Archive preview (safe — no changes)
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\.cursor\AgentStarterPack\pack\scripts\archive-completed-handoff.ps1" `
+  -ProjectRoot "{{PROJECT_ROOT}}"
+```
+
+**Apply only after explicit human confirm** — add `-Apply` to the command above.
+
+---
+
+## Audit Fix reminder
+
+Audit **Fix** lines name specific paths only (e.g. committed cache trees). They do **not** authorize deleting handoffs, `docs/WORK_QUEUE.md`, or `.audit_*` JSON files.

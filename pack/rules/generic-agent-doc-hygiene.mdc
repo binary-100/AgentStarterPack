@@ -1,0 +1,40 @@
+---
+description: Read existing agent docs before adding rules or AGENTS.md — avoid duplicate guidance
+alwaysApply: true
+---
+
+# Agent doc hygiene (all projects)
+
+Before **creating or substantially editing** agent-facing files — `.cursor/rules/*.mdc`, skills, `AGENTS.md`, `AI_INSTRUCTIONS.md`, or similar tool entry files:
+
+## 1. Read what already exists
+
+- List and skim **project** `.cursor/rules/` (and nested paths like `app/.cursor/rules/` if the project uses them)
+- Read **`AGENTS.md`** and linked agent docs (`AI_INSTRUCTIONS.md`, `CLAUDE.md`, etc.)
+- If the project **syncs generic rules from Agent Starter Pack**, treat those as read-only in the project — edit **`pack/rules/`** at the pack source, then sync; do not fork copies locally
+
+## 2. Prefer extend over duplicate
+
+- **Extend** an existing rule or `AGENTS.md` section when the concern fits
+- **New file** only when the concern is distinct and would bloat an existing rule
+- **One concern per rule** — split only when scopes differ (always-on vs file-specific globs)
+
+## 3. Avoid overlap
+
+- Do not restate what global defaults already cover (`agent-defaults-always.mdc`, `loop-back-protocol.mdc`, project `audit.mdc`, etc.)
+- Project-only wrappers should **link** to generic pack rules, not copy them verbatim
+
+## 4. After adding
+
+- Update **`AGENTS.md`** links/index if the project uses one
+- Merge or remove superseded rules — do not leave parallel guidance
+
+## 5. Version cites in documentation
+
+Doc version sync belongs to **build/test**, not audit. Do not hand-edit version strings across
+README/AGENTS when the project has a sync step that can update them.
+
+Which step that is depends on the project — the `docs/VERSION_SYNC.json` and
+`scripts/apply_version.py` pipeline only exists in repos bootstrapped with `-Stack Python`. Check
+what the repo actually has before running anything; **`generic-version-sync.mdc`** covers the
+pipeline in detail.

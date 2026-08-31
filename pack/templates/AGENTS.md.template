@@ -4,6 +4,10 @@ Instructions for AI coding agents working in this repository.
 
 **Universal entry:** **`AI_INSTRUCTIONS.md`** (all AI tools). This file adds project specifics.
 
+## Session start
+
+When **`docs/AGENT_SESSION_START.md`** exists, read it on the **first turn** of a new session before substantial work. It reports stale vs fresh context and lists required absolute paths.
+
 ## Project
 
 - **Name:** {{PROJECT_NAME}}
@@ -12,7 +16,19 @@ Instructions for AI coding agents working in this repository.
 - **Audit command:** `run_audit.cmd` → report per `docs/AUDIT.md` (Fix + Improve only)
 - **CI build:** `build_ci.bat` with `BUILD_NOPAUSE=1`
 - **Product backlog:** `docs/ROADMAP.md` (parked work — not audit Improve)
+- **Work queue:** `docs/WORK_QUEUE.md` (maintainer radar — stable WQ IDs; see `generic-work-queue-discipline.mdc`)
 - **Known limitations:** `docs/KNOWN_LIMITATIONS.md` (informational)
+
+## Stale agent context
+
+If an audit reports **Agent context stale / never refreshed / unreadable**, do not hand the user a
+command to type. **Offer to run `Refresh-AgentContext.cmd` for this project** and run it once they
+approve, then read the regenerated `docs/AGENT_REFRESH.md` in the same turn. Details in
+`AI_INSTRUCTIONS.md`.
+
+## Agent runs commands (user verifies)
+
+You run sync, verify, test, and fix commands; the user reviews output and may pivot. Do not offload executable work as "please run X." See **`AI_INSTRUCTIONS.md`** and portable **`GENERIC_RULES.md`** § agent-defaults-always.
 
 ## Before long shell commands
 

@@ -1,0 +1,87 @@
+---
+description: How to recommend changes — default first, scope/impact clear, optional extras justified
+alwaysApply: true
+---
+
+# Recommendation discipline (this workspace)
+
+When suggesting or implementing work in **Agent Starter Pack**, follow this order.
+
+## 1. Default first
+
+- State the **smallest correct fix** that satisfies the request.
+- If one approach is clearly right, use it — **do not** invent alternatives.
+
+## 2. Scope before action (recommend **and** execute)
+
+Before any recommendation **or** any `Write` / edit / `Shell` command, name explicitly:
+
+| Field | Answer |
+|-------|--------|
+| **Target** | Full path(s) under `C:\Users\binar\OneDrive\Desktop\AgentStarterPack` |
+| **Layer** | Project rule, `AGENTS.md`, `pack/`, script, template, etc. |
+| **Writes elsewhere?** | Yes/No — if yes, stop (see **`pack-only-edit-boundary.mdc`**) |
+| **Does not affect** | e.g. other workspaces, user profile (unless install — see §7) |
+| **Downside** | One line — main risk if non-obvious |
+
+If a script accepts `-ProjectRoot`, `-Destination`, or output paths, **read them before running**. Do not run maintainer verify scripts against external repos unless the user explicitly names that repo for editing.
+
+## 3. Read before adding agent docs
+
+Follow **`generic-agent-doc-hygiene.mdc`** (pack rule, all projects): skim existing `.cursor/rules/` and `AGENTS.md` before new rules or duplicate sections.
+
+## 4. Rule layers (this repo)
+
+| Location | Scope | Use for |
+|----------|-------|---------|
+| **`.cursor/rules/`** (this repo root) | This workspace only | Edit boundary, recommendation discipline, starter-pack-repo |
+| **`pack/rules/`** | Installed globally via `install.ps1` | Generic guidance for **all** projects — never workspace-specific boundaries here |
+
+## 5. Optional extras (only when useful)
+
+Offer an optional path **only** when it closes a real gap the default does not.
+
+Each optional must include:
+
+1. **Mechanism** — what file/layer changes and when Cursor loads it
+2. **Blast radius** — which workspaces/sessions it affects
+3. **Skip unless** — one line on when it is worth doing
+
+Do not use vague labels (“every machine/session”) without defining both.
+
+## 6. Tradeoffs — alternatives only
+
+When presenting **two or more real choices** (not routine single-path work), add one sentence per option on cost or conflict.
+
+- **Do not** add tradeoff essays on trivial one-file edits.
+- **Do not** use tradeoffs to second-guess a direct user request.
+- External repos in examples are **illustration only** — not work targets (see edit boundary).
+
+## 7. Install / profile writes
+
+**`install.ps1`** (and similar) write outside this Desktop repo:
+
+- `%USERPROFILE%\.cursor\AgentStarterPack\`
+- `%USERPROFILE%\.cursor\rules\`, `skills\`, `mcp.json`
+
+Recommend or run install **only when the user asked** to install or upgrade the pack. Say which profile paths will change.
+
+## 8. Scripts in this repo
+
+- Do not add **hardcoded paths to other users' projects** as script defaults (use parameters; empty default = skip external checks).
+- Use placeholders in docs (`MyApp`, `C:\Users\alice\Projects\...`).
+- Prefer **`pack-paths.ps1`** for resolving this pack's root.
+
+## 8b. Verify drift — fix, do not assign
+
+When a maintainer verify script (`verify-audit-system.ps1`, `sync-audit-system.ps1 -VerifyOnly`, `doctor.ps1`, behavior suite) reports **drift or a fix you can apply**, run the corrective script in the **same turn**. Report output and exit codes so the user can **verify** and pivot; do not hand them the command to run. See **`agent-defaults-always.mdc`** § Fixes the agent runs.
+
+## 9. When scope is ambiguous
+
+Ask **one focused question** instead of guessing.
+
+## 10. On user pushback
+
+Loop back: restate what the suggestion would **actually do**, drop it if scope was wrong — do not defend a mis-scoped option.
+
+When pushback is **insufficient depth**, **too fast**, or **you missed X**: follow **`pack/rules/generic-deep-task-execution.mdc`** — run the missing mandatory steps in this turn with new evidence. Do not ask the user to rephrase.

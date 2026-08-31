@@ -5,7 +5,7 @@ alwaysApply: false
 
 # New Project Bootstrap
 
-**Preferred:** run bootstrap script (all tools + audit wiring in one step):
+**Preferred (Cursor + all editor entry files):**
 
 ```powershell
 & "$env:USERPROFILE\.cursor\AgentStarterPack\pack\scripts\bootstrap-project.ps1" `
@@ -13,6 +13,15 @@ alwaysApply: false
 ```
 
 Or **`Bootstrap-Project.cmd D:\your\repo YourApp`** from the starter pack folder.
+
+**Non-Cursor only (no editor-specific entry files):**
+
+```powershell
+& "$env:USERPROFILE\.cursor\AgentStarterPack\pack\scripts\bootstrap-project.ps1" `
+    -ProjectRoot "D:\your\repo" -ProjectName "YourApp" -Stack Python -Targets Portable -NoPause
+```
+
+Or **`Bootstrap-Portable-Project.cmd D:\your\repo YourApp`**. Verify: `pack\scripts\verify-portable-bootstrap.ps1 -ProjectRoot D:\your\repo -RequirePortableOnly`
 
 Guide: **`docs/PORTABLE_SETUP.md`** (any AI tool) and **`pack/docs/START_HERE.md`**.
 
@@ -22,13 +31,17 @@ project/
 ├── AI_INSTRUCTIONS.md
 ├── .cursor/rules/audit.mdc
 ├── docs/AUDIT.md
+├── docs/WORK_QUEUE.md
 ├── docs/ROADMAP.md
 ├── run_audit.cmd
 ├── scripts/run_audit.ps1
 ├── run_tests.bat
-├── build_ci.bat
+├── build_ci.bat        # -Stack Python only
 └── tests/
 ```
+
+`-Stack` defaults to `Generic`, which skips `build_ci.bat`, `scripts/apply_version.py`,
+`docs/VERSION_SYNC.json`, and the version-sync rule. Pass `-Stack Python` for the tree above.
 
 ## Checklist
 

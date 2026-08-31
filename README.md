@@ -64,9 +64,18 @@ Agent workflow: **[pack/docs/AGENT_WORKFLOW.md](pack/docs/AGENT_WORKFLOW.md)**
 
 ---
 
+## After a pack update
+
+Chats already open keep the old instructions — nothing on disk reaches them.
+**`Refresh-AgentContext.cmd <project>`** syncs that project, writes `docs/AGENT_REFRESH.md`, and puts a
+one-line notice on your clipboard (also saved to `docs/AGENT_PASTE.txt`). Paste it into the stale chat —
+or in Cursor just type **refresh pack context**.
+
+---
+
 ## Reference project
 
-**BSOD Analyzer** (`Desktop\BSODAnalyzer\app\`) — full Python/Qt implementation with version sync and product audit.
+**Example bootstrapped app:** see `pack/audit/behavior-fixture/` and `docs/PORTABLE_SETUP.md`.
 
 ---
 
@@ -75,7 +84,7 @@ Agent workflow: **[pack/docs/AGENT_WORKFLOW.md](pack/docs/AGENT_WORKFLOW.md)**
 | File | Meaning |
 |------|---------|
 | Root **`VERSION`** | Starter pack release (**1.7.0**) |
-| **`pack/audit/manifest.json`** | Audit engine version (**2.21.6**) |
+| **`pack/audit/manifest.json`** | Audit engine version (**2.22.37**) |
 
 Pack history: **[CHANGELOG.md](CHANGELOG.md)**  
 Audit engine history: **[pack/docs/AUDIT_SYSTEM_CHANGELOG.md](pack/docs/AUDIT_SYSTEM_CHANGELOG.md)**

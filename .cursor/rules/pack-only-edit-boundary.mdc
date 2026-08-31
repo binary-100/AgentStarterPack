@@ -1,0 +1,26 @@
+---
+description: HARD STOP — only edit Agent Starter Pack; never modify other projects
+alwaysApply: true
+---
+
+# Edit boundary (non-negotiable)
+
+When this workspace is **Agent Starter Pack**, you may **only create, modify, or delete files under the open workspace root** — the folder containing this repo's `VERSION`, `install.ps1`, and `pack/`.
+
+The pack is portable: that root may sit on any drive or path (a clone, a copied folder, a removable disk). Treat the workspace root you were opened in as the boundary; do not assume or hard-code a machine-specific location.
+
+## Forbidden without explicit user request to open/edit that other project
+
+- **Any write** outside the path above — including other application repos, `%USERPROFILE%\.cursor\` (install output), and any path the user did not name for editing in this session.
+- **Shell commands that mutate other projects** — e.g. `sync-project-rules.ps1` (without `-VerifyOnly`) targeting another repo, `sync-audit-system.ps1 -PushFromProject`, `bootstrap-project.ps1` with an external `-ProjectRoot`, `Update-AgentRules.cmd` when it pushes into a reference app.
+- **Copying pack files by hand** into another repo instead of documenting what the user should run there.
+
+## Allowed
+
+- Read-only use of other projects **as documentation** (paths cited in pack docs, template references, changelog examples).
+- Edits under the open workspace root only — including `pack/`, `docs/`, `.cursor/rules/`, scripts, templates, and pack self-audit artifacts in this repo.
+- **`install.ps1`** when the user asks to refresh the **installed copy** at `%USERPROFILE%\.cursor\AgentStarterPack\` — that is install output, not a separate app repo. Still do not edit external app trees from this workspace.
+
+## If work seems to require another repo
+
+Stop. Tell the user what to run or change **in that project themselves**, or ask them to open that project as the workspace. **A doc link or “reference implementation” is not permission to edit it.**

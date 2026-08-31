@@ -1,6 +1,6 @@
 # Pack documentation index
 
-All paths relative to **`AgentStarterPack/`** (Desktop) or **`%USERPROFILE%\.cursor\AgentStarterPack\`** (after install).
+All paths relative to the **pack folder** (this checkout, on any drive) or **`%USERPROFILE%\.cursor\AgentStarterPack\`** (after install).
 
 ---
 
@@ -18,6 +18,8 @@ All paths relative to **`AgentStarterPack/`** (Desktop) or **`%USERPROFILE%\.cur
 |----------|---------|
 | [AGENT_WORKFLOW.md](AGENT_WORKFLOW.md) | Loop-back protocol, pre-flight, audit Fix/Improve workflow, artifact ownership |
 | [PHASED_FEATURE_DESIGN.md](PHASED_FEATURE_DESIGN.md) | Multi-step features — phased plans; runtime order = build order |
+| [PACK_MAINTENANCE.md](PACK_MAINTENANCE.md) | Pack ↔ project sync — generic rules, no forks |
+| [AGENT_COORDINATION_BACKLOG.md](AGENT_COORDINATION_BACKLOG.md) | Multi-agent coordination — deferred until new agent stack |
 | [AUDIT_SYSTEM.md](AUDIT_SYSTEM.md) | Audit architecture, manifest, sync/verify commands, reference project flow |
 | [AUDIT_SYSTEM_CHANGELOG.md](AUDIT_SYSTEM_CHANGELOG.md) | Audit engine version history and settled decisions (maintainers) |
 
@@ -31,6 +33,25 @@ All paths relative to **`AgentStarterPack/`** (Desktop) or **`%USERPROFILE%\.cur
 | [../../docs/PORTABLE_SETUP.md](../../docs/PORTABLE_SETUP.md) | Bootstrap any project for any AI tool |
 | [../../docs/MULTI_INSTANCE_GUIDE.md](../../docs/MULTI_INSTANCE_GUIDE.md) | One install per PC, MCP, other IDEs, export |
 | [../../docs/VERSION_SYNC.md](../../docs/VERSION_SYNC.md) | Single-source version pattern for Python apps |
+
+---
+
+## Folder map
+
+What each top-level folder is for, so a reviewer can tell source from generated output at a glance.
+
+| Folder | Role | Committed |
+|--------|------|-----------|
+| `pack/rules/` | Generic rules installed to `%USERPROFILE%\.cursor\rules\` | Yes — source |
+| `pack/skills/` | Skills installed to `%USERPROFILE%\.cursor\skills\` | Yes — source |
+| `pack/scripts/` | Install, sync, verify, audit engine | Yes — source |
+| `pack/templates/` | Files copied into bootstrapped projects | Yes — source |
+| `pack/audit/` | Audit manifest + behavior fixture (a fake project the suite audits) | Yes — source |
+| `pack/docs/` | Pack documentation | Yes — source |
+| `docs/` | This repo's own audit config, checklist, and guides | Yes, except `.audit_*` artifacts and the generated agent-context files |
+| `scripts/` | This repo's own audit wrappers | Yes — source |
+| `dist/` | Export output from `export.ps1` | No — ephemeral, recreated per export |
+| `.tmp/` | Scratch roots for self-tests | No — ephemeral, per-process |
 
 ---
 
@@ -62,11 +83,12 @@ All paths relative to **`AgentStarterPack/`** (Desktop) or **`%USERPROFILE%\.cur
 1. [START_HERE.md](START_HERE.md) → Bootstrap section
 2. [../../docs/VERSION_SYNC.md](../../docs/VERSION_SYNC.md) — if Python
 3. [AUDIT_SYSTEM.md](AUDIT_SYSTEM.md) — customize `AUDIT.md` + config
-4. BSOD Analyzer `app/` — reference layout
+4. `pack/audit/behavior-fixture/` — minimal audit example in the pack repo
 
 ### Pack / audit-system maintainer
 
 1. [START_HERE.md](START_HERE.md) → Maintaining the audit system
-2. [AUDIT_SYSTEM.md](AUDIT_SYSTEM.md)
+2. [PACK_MAINTENANCE.md](PACK_MAINTENANCE.md) — generic rules and reference-project sync
+3. [AUDIT_SYSTEM.md](AUDIT_SYSTEM.md)
 3. [AUDIT_SYSTEM_CHANGELOG.md](AUDIT_SYSTEM_CHANGELOG.md)
 4. [AGENT_WORKFLOW.md](AGENT_WORKFLOW.md) → Audit pre-flight
