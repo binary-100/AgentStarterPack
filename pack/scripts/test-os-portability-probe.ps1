@@ -27,7 +27,7 @@ function Write-ProbeFail([string]$Message) {
 function Get-HostPythonCommandForProbe {
     param([string]$PackRootPath)
     Remove-Item Env:AGENT_STARTER_PACK_TEST_OS -ErrorAction SilentlyContinue
-    . (Get-PackScriptPath -Root $PackRootPath -Name 'pack-paths.ps1')
+    . (Join-Path (Join-Path (Join-Path $PackRootPath 'pack') 'scripts') 'pack-paths.ps1')
     $probe = Resolve-PackPythonInvoke
     if (-not $probe) { return $null }
     if ($probe.prefix -and $probe.prefix.Count -gt 0) {
