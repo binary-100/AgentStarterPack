@@ -1,13 +1,14 @@
 # Agent Starter Pack — Implementer spec (Phase 6 + audit addendum)
 
-**Status:** **Implemented on 2026-08-28** — Phase 6a shipped in audit engine **2.21.23**, Section 12 in **2.22.0**. Do **not** re-implement; see `HANDOVER_NEXT_AGENT.md` § "The two tracks from the other machine's handoff" and `pack/docs/AUDIT_SYSTEM_CHANGELOG.md`. Phase 6b (MCP tools) and 6c (mailbox) remain unbuilt by design.
+**Status:** **Implemented** — Phase 6a in audit engine **2.21.23**, Section 12 in **2.22.0**, Phase **6b** MCP (**WQ-301**) in **2.22.21**, Phase **D** adapter (**WQ-308**) in **2.22.30–32**. Do **not** re-implement. **Still parked:** Phase **6c** mailbox (**WQ-302**). Canonical status: `docs/WORK_QUEUE.md` + `docs/MULTI_TOOL_GAP_PLAN.md` § Phase ID map.
 
 | Track | Delivered as |
 |-------|--------------|
 | **Phase 6a** (§4) | `Refresh-AgentContext.cmd`, `pack/scripts/refresh-agent-context.ps1`, generated `docs/AGENT_CONTEXT.json` + `docs/AGENT_REFRESH.md`, `AGENT_CONTEXT.json.template` bootstrap stub, trigger in `agent-defaults-always.mdc`, behavior step 27 |
+| **Phase 6b** (§5) | **WQ-301** — `agent_context_freshness.py`, MCP `check_pack_freshness` / `get_agent_refresh_brief`, behavior step **35** |
 | **Section 12** (§12) | `layoutPolicy` in the config templates (disabled by default), layout checks + `machineImprovesBySection` in `run_audit_core.ps1`, `semanticRequireMachineImproveMention`, skill §B layout pass, `AUDIT.md` §B bullets, behavior step 28 |
 
-Deviations from the spec as written: the pack repo had no `AGENT_CHAT_SYNC.md` to supersede (§4.8 is moot); the generated artifacts are **gitignored** because they record machine-specific absolute paths; `-SkipInstall` became an opt-in `-Install` switch since installing is a profile-wide change; the optional `verify-agent-setup.ps1` hook (§4.10) was not added — `refresh-agent-context.ps1` reports installed-vs-pack drift itself.
+Deviations from the spec as written: **`AGENT_CHAT_SYNC.md` removed** (Phase 6a paste generation supersedes it); generated artifacts are **gitignored** because they record machine-specific absolute paths; `-SkipInstall` became an opt-in `-Install` switch; the optional `verify-agent-setup.ps1` hook (§4.10) was not added — `refresh-agent-context.ps1` reports installed-vs-pack drift itself.
 
 ---
 
@@ -38,7 +39,8 @@ This spec is **not tied to any one product, IDE, or AI vendor.**
 | Already exists | Role |
 |----------------|------|
 | `install.ps1`, `Update-AgentRules.cmd`, `sync-audit-system.ps1`, `sync-project-rules.ps1` | Disk sync (global + project) |
-| `AGENT_CHAT_SYNC.md` | Manual paste blocks for stale chats — **interim** until Phase 6a ships |
+| `Refresh-AgentContext.cmd`, `docs/AGENT_REFRESH.md`, `docs/AGENT_PASTE.txt` | Machine-generated paste for stale chats (**6a shipped**) |
+| ~~`AGENT_CHAT_SYNC.md`~~ | **Removed 2026-08-30** — superseded by refresh pipeline |
 | `HANDOVER_NEXT_AGENT.md` | Session handover for pack maintainers |
 | `verify-agent-setup.ps1 -ReferenceProjectRoot` | Optional app verify |
 | `docs/VERSION_SYNC.json` + doc sync pipeline | Build-time version cites — **not** part of Phase 6 |
@@ -55,7 +57,7 @@ This spec is **not tied to any one product, IDE, or AI vendor.**
 |------------------|------------|
 | `install.ps1` updates `%USERPROFILE%\.cursor\rules\`, installed pack mirror, MCP config | **Open agent chats do not hot-reload** rules or prior context |
 | New Cursor chats after restart pick up global rules | Stale chats keep acting on pre-install assumptions |
-| `AGENT_CHAT_SYNC.md` manual paste | User must craft/copy text; no machine-generated “what changed” brief |
+| Legacy manual paste doc (removed) | User must craft/copy text — **fixed by 6a** |
 
 **Universal limit (not Cursor-specific):** No LLM chat auto-reloads instructions when disk changes. Fix = **update disk + give agents an explicit, short re-read target**.
 
@@ -83,7 +85,7 @@ Multiple agents (planning, build, maintainer) need structured **user-directed** 
 2. **Tool-neutral paths** — canonical artifacts under project **`docs/`**, not `.cursor/` only
 3. **One command on disk, one short line in chat**
 4. **Generic in pack** — product layout differences via parameters (`-ProjectRoot`, `-RulesRelativePath`)
-5. **Extend `AGENT_CHAT_SYNC.md`** after 6a ships (auto-generated paste snippet at bottom of `AGENT_REFRESH.md`) — do not delete interim paste doc until 6a verified
+5. **Paste lives in generated `AGENT_REFRESH.md`** — `AGENT_CHAT_SYNC.md` was removed after 6a verified (2026-08-30)
 
 ---
 
@@ -234,14 +236,14 @@ In `bootstrap-project.ps1`, for **all stacks**:
 
 Add to `.agent-bootstrap.json` docs list: `docs/AGENT_CONTEXT.json`, `docs/AGENT_REFRESH.md`.
 
-### 4.8 Relationship to `AGENT_CHAT_SYNC.md`
+### 4.8 Relationship to legacy `AGENT_CHAT_SYNC.md` (removed)
 
-| Before 6a | After 6a |
+| Before 6a | After 6a (shipped) |
 |-----------|----------|
-| User copies static blocks from `AGENT_CHAT_SYNC.md` | CLI generates project-specific `AGENT_REFRESH.md` + paste line |
+| User copied static blocks from `AGENT_CHAT_SYNC.md` | CLI generates project-specific `AGENT_REFRESH.md` + paste line |
 | Manual version numbers in paste | Versions pulled from `VERSION` + manifest at generation time |
 
-**After 6a ships:** Update `AGENT_CHAT_SYNC.md` to say “prefer `Refresh-AgentContext.cmd`; paste section lives at bottom of generated `docs/AGENT_REFRESH.md`.”
+**2026-08-30:** `AGENT_CHAT_SYNC.md` **deleted** from repo. Use `Refresh-AgentContext.cmd`; paste section lives at bottom of generated `docs/AGENT_REFRESH.md`.
 
 ### 4.9 Acceptance criteria (Phase 6a done when all pass)
 
@@ -267,7 +269,7 @@ Add to `verify-agent-setup.ps1` (optional, non-breaking):
 
 | Tool | Input | Returns |
 |------|-------|---------|
-| `check_pack_freshness` | optional `projectRoot` | `{ stale: bool, layers: {...}, installedVersion, desktopVersion }` |
+| `check_pack_freshness` | optional `projectRoot` | `{ stale: bool, layers: {...}, installedEngineVersion, stampedEngineVersion, packVersion, reasons, requiredReads, ... }` — see `agent_context_freshness.py` |
 | `get_agent_refresh_brief` | `projectRoot` | Markdown body of `docs/AGENT_REFRESH.md` or generated on the fly if missing |
 
 **Rules:**
@@ -363,7 +365,7 @@ pack/scripts/agent-mail.ps1   # send, list, ack, expire
 - [ ] Re-implement doc version sync (`VERSION_SYNC.json` pipeline)
 - [ ] Re-add product-specific reference configs
 - [ ] Hardcode any user Desktop paths in scripts (parameters + env `AUDIT_REFERENCE_PROJECT_ROOT` only)
-- [ ] Remove `AGENT_CHAT_SYNC.md` until 6a paste generation verified
+- [ ] ~~Remove `AGENT_CHAT_SYNC.md`~~ — **removed**; use `Refresh-AgentContext.cmd`
 
 ---
 
@@ -375,23 +377,23 @@ pack/scripts/agent-mail.ps1   # send, list, ack, expire
 4. Bootstrap stub + `agent-defaults-always.mdc` trigger
 5. Update `AI_INSTRUCTIONS.md.template`, `PACK_MAINTENANCE.md`
 6. Manual E2E: install → refresh → paste → agent confirms
-7. (Optional) 6b MCP tools
+7. ~~(Optional) 6b MCP tools~~ — **shipped (WQ-301)**
 
 ---
 
 ## 10. Copy-paste for implementing agent (start message)
 
 ```text
-Implement Phase 6a from PACK_IMPLEMENTER_SPEC.md in the Agent Starter Pack repo only.
+Phase 6a/6b/Section 12 are shipped. See docs/WORK_QUEUE.md Done log and pack/docs/AUDIT_SYSTEM_CHANGELOG.md.
 
-Do not redo Phases 1–5 (version sync, generic-only cleanup, verify scripts already shipped at audit 2.21.13).
+Do not rebuild refresh/MCP/session-start unless user opens a new WQ.
 
-Deliver: refresh-agent-context.ps1, Refresh-AgentContext.cmd, docs/AGENT_CONTEXT.json + docs/AGENT_REFRESH.md generation, bootstrap hook, short rule trigger, manifest bump, verify exit 0.
-
-Phase 6b/6c are out of scope unless I ask.
+Phase 6c (mailbox) is parked (WQ-302) unless user asks.
 ```
 
 **Optional second track** (audit layout reporting — Section 12): use the paste block in `PACK_IMPLEMENTER_HANDOFF.txt` § “AUDIT LAYOUT TRACK” when the user assigns that work separately or after 6a.
+
+**Shipped:** Phase 6a · Phase 6b (WQ-301) · Phase D (WQ-308) · Section 12. **Parked:** Phase 6c (WQ-302).
 
 ---
 

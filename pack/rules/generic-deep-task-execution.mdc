@@ -88,7 +88,7 @@ Use when the user asks for **where we stand**, **what's pending**, **handoff cle
 |------|-------------|
 | 1 | **Inventory all agent/handoff sources** at repo root and `pack/docs/` — list every file read or explicitly skipped with reason. Include **`docs/WORK_QUEUE.md`** when present. |
 | 2 | **Grep all of them** for: `deferred`, `not built`, `not implemented`, `open question`, `design goal`, `next step`, `pick up`, `parked`, `remaining`, `tool-neutral`, `multi-tool`, `Cursor-specific`, `Windows-only`, `audit depth` |
-| 3 | **Separate tracks** — do not collapse into one "portability" bucket. At minimum distinguish: **(A) OS/shell**, **(B) editor/tool/model**, **(C) audit depth**, **(D) git/release**, **(E) agent refresh**, **(F) explicitly deferred (6b/6c)** |
+| 3 | **Separate tracks** — do not collapse into one "portability" bucket. At minimum distinguish: **(A) OS/shell**, **(B) editor/tool/model**, **(C) audit depth**, **(D) git/release**, **(E) agent refresh**, **(F) explicitly deferred (6c mailbox / WQ-302 only — 6b/WQ-301 shipped)** |
 | 4 | **Map each track** to: documented intent → what shipped → what is still open → which doc says so (with path) |
 | 5 | **Live state** — version markers, install sync, test exit codes **in this turn** |
 | 6 | **Cross-check user callouts** — if the user says a topic should be in the docs, search for it before claiming it is missing |

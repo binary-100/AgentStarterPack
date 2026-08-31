@@ -60,9 +60,6 @@ User decision: **skip entirely for now**; re-added to backlog pending platform c
 `docs/AGENT_REFRESH.md` and the one-line `docs/AGENT_PASTE.txt` per project, and put that line on the
 clipboard. See [`PACK_MAINTENANCE.md`](PACK_MAINTENANCE.md). **Do not rebuild it.**
 
-**Also parked: MCP surface for the refresh** (called *Phase 6b* in `PACK_IMPLEMENTER_SPEC.md`) — tools
-such as `check_pack_freshness` and `get_agent_refresh_brief`, which would let an agent ask whether its
-context is stale instead of the user pasting a line. Deferred for the same reason as the mailbox, plus
-one of its own: the user chose to keep the workflow at **one command**, and the paste line already
-carries a version challenge that exposes an agent which did not re-read the files. Revisit only if the
-paste step proves unreliable in practice.
+**Also shipped: MCP surface for the refresh** (*Phase 6b*, **WQ-301**, engine **2.22.21**) — `check_pack_freshness` and `get_agent_refresh_brief` on the agent-hygiene server; behavior step **35**. Same facts as the CLI/paste line — optional second surface for Cursor/Claude with MCP. **Do not rebuild.**
+
+**Still parked:** multi-agent coordination mailbox — **WQ-302** (this doc).

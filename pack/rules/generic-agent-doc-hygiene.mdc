@@ -38,3 +38,16 @@ Which step that is depends on the project — the `docs/VERSION_SYNC.json` and
 `scripts/apply_version.py` pipeline only exists in repos bootstrapped with `-Stack Python`. Check
 what the repo actually has before running anything; **`generic-version-sync.mdc`** covers the
 pipeline in detail.
+
+## 6. After shipping or changing status (Done / Parked / Next)
+
+**Version sync (§5) is not status sync.** Bumping engine version in docs does not update "Phase 6b not built" paragraphs.
+
+When a work item moves on **`docs/WORK_QUEUE.md`** (especially to **Done** or **Parked**):
+
+1. Update **derivative docs** that still describe the old state — HANDOVER §11, gap/plan rows, spec headers, coordination backlog — not only the queue file.
+2. Prefer **WQ ids** (`WQ-301`) over phase-only labels in handoffs; use **`docs/MULTI_TOOL_GAP_PLAN.md`** § Phase ID map when multiple phase numbers exist.
+3. **Maintainer pack:** run **`verify-complete-picture.ps1`** before claiming done (see **`pack/docs/WORK_COMPLETION.md`** step 5b).
+4. Inventory of rules vs verify scripts: **`pack/docs/RULES_AND_VERIFY_MAP.md`**.
+
+Do **not** add a second always-on rule for this — extend the work queue row and run the verify script.

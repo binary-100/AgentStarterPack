@@ -5,10 +5,10 @@
 
 | Field | Value |
 |-------|--------|
-| **Next active ID** | *(none — triage Inbox or pick from Parked)* |
+| **Next active ID** | **WQ-011** |
 | **Last updated** | 2026-08-30 |
 | **Pack version** | 1.8.0 |
-| **Audit engine** | 2.22.37 |
+| **Audit engine** | 2.22.43 |
 
 ---
 
@@ -31,8 +31,8 @@ Work **top to bottom**. Do not skip ahead without user approval or marking the r
 
 | ID | Task | Status | Notes |
 |----|------|--------|-------|
+| WQ-011 | Flash drive / install on other PC | **Next** | Promoted from Parked 2026-08-30 after pack hygiene batch + profile install |
 | WQ-004 | **OS portability (Windows-only interim doc)** | **Superseded** | 2026-08-30 user reopened OS track → **WQ-304**. Was maintainer “document honest limit” (see `WEEKEND_HANDOFF.md` §3), not a permanent veto. |
-| WQ-006 | **Git commit + remote** | **Done** | 2026-08-30 — commit `48968bf`, `origin` → `https://github.com/binary-100/AgentStarterPack.git`, `master` pushed |
 
 ---
 
@@ -59,7 +59,6 @@ Work **top to bottom**. Do not skip ahead without user approval or marking the r
 | ID | Task | Re-open when |
 |----|------|----------------|
 | WQ-302 | **Phase 6c** — multi-agent mailbox (`pack/docs/AGENT_COORDINATION_BACKLOG.md`) | Platform change / user asks |
-| WQ-011 | Flash drive / install on other PC | **Tomorrow** — user copies Desktop checkout after today's pack batch + one local install |
 
 ---
 
@@ -98,6 +97,8 @@ Work **top to bottom**. Do not skip ahead without user approval or marking the r
 | WQ-305 | Import smoke beyond root `*.py` | 2026-08-30 | import smoke `moduleSearchDirs`; bootstrap `$PackDir`; archive `Get-SectionBody` line-boundary fix; `hardware_cache.py` fixture stub; behavior **0 fail**; `install.ps1 -Prune`; engine **2.22.28** |
 | WQ-308 | Phase D freshness adapter (D1-D3) | 2026-08-30 | session-start file + Cursor hook; `repair-agent-docs.ps1`; behavior steps 38-39 **0 fail**; engine **2.22.32**; BSOD hub rollout |
 | WQ-304 | **`install.sh` / OS parity (Phases 1–6)** | 2026-08-30 | `pack-paths.ps1`, `.sh` wrappers, behavior steps 40–43 **0 fail**; `test-os-portability-probe.ps1`; CI `pack-os-smoke.yml`; engine **2.22.37** |
+| WQ-006 | Git commit + remote | 2026-08-30 | `48968bf`→`968c4e9` pushed to `https://github.com/binary-100/AgentStarterPack.git`; **Pack OS smoke run #11 success** |
+| WQ-413 | Maintainer hygiene backlog (P0–S2 scans) | 2026-08-30 | WORK_QUEUE fix; doc/portable sync; rules map; AGENT_CHAT_SYNC removed; Update-AgentStack verify; S2-9 WORK_QUEUE in VERSION_SYNC; profile install **2.22.43** |
 
 ---
 
@@ -109,4 +110,5 @@ Work **top to bottom**. Do not skip ahead without user approval or marking the r
 | `docs/MULTI_TOOL_GAP_PLAN.md` | WQ-003 Phase 1 deliverable |
 | `docs/AUDIT.md` | Audit protocol (Fix/Improve per run) |
 | `pack/docs/AGENT_COORDINATION_BACKLOG.md` | WQ-302 detail |
+| `pack/docs/RULES_AND_VERIFY_MAP.md` | Rules vs verify inventory; status propagation channels |
 | `docs/ROADMAP.md` | *Not used in this repo* — product apps only |

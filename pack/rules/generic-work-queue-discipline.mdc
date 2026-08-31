@@ -37,10 +37,13 @@ If `docs/WORK_QUEUE.md` is missing in a bootstrapped project, treat `docs/ROADMA
 - Move row to **Done log** with date and evidence (test exit code, path, commit — whatever applies).
 - Set the next Active row to **Next** (exactly one).
 - If a **`docs/handoffs/active/HANDOFF_*.md`** row exists for that WQ: set handoff **`status: completed`**, **`completed:`** date, clear **`agents_remaining`**. Run **`run_audit.cmd`** before archiving; audit **Improve** may suggest `handoff_archive/` — never auto-delete (see **`generic-agent-handoff-discipline.mdc`**).
+- **Canonical status propagation (required):** WORK_QUEUE is the source of truth. After editing it, align **every derivative** that mentions that WQ or slice — handoff §11, phase/gap plan rows, spec status headers, PARKED/backlog docs. Full channel list: **`pack/docs/RULES_AND_VERIFY_MAP.md`** § Canonical status propagation.
+- **Maintainer pack repo:** run **`verify-complete-picture.ps1`** (behavior step 37) — exit **0** before claiming the slice done. Same checklist: **`pack/docs/WORK_COMPLETION.md`** step 5b.
 
 ### When deferring
 
 - Move to **Parked / deferred** with **Re-open when** — not deleted, not vague "later."
+- Remove or update any **Active/Next** or handoff text that still reads as in-progress for that WQ (same propagation list as completing work).
 
 ### When reprioritizing (allowed — often required)
 
@@ -81,4 +84,5 @@ Order in **Active queue** is **not frozen**. Move rows when dependencies, blocke
 Canonical copy: `pack/rules/generic-work-queue-discipline.mdc` — installed via `install.ps1`.  
 Template: `pack/templates/docs/WORK_QUEUE.md.template` — bootstrap `-Targets` all layouts.  
 **Verify:** `pack/scripts/verify-work-queue.ps1 -ProjectRoot PATH` (also in `verify-agent-setup.ps1` and behavior step 31).  
+**Status alignment:** `pack/scripts/verify-complete-picture.ps1` (step 37) — see **`pack/docs/RULES_AND_VERIFY_MAP.md`**.  
 **Backfill:** `ensure-work-queue.ps1` runs from `refresh-agent-context.ps1` when the file is missing.

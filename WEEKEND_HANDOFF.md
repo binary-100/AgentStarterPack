@@ -29,22 +29,20 @@ Do not start by running scripts. The repo is in a verified-clean state; read bef
 
 ## 1. Getting the work home — do this before anything else
 
-**There is no git remote and there are 104 uncommitted entries on `master`.** Nothing has been pushed
-anywhere. If you clone or pull at home you will get a repo that predates this entire session.
+**There is a git remote.** `origin` → `https://github.com/binary-100/AgentStarterPack.git` (WQ-006, 2026-08-30). Prefer **flash drive copy** or **git pull** on arrival; see `docs/WORK_QUEUE.md` Done log.
 
 ```
-branch:   master
-remote:   (none configured)
-status:   104 modified/untracked entries, all intentional
+branch:   master (tracks origin/master)
+remote:   https://github.com/binary-100/AgentStarterPack.git
 ```
 
 Pick one transfer path:
 
 | Path | How | Use when |
 |------|-----|----------|
-| **Flash drive (simplest)** | Copy `D:\AgentStarterPack` as-is to the home machine. It is portable by design — no absolute paths baked in. | You have the drive with you. Recommended. |
-| **Export archive** | Run `export.ps1` here; it stages a clean copy and drops machine-specific generated files (`docs/AGENT_CONTEXT.json`, `AGENT_REFRESH.md`, `AGENT_PASTE.txt`). Move the zip. | You want a clean snapshot without local scratch files. |
-| **Git** | Add a remote here, commit, push, then clone at home. | You want history. **Not yet done** — the author deliberately deferred git from this machine. |
+| **Flash drive (simplest)** | Copy the pack folder as-is. Portable by design. | Recommended for offline/USB workflow (**WQ-011**). |
+| **Git** | `git clone` or `git pull` from origin. | You want history and CI. |
+| **Export archive** | Run `export.ps1` for a clean zip without machine-local `AGENT_*` stamps. | Snapshot without scratch files. |
 
 **Whichever path you choose, verify on arrival before working:**
 
@@ -159,8 +157,8 @@ are read-only references. Do not run sync/bootstrap scripts against external pro
 
 | Item | Status | Why |
 |------|--------|-----|
-| **Phase 6b** — MCP tools (`check_pack_freshness`, `get_agent_refresh_brief`) | Not built | The CLI + audit finding already cover the need; MCP would be a second surface for the same facts. |
-| **Phase 6c** — agent mailbox / coordination | Parked | `pack/docs/AGENT_COORDINATION_BACKLOG.md` holds the design. Not on the queue. |
+| **Phase 6b** — MCP tools (`check_pack_freshness`, `get_agent_refresh_brief`) | **Shipped (WQ-301)** | Engine **2.22.21**; behavior step **35**. Historical row kept — see `docs/WORK_QUEUE.md` Done log. |
+| **Phase 6c** — agent mailbox / coordination | Parked (**WQ-302**) | `pack/docs/AGENT_COORDINATION_BACKLOG.md` holds the design. |
 | **Spec §4.10** — staleness warning in `verify-agent-setup.ps1` | Declined | It is another command you must remember to run, so it would only speak up in a session where you were already looking. The audit finding replaced it and reaches you unprompted. |
 | **`AGENT_REFRESH.md.template`** | Not created | The brief is generated per refresh; a template stub would be a brief that states nothing while looking authoritative. |
 | **Non-Windows support** | Open question | See § 3. Needs a decision before code. |

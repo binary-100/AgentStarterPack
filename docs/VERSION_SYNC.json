@@ -10,7 +10,8 @@
       "README.md",
       "INSTALL.md",
       "pack/docs/START_HERE.md",
-      "HANDOVER_NEXT_AGENT.md"
+      "HANDOVER_NEXT_AGENT.md",
+      "docs/WORK_QUEUE.md"
     ],
     "auditManifestPath": "pack/audit/manifest.json",
     "auditVersionScanFiles": [
@@ -20,7 +21,8 @@
       "pack/docs/AUDIT_SYSTEM.md",
       "pack/docs/README.md",
       "pack/docs/AGENT_WORKFLOW.md",
-      "HANDOVER_NEXT_AGENT.md"
+      "HANDOVER_NEXT_AGENT.md",
+      "docs/WORK_QUEUE.md"
     ],
     "auditContextKeywords": ["manifest.json", "audit engine", "starter pack"],
     "extraReplacements": [
@@ -29,6 +31,18 @@
         "pattern": "bootstrapVersion\\s*=\\s*\"\\d+\\.\\d+\\.\\d+\"",
         "replace": "bootstrapVersion = \"{packVersion}\"",
         "versionKind": "pack"
+      },
+      {
+        "file": "docs/WORK_QUEUE.md",
+        "pattern": "\\| \\*\\*Pack version\\*\\* \\| \\d+\\.\\d+\\.\\d+ \\|",
+        "replace": "| **Pack version** | {packVersion} |",
+        "versionKind": "pack"
+      },
+      {
+        "file": "docs/WORK_QUEUE.md",
+        "pattern": "\\| \\*\\*Audit engine\\*\\* \\| \\d+\\.\\d+\\.\\d+ \\|",
+        "replace": "| **Audit engine** | {auditVersion} |",
+        "versionKind": "audit"
       }
     ]
   }

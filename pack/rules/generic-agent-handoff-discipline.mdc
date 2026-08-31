@@ -34,11 +34,7 @@ Audit **never** suggests archive/delete while `agents_remaining` is non-empty.
 
 ## Completing work
 
-When moving WQ to **Done**:
-
-1. Set handoff **`status: completed`** and **`completed:`** date.
-2. Clear **`agents_remaining`** when the last agent finishes.
-3. Run **`run_audit.cmd`** — audit reports **Improve** when archive is safe (human/agent archives with **`archive-completed-handoff.ps1 -Apply`** after explicit user confirm; audit does **not** auto-delete or auto-move).
+Follow **`pack/docs/WORK_COMPLETION.md`** end-to-end (handoff status, WORK_QUEUE Done, `verify-complete-picture.ps1`, audit, archive). Do not duplicate that checklist here.
 
 ## Exempt
 

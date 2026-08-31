@@ -25,6 +25,7 @@ The pack is **portable** (flash drive, new machine): copy the folder, run `Insta
 | Audit templates / machine checks | `pack/templates/`, `pack/scripts/` | `sync-audit-system.ps1` |
 | Pack or audit **version** in maintainer docs | bump `VERSION` and/or `manifest.json` | **`sync-doc-versions.ps1`** or `Sync-DocVersions.cmd` (also runs on install/sync) |
 | Pack docs | `pack/docs/` | `install.ps1` (mirrors to `%USERPROFILE%\.cursor\AgentStarterPack\`) |
+| **Rules vs verify inventory** | `pack/docs/RULES_AND_VERIFY_MAP.md` | Update when adding rules or `verify-*.ps1` scripts |
 | Product-only behavior (UI stack, product reference, upgrade tiers) | **App repo** `.cursor/rules/` **project-only** files | That app's tests / audit only |
 | Product docs | App `docs/` | That app's `run_audit.cmd` when shipping |
 

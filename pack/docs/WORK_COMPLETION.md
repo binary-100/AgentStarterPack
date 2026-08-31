@@ -29,6 +29,7 @@ Location after install: `%USERPROFILE%\.cursor\AgentStarterPack\pack\docs\WORK_C
 | 3 | Update product docs if **user-visible** behavior changed | Drift |
 | 4 | Handoff registry: **`status: completed`**, **`completed:`** date (ISO) | Archive gates fail |
 | 5 | **`docs/WORK_QUEUE.md`:** move WQ row to **Done log** with evidence | verify-agent-handoffs **Fix** |
+| 5b | **Handoff alignment:** run `verify-complete-picture.ps1`; fix **FAIL** where Done WQ IDs still read parked/not built — see **`pack/docs/RULES_AND_VERIFY_MAP.md`** | Agents rebuild shipped work from stale HANDOVER/spec |
 | 6 | **`run_audit.cmd`** (full tests + semantic report + finalize) exit **0** | Archive without verification |
 | 7 | Read audit output: handoff **Improve** "archive-ready" (optional but recommended) | Archive while still active |
 | 8 | **Human confirms** archive (or explicit user: "archive the handoff") | Agent archives too early |

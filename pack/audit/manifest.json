@@ -1,5 +1,5 @@
 {
-  "version": "2.22.40",
+  "version": "2.22.43",
   "description": "Audit system manifest - every file that must stay in sync. Used by sync-audit-system.ps1 and verify-audit-system.ps1.",
 
   "packMirror": [
@@ -13,6 +13,7 @@
     "pack/docs/AGENT_WORKFLOW.md",
     "pack/docs/WORK_COMPLETION.md",
     "pack/docs/AGENT_COORDINATION_BACKLOG.md",
+    "pack/docs/RULES_AND_VERIFY_MAP.md",
     "pack/docs/PHASED_FEATURE_DESIGN.md",
     "pack/docs/portable/README.md",
     "pack/docs/portable/GENERIC_RULES.md",

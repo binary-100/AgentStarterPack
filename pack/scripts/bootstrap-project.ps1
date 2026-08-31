@@ -429,7 +429,7 @@ if ($Stack -eq "Python") {
     )
 }
 $manifest = @{
-    bootstrapVersion = "1.7.0"
+    bootstrapVersion = "1.8.0"
     projectName      = $ProjectName
     projectRoot      = $ProjectRoot
     stack            = $Stack

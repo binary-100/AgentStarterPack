@@ -1,10 +1,26 @@
 # Multi-tool gap plan — Agent Starter Pack
 
 **Work queue:** WQ-003 (Phase 1)  
-**Last updated:** 2026-08-29  
-**Tracks:** Editor/tool/model portability only — **not** OS/shell (Windows-only decided; see `docs/PORTABLE_SETUP.md`).
+**Last updated:** 2026-08-30  
+**Tracks:** Editor/tool/model portability only — **not** OS/shell (see `docs/OS_PORTABILITY_PLAN.md` / WQ-304).
 
 **Design goal (HANDOVER §1):** Work in as many agents/models/IDEs as practical via shared docs and scripts. Cursor keeps the deepest integration.
+
+**Canonical queue:** `docs/WORK_QUEUE.md` — when any doc disagrees with Done/Parked there, **fix the doc** (not the queue).
+
+---
+
+## Phase ID map (one workstream — many labels)
+
+The same slice was named in three places during design. **Use WQ IDs in handoffs and the work queue**; cite this table when you need a phase number.
+
+| WQ ID | Work queue name | `PACK_IMPLEMENTER_SPEC` | `AGENT_UPGRADE_PATH` | This plan |
+|-------|-----------------|-------------------------|----------------------|-----------|
+| **WQ-301** | Phase 6b MCP freshness tools | Phase **6b** | Phase **B** | Phase **5** |
+| **WQ-308** | Phase D freshness adapter | — | Phase **D** | Phase **6** |
+| **WQ-302** | Phase 6c mailbox *(parked)* | Phase **6c** | — | — |
+
+**Status (2026-08-30):** WQ-301 and WQ-308 are **Done** (behavior steps **35**, **38–39**). Only **WQ-302** remains parked for multi-agent coordination.
 
 ---
 

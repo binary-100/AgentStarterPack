@@ -9,7 +9,7 @@ Regenerate: ``pack\scripts\sync-portable-docs.ps1`` (also runs during ``sync-aud
 | ``%USERPROFILE%\.cursor\rules\*.mdc`` | Cursor (after ``install.ps1``) |
 | This file | Claude, Copilot, Windsurf, CLI - paste or attach at session start |
 
-Pack version: 1.7.0
+Pack version: 1.8.0
 Rule files: 12
 
 ---
@@ -222,6 +222,19 @@ Which step that is depends on the project — the `docs/VERSION_SYNC.json` and
 what the repo actually has before running anything; **`generic-version-sync.mdc`** covers the
 pipeline in detail.
 
+## 6. After shipping or changing status (Done / Parked / Next)
+
+**Version sync (§5) is not status sync.** Bumping engine version in docs does not update "Phase 6b not built" paragraphs.
+
+When a work item moves on **`docs/WORK_QUEUE.md`** (especially to **Done** or **Parked**):
+
+1. Update **derivative docs** that still describe the old state — HANDOVER §11, gap/plan rows, spec headers, coordination backlog — not only the queue file.
+2. Prefer **WQ ids** (`WQ-301`) over phase-only labels in handoffs; use **`docs/MULTI_TOOL_GAP_PLAN.md`** § Phase ID map when multiple phase numbers exist.
+3. **Maintainer pack:** run **`verify-complete-picture.ps1`** before claiming done (see **`pack/docs/WORK_COMPLETION.md`** step 5b).
+4. Inventory of rules vs verify scripts: **`pack/docs/RULES_AND_VERIFY_MAP.md`**.
+
+Do **not** add a second always-on rule for this — extend the work queue row and run the verify script.
+
 
 ---
 
@@ -260,11 +273,7 @@ Audit **never** suggests archive/delete while `agents_remaining` is non-empty.
 
 ## Completing work
 
-When moving WQ to **Done**:
-
-1. Set handoff **`status: completed`** and **`completed:`** date.
-2. Clear **`agents_remaining`** when the last agent finishes.
-3. Run **`run_audit.cmd`** — audit reports **Improve** when archive is safe (human/agent archives with **`archive-completed-handoff.ps1 -Apply`** after explicit user confirm; audit does **not** auto-delete or auto-move).
+Follow **`pack/docs/WORK_COMPLETION.md`** end-to-end (handoff status, WORK_QUEUE Done, `verify-complete-picture.ps1`, audit, archive). Do not duplicate that checklist here.
 
 ## Exempt
 
@@ -366,7 +375,7 @@ Use when the user asks for **where we stand**, **what's pending**, **handoff cle
 |------|-------------|
 | 1 | **Inventory all agent/handoff sources** at repo root and `pack/docs/` — list every file read or explicitly skipped with reason. Include **`docs/WORK_QUEUE.md`** when present. |
 | 2 | **Grep all of them** for: `deferred`, `not built`, `not implemented`, `open question`, `design goal`, `next step`, `pick up`, `parked`, `remaining`, `tool-neutral`, `multi-tool`, `Cursor-specific`, `Windows-only`, `audit depth` |
-| 3 | **Separate tracks** — do not collapse into one "portability" bucket. At minimum distinguish: **(A) OS/shell**, **(B) editor/tool/model**, **(C) audit depth**, **(D) git/release**, **(E) agent refresh**, **(F) explicitly deferred (6b/6c)** |
+| 3 | **Separate tracks** — do not collapse into one "portability" bucket. At minimum distinguish: **(A) OS/shell**, **(B) editor/tool/model**, **(C) audit depth**, **(D) git/release**, **(E) agent refresh**, **(F) explicitly deferred (6c mailbox / WQ-302 only — 6b/WQ-301 shipped)** |
 | 4 | **Map each track** to: documented intent → what shipped → what is still open → which doc says so (with path) |
 | 5 | **Live state** — version markers, install sync, test exit codes **in this turn** |
 | 6 | **Cross-check user callouts** — if the user says a topic should be in the docs, search for it before claiming it is missing |
@@ -581,10 +590,13 @@ If `docs/WORK_QUEUE.md` is missing in a bootstrapped project, treat `docs/ROADMA
 - Move row to **Done log** with date and evidence (test exit code, path, commit — whatever applies).
 - Set the next Active row to **Next** (exactly one).
 - If a **`docs/handoffs/active/HANDOFF_*.md`** row exists for that WQ: set handoff **`status: completed`**, **`completed:`** date, clear **`agents_remaining`**. Run **`run_audit.cmd`** before archiving; audit **Improve** may suggest `handoff_archive/` — never auto-delete (see **`generic-agent-handoff-discipline.mdc`**).
+- **Canonical status propagation (required):** WORK_QUEUE is the source of truth. After editing it, align **every derivative** that mentions that WQ or slice — handoff §11, phase/gap plan rows, spec status headers, PARKED/backlog docs. Full channel list: **`pack/docs/RULES_AND_VERIFY_MAP.md`** § Canonical status propagation.
+- **Maintainer pack repo:** run **`verify-complete-picture.ps1`** (behavior step 37) — exit **0** before claiming the slice done. Same checklist: **`pack/docs/WORK_COMPLETION.md`** step 5b.
 
 ### When deferring
 
 - Move to **Parked / deferred** with **Re-open when** — not deleted, not vague "later."
+- Remove or update any **Active/Next** or handoff text that still reads as in-progress for that WQ (same propagation list as completing work).
 
 ### When reprioritizing (allowed — often required)
 
@@ -625,6 +637,7 @@ Order in **Active queue** is **not frozen**. Move rows when dependencies, blocke
 Canonical copy: `pack/rules/generic-work-queue-discipline.mdc` — installed via `install.ps1`.  
 Template: `pack/templates/docs/WORK_QUEUE.md.template` — bootstrap `-Targets` all layouts.  
 **Verify:** `pack/scripts/verify-work-queue.ps1 -ProjectRoot PATH` (also in `verify-agent-setup.ps1` and behavior step 31).  
+**Status alignment:** `pack/scripts/verify-complete-picture.ps1` (step 37) — see **`pack/docs/RULES_AND_VERIFY_MAP.md`**.  
 **Backfill:** `ensure-work-queue.ps1` runs from `refresh-agent-context.ps1` when the file is missing.
 
 

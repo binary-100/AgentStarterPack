@@ -6,8 +6,8 @@
 
 **Continuing over a weekend or on another machine?** Read **`WEEKEND_HANDOFF.md`** first — it carries the
 transfer path, the one remaining portability limit, and what is deliberately deferred.  
-**Pack version:** root `VERSION` (**1.7.0**)  
-**Audit engine version:** `pack/audit/manifest.json` (**2.22.37**)  
+**Pack version:** root `VERSION` (**1.8.0**)  
+**Audit engine version:** `pack/audit/manifest.json` (**2.22.43**)  
 *Both cites above are maintained by `Sync-DocVersions.cmd` — the sync only recognises the parenthesised form, so keep it.*  
 **Repo location:** wherever the pack folder is plugged in. It is carried on a **removable exFAT drive** (was `D:\AgentStarterPack` when this was written; the letter changes per machine). Paths below are relative to the pack root — never hard-code the drive.
 
@@ -361,9 +361,9 @@ the findings appear, that **none** land in Fix, and that the semantic gate holds
 hardcoded `app\` in its remediation text, so flat projects were told to delete paths they do not have
 — fixed.
 
-**Not built (still out of scope, per the spec):** Phase 6b MCP tools (`check_pack_freshness`,
-`get_agent_refresh_brief`) and Phase 6c the multi-agent mailbox. `AGENT_CHAT_SYNC.md` named in the
-spec never existed in this checkout; the refresh brief supersedes the need for it.
+**Shipped after this block was written:** Phase **6b** MCP tools (**WQ-301**, engine **2.22.21**, behavior step **35**) and Phase **D** session-start adapter (**WQ-308**, steps **38–39**). See `docs/MULTI_TOOL_GAP_PLAN.md` § Phase ID map.
+
+**Still parked:** Phase **6c** multi-agent mailbox (**WQ-302**). Legacy manual paste doc **`AGENT_CHAT_SYNC.md`** was **removed** — use `Refresh-AgentContext.cmd` / `docs/AGENT_REFRESH.md` / `docs/AGENT_PASTE.txt`.
 
 ### Rule delivery, paste hygiene, host parity, transfer (2.22.1 – 2.22.4)
 
@@ -388,55 +388,34 @@ Four smaller bumps, each triggered by trying to use the thing rather than read i
 
 ---
 
-## 6. Current state (as of handover)
+## 6. Current state (pointer — do not duplicate WORK_QUEUE)
 
-### Versions
+**Canonical live state:** `docs/WORK_QUEUE.md` + `pack/audit/manifest.json` + root `VERSION`.
 
-| Artifact | Value |
-|----------|-------|
-| Pack `VERSION` | 1.7.0 |
-| Audit manifest | **2.22.6** |
-| Sync coverage | `packMirror` now covers **107** paths: every `pack/rules`, `pack/skills`, `pack/docs` + repo `docs/*.md`, every `pack/scripts/*.{ps1,py}`, and all of `pack/templates`. Behavior step 5b enumerates each group rather than listing files, because this same hole was found four separate times (rules, skills, docs, then bootstrap + templates). `docs/AGENT_REFRESH.md` is excluded by name — generated per machine |
-| Portable transfer | **Verified end to end** (2.22.4): exported, extracted to a separate path, and run there as a receiving machine - resolves its own pack root, passes the full suite, installs to a redirected target, bootstraps a project that reaches the semantic gate. Two defects found and fixed: the export shipped the sending machine's agent-context stamp, and `install.ps1` ignored `AGENT_STARTER_PACK_INSTALL_ROOT` (so a test asking for a scratch destination rewrote the real profile). |
-| PowerShell hosts | 5.1 (floor, and the host) + 7.6.5 installed for cross-version verification. Suite passes on both; `-DualShell` runs it on both |
-| Installed copy (`%USERPROFILE%\.cursor\AgentStarterPack\`) | **Installed** (user-scope, 2026-08-27, at the user's request, to verify the install paths). The pack ships 9 rules + 3 skills; the profile holds **10 rules and 4 skills** because two are the user's own — see the machine-local note below. `agent-hygiene` registered in `mcp.json` beside the user's 13 servers (14 total). The **MCP SDK is now installed** — `mcp.server.fastmcp` imports from outside the pack folder, so `doctor.ps1` reports 0 warnings. Verify it from *outside* the pack: `import mcp` succeeds from the pack root regardless, because the pack's own `mcp\` folder shadows the real package. |
+| Artifact | Where to read |
+|----------|----------------|
+| Pack release | root `VERSION` (sync via `Sync-DocVersions.cmd`) |
+| Audit engine | `pack/audit/manifest.json` `"version"` |
+| Next maintainer task | `docs/WORK_QUEUE.md` Active **Next** |
+| Rules vs verify inventory | `pack/docs/RULES_AND_VERIFY_MAP.md` |
+| Installed profile | `%USERPROFILE%\.cursor\AgentStarterPack\` — run `install.ps1 -Scope User` after Desktop edits |
 
-### Verification (last run 2026-08-28 at 2.22.4, from the pack folder, with a user-scope install present)
+**Verification entry points** (from pack root):
 
 ```powershell
-# From the pack root, wherever it lives
-.\run_audit_tests.bat                                                    # exit 0
-powershell -NoProfile -ExecutionPolicy Bypass -File .\pack\scripts\verify-audit-behavior.ps1   # 0 fail
-py -3 .\pack\scripts\audit_code_checks.py --self-test                    # OK
-py -3 .\pack\scripts\sync_doc_versions.py (Get-Location).Path --verify   # ok: true
-.\run_audit.cmd                                                          # then semantic report, then:
-.\scripts\finalize_audit.cmd                                             # exit 0 - Fix: Nothing found
+.\run_audit_tests.bat
+powershell -NoProfile -ExecutionPolicy Bypass -File .\pack\scripts\verify-audit-behavior.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\pack\scripts\verify-complete-picture.ps1 -ProjectRoot (Get-Location).Path
+py -3 .\pack\scripts\sync_doc_versions.py (Get-Location).Path --verify
 ```
 
-The pack's own three-step self-audit (machine, semantic, finalize) has been run to completion at every bump through **2.22.4** and finalizes with **Fix: Nothing found** *and* **Improve: Nothing found**. The `Section G` Improve closed at 2.21.22 because `mcp.json` now registers the server.
+Historical session detail (2.22.4-era checks, transfer notes, pruning) lives in **`pack/docs/AUDIT_SYSTEM_CHANGELOG.md`** — do not treat old paragraphs below this section as current if they contradict WORK_QUEUE or the manifest.
 
-Also at 2.22.4: `run_audit_tests.bat` exit 0, and `verify-audit-behavior.ps1 -DualShell` exit 0 — the full suite passes on **both** PowerShell 5.1 and 7.6.5.
+**Pruning (still true):** `install.ps1 -Prune` removes files the pack no longer ships; user-added profile rules/skills are never candidates.
 
-Verified with the install in place, all previously dark:
+**Careful with the install:** pack self-audit may mirror into `%USERPROFILE%\.cursor\AgentStarterPack` via `autoFixDrift` — treat as pack output, not another repo.
 
-| Check | Result |
-|-------|--------|
-| `verify-agent-setup.ps1` | 0 fail, 0 warn |
-| `doctor.ps1` | 0 fail, 0 warn (the MCP SDK warning closed when the SDK was installed). Note it runs the full behavior suite via `verify-audit-system.ps1`, so it takes ~80s — it is not the quick health check its name suggests |
-| `sync-audit-system.ps1 -VerifyOnly` | OK against the **real** install, not a scratch target |
-| Profile copy contents | No `.pyc`, `__pycache__`, `.git`, `.tmp`, or `.audit_*`; 129 files |
-| `mcp.json` | 14 servers; the user's 13 byte-identical; merge idempotent; BOM-free |
-| Bootstrap from the **installed** pack, audited with no `AGENT_STARTER_PACK_ROOT` | Tests OK, machine checks clean, only the semantic gate open — the intended first-run state |
-
-**Remaining ceiling.** `install.sh` is still unexecuted (no bash here; verified byte-level: LF-only, ASCII, bare-LF shebang, and `.gitattributes` now pins `*.sh` to LF so a checkout cannot re-break it). Import smoke still covers root `*.py` only, and ~3,300 lines of pack PowerShell sit outside Section B's inventory (documented in `docs/AUDIT.md`). **Nothing is verified on a second machine** — the 2.22.4 transfer test exported, extracted to a separate path, and ran the pack there, which catches self-path and machine-identity defects but is still one machine, one OS, one PowerShell pair.
-
-**Testing an install without touching the profile.** Set `AGENT_STARTER_PACK_INSTALL_ROOT` to a scratch path before running `install.ps1`; the pack tree, `rules\`, `skills\` and `mcp.json` all follow it (2.22.4 — before that the installer ignored it and wrote the real profile). Behavior step 26 asserts this, hashing only install-owned files, because stamping all of `%USERPROFILE%\.cursor` goes flaky against the running editor's own writes.
-
-**Pruning exists now but is opt-in.** `install.ps1 -Prune` (also `update-agents.ps1 -Prune`) removes files the pack no longer ships. Profile `rules\` and `skills\` are only touched for files a previous install *recorded* shipping — `install-manifest.json` carries that list as of 2.21.22 — so an install predating the record prunes nothing there, and a rule or skill the user added is never a candidate. Behavior step 26 asserts that direction specifically; if you touch the stale scan, keep those assertions about what must **not** be deleted.
-
-**Careful with the install now that one exists.** A pack self-audit mirrors into `%USERPROFILE%\.cursor\AgentStarterPack` via `autoFixDrift`, which is by design but is a write outside this checkout — it was previously skipped only because no install existed. The rule text in `.cursor/rules/pack-only-edit-boundary.mdc` does not carve this out explicitly; treat install output as pack output, not as another repo.
-
-**A project audit must never write to `%USERPROFILE%`.** It did until 2.21.17. If you touch the mirror or `autoFixDrift`, re-check that: `Test-Path "$env:USERPROFILE\.cursor\AgentStarterPack"` before and after a project audit on an uninstalled machine.
+**A project audit must never write to `%USERPROFILE%`.** Re-check after mirror/`autoFixDrift` changes.
 
 Optional app-level checks (only when user names a bootstrapped project):
 
@@ -446,12 +425,12 @@ Optional app-level checks (only when user names a bootstrapped project):
 
 ### Git / uncommitted work
 
-**Nothing from this workstream is committed.** `HEAD` is `d9e7835` (audit engine **2.21.6**); everything from 2.21.7 through **2.22.4** — new scripts, rules, templates, portability fixes — exists only in the working tree (~100 changed files, ~30 of them new). Copying this repo without the working tree loses all of it. Run `git status` before continuing.
+**Large local diff (WQ-413 hygiene batch, engine 2.22.43)** — not committed unless the user asks. Remote: `https://github.com/binary-100/AgentStarterPack.git` (WQ-006). Run `git status` before continuing.
 
-The maintainer commits and pushes from their own machine; do not commit here unless asked. Notes for that session:
+**Maintainer commits and pushes from their own machine** unless the user explicitly asks the agent to commit here. Before push after doc/manifest bumps:
 
-- Deletions to stage: the two old product-named reference templates under `pack/templates/docs/` (replaced by `AUDIT.app.reference.md` / `AUDIT.config.app.reference.json`), and tracked `install-manifest.json` (now gitignored — install writes it into the profile copy, never the checkout). `git status` lists them; do not restore them.
-- **Untrack generated files that are now ignored** (git keeps tracking files added before an ignore rule):
+- Stage deletions (e.g. **`AGENT_CHAT_SYNC.md`** removed — do not restore).
+- **Untrack generated files that are now ignored** if git still tracks them:
 
 ```powershell
 git rm --cached pack/audit/behavior-fixture/docs/.audit_domain_expanded.json
@@ -459,14 +438,7 @@ git rm --cached pack/audit/behavior-fixture/docs/.audit_inventory.json
 git ls-files -i -c --exclude-standard   # expect empty afterwards
 ```
 
-  Without this, every `run_audit_tests.bat` run shows the fixture's regenerated audit artifacts as modified files.
-- **Git history** still contains product-specific content in commits before `d9e7835`; the working tree is clean of those names.
-
-**The repo lives on the removable exFAT drive**, which has consequences worth deciding on before connecting a remote:
-
-- exFAT records no ownership, so git refuses to touch the repo until each machine runs `git config --global --add safe.directory <pack path>` — once per machine, and again if the drive letter changes. The audit's test-pass proof uses git HEAD when the pack folder is a repo, so this blocks audits too, not just git commands.
-- exFAT has no exec bit and is case-insensitive. The pack ships no symlinks or executables, so this is cosmetic today; keep it that way.
-- If you would rather not carry `.git` on the stick, clone to local disk on your main machine and push from there, treating the stick as a working copy. Either model works — decide before the first push, since moving `.git` later is more disruptive.
+**Removable drive (exFAT):** `git config --global --add safe.directory <pack path>` once per machine if git refuses the repo path.
 
 ### User preferences established
 
@@ -499,7 +471,7 @@ exists. If you are looking for unbuilt work, skip to *Still deferred* below.
 | Refresh brief | **`docs/AGENT_REFRESH.md`** | Generated: what changed, files to re-read, embedded paste line |
 | One-line notice | **`docs/AGENT_PASTE.txt`** | Single ASCII line, also placed on the clipboard |
 | CLI | **`refresh-agent-context.ps1`** + **`Refresh-AgentContext.cmd`** | optional install + `sync-project-rules` + `sync-audit-system`, then writes the artifacts above |
-| Tool adapters | `AI_INSTRUCTIONS.md.template` points non-Cursor agents at the same file; `agent-defaults-always.mdc` carries the **refresh pack context** trigger | MCP surface for this is Phase 6b, deferred |
+| Tool adapters | `AI_INSTRUCTIONS.md.template` points non-Cursor agents at the same file; `agent-defaults-always.mdc` carries the **refresh pack context** trigger | MCP: `check_pack_freshness`, `get_agent_refresh_brief` (**WQ-301**, step **35**) |
 
 All three artifacts are **gitignored and excluded from `export.ps1`** — they record one machine's
 absolute paths and the versions current when generated, so sharing them misleads the receiving machine
@@ -521,8 +493,9 @@ pack and audit engine versions, so an agent that did not actually read the files
 
 ### Still deferred
 
-- **Phase 6b — MCP tools** (`check_pack_freshness`, `get_agent_refresh_brief`): would let an agent ask whether its context is stale instead of the user pasting a line. Parked because the paste line plus the **refresh pack context** trigger already close the gap, and the user chose to keep it at one command.
-- **Phase 6c — multi-agent coordination mailbox** — parked in `pack/docs/AGENT_COORDINATION_BACKLOG.md` until a Cursor platform change makes it worthwhile.
+- **Phase 6c — multi-agent coordination mailbox (**WQ-302**)** — parked in `pack/docs/AGENT_COORDINATION_BACKLOG.md` until a platform change makes it worthwhile.
+
+**Shipped (do not rebuild):** Phase **6b** MCP tools (**WQ-301**); Phase **D** session-start + hub repair (**WQ-308**). Phase ID map: `docs/MULTI_TOOL_GAP_PLAN.md`.
 - **Import smoke beyond root `*.py`** — modules under `moduleSearchDirs` are inventoried but never imported.
 - **`install.sh` parity** — never executed (no bash on the maintainer machine) and it does not mirror the PowerShell installer's project-scope skill exclusion.
 
@@ -559,7 +532,7 @@ Full guide: **`docs/PORTABLE_SETUP.md`**, **`docs/MULTI_INSTANCE_GUIDE.md`**
 AgentStarterPack/
 ├── HANDOVER_NEXT_AGENT.md          ← YOU ARE HERE
 ├── AGENTS.md                       ← Agent entry for this repo
-├── VERSION                         ← Pack canonical version (1.7.0)
+├── VERSION                         ← Pack canonical version (1.8.0)
 ├── Sync-DocVersions.cmd            ← Maintainer doc sync
 ├── Install-AgentStarterPack.cmd
 ├── install.ps1
@@ -583,7 +556,7 @@ AgentStarterPack/
 │   ├── starter-pack-repo.mdc
 │   └── audit.mdc                   ← Says "audit" here → docs/AUDIT.md protocol
 └── pack/
-    ├── audit/manifest.json         ← Audit engine version (2.22.37)
+    ├── audit/manifest.json         ← Audit engine version (2.22.43)
     ├── audit/behavior-fixture/     ← Generic app fixture for behavior tests
     ├── rules/                      ← Generic rules → install.ps1
     ├── scripts/                    ← Core tooling (pack-paths.ps1 = root resolution)
@@ -669,13 +642,13 @@ Report **Fix** and **Improve** only. Follow `docs/AUDIT.md`.
 
 | Priority | ID | Task |
 |----------|-----|------|
-| **Next** | WQ-006 | Git commit + remote — **153** working-tree paths (74 modified, 3 deleted, 76 untracked); commit only when user asks. No `git remote` configured yet (exFAT/USB checkout). |
+| **Next** | WQ-011 | Flash drive / install on other PC |
 
-**Recently completed (see Done log):** WQ-304 (OS portability Phases 1–6, engine **2.22.37**, behavior **43 steps / 0 fail**); WQ-308 (session-start + repair); WQ-305; WQ-204, WQ-206.
+**Recently completed (see Done log):** WQ-413 (hygiene batch); WQ-006 (git remote + CI); WQ-304; WQ-301; WQ-308.
 
-**Parked:** WQ-302 (mailbox), WQ-011 (other PC install).
+**Parked:** WQ-302 (mailbox).
 
-**CI:** `.github/workflows/pack-os-smoke.yml` — local pwsh smoke **exit 0**; GitHub `ubuntu-latest` run awaits remote + push (WQ-006).
+**CI:** `.github/workflows/pack-os-smoke.yml` — **Pack OS smoke** green on GitHub after WQ-006 push.
 
 **Maintainer workflow:** edit the **Desktop/USB checkout** → `Install-AgentStarterPack.cmd` → agents read `%USERPROFILE%\.cursor\AgentStarterPack\`.
 

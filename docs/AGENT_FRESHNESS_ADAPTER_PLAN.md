@@ -1,12 +1,12 @@
 # Agent freshness adapter — Phase D plan (WQ-308)
 
-**Status:** Phase D1–D2 shipped (engine 2.22.30) · **D3 next** (Claude/Copilot/Windsurf adapter paragraphs) · Plan: `docs/AGENT_FRESHNESS_ADAPTER_PLAN.md`
+**Status:** **Done 2026-08-30** — D1–D3 shipped (engine **2.22.30–32**, behavior steps **38–39**)
 **Last updated:** 2026-08-30  
 **Builds on:** Phases A–C (WQ-306, WQ-301, WQ-307) — schema v2, `agent_context_freshness.py`, MCP, `Update-AgentStack.cmd`
 
 | | |
 |---|---|
-| **Work queue** | WQ-308 (parked) |
+| **Work queue** | **WQ-308 Done** — see `docs/WORK_QUEUE.md` |
 | **Upgrade path** | `docs/AGENT_UPGRADE_PATH.md` § Phase D |
 | **Single source of truth** | `pack/scripts/agent_context_freshness.py` + `docs/AGENT_CONTEXT.json` (no second freshness logic) |
 
@@ -275,11 +275,9 @@ Extend `agent_context_freshness.py` (behavior step 35 already covers self-test):
 
 ---
 
-## Promotion to build
+## Promotion to build *(historical — WQ-308 shipped 2026-08-30)*
 
-1. User moves **WQ-308** from Parked → Active (or new WQ-309 split if D1 ships separately).
-2. Handoff: `docs/handoffs/active/HANDOFF_WQ308_freshness_adapter.md` with **Implement Phase D1 only** (phased rule).
-3. Bump audit engine when scripts ship; behavior step 38 before claiming done.
+Completed via behavior steps **38–39**. For future adapter work, open a **new WQ ID** — do not reopen WQ-308.
 
 ---
 

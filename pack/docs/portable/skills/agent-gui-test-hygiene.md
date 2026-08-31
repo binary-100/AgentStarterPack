@@ -2,7 +2,7 @@
 
 Auto-generated from `pack/skills/agent-gui-test-hygiene/SKILL.md`. **Do not edit by hand.**
 
-Pack version: 1.7.0
+Pack version: 1.8.0
 
 ---
 

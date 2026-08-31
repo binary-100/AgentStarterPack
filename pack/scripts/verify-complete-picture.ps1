@@ -61,7 +61,40 @@ $pendingPatterns = @(
 $knownStalePhrases = @(
     'Implement Agent Context Refresh',
     'refresh-agent-context.ps1 + `Refresh-AgentContext.cmd`',
-    'Optional Phase 2: MCP tools on agent-hygiene'
+    'Optional Phase 2: MCP tools on agent-hygiene',
+    'Phase 6b (MCP tools) and 6c (mailbox) remain unbuilt',
+    'MCP surface for this is Phase 6b, deferred',
+    'Also parked: MCP surface for the refresh',
+    'WQ-308 (parked)',
+    'build when promoted from Parked'
+)
+
+# When a WQ id is in Done log, these patterns in handoff docs mean stale "still open" text.
+$shippedWqContradictions = @(
+    @{
+        WqId      = 'WQ-301'
+        Label     = 'Phase 6b MCP freshness'
+        Patterns  = @(
+            '(?i)Phase\s+6b[^\n]{0,160}\|\s*Not built',
+            '(?i)Phase 6b[^.\n]{0,120}(remain unbuilt|Also parked)',
+            '(?i)MCP surface for this is Phase 6b,\s*deferred',
+            '(?i)Also parked:\s*MCP surface'
+        )
+    },
+    @{
+        WqId      = 'WQ-308'
+        Label     = 'Phase D session-start adapter'
+        Patterns  = @(
+            '(?i)\|\s*\*\*Work queue\*\*\s*\|\s*WQ-308\s*\(\s*parked\s*\)',
+            '(?i)Phase D[^.\n]{0,80}deferred[^.\n]{0,60}WQ-308',
+            '(?i)build when promoted from Parked'
+        )
+    }
+)
+
+$alignmentSkipRel = @(
+    'pack\docs\AUDIT_SYSTEM_CHANGELOG.md',
+    'docs\WORK_QUEUE.md'
 )
 
 $handoffSources = [System.Collections.Generic.List[string]]::new()
@@ -84,7 +117,13 @@ if ($isPackRepo) {
             'pack\docs\AGENT_HANDOFFS.md',
             'pack\docs\AGENT_WORKFLOW.md',
             'pack\docs\PACK_MAINTENANCE.md',
-            'pack\docs\AGENT_COORDINATION_BACKLOG.md'
+            'pack\docs\AGENT_COORDINATION_BACKLOG.md',
+            'pack\docs\RULES_AND_VERIFY_MAP.md',
+            'docs\MULTI_TOOL_GAP_PLAN.md',
+            'docs\AGENT_UPGRADE_PATH.md',
+            'docs\AGENT_FRESHNESS_ADAPTER_PLAN.md',
+            'PACK_IMPLEMENTER_SPEC.md',
+            'PHASE_6_IMPLEMENTATION_SPEC.md'
         )) {
         $p = Join-Path $ProjectRoot $rel
         if (Test-Path -LiteralPath $p) { [void]$handoffSources.Add($p) }
@@ -177,7 +216,51 @@ if (Test-Path -LiteralPath $wqPath) {
 foreach ($phrase in $knownStalePhrases) {
     if ($sec11 -match [regex]::Escape($phrase)) {
         $msg = "HANDOVER section 11 contains stale shipped task phrase: $phrase"
-        if ($AuditMode) { Emit-Audit 'IMPROVE' $msg } else { Write-Info $msg }
+        if ($AuditMode) { Emit-Audit 'IMPROVE' $msg } else { Write-Fail $msg }
+    }
+}
+
+if (Test-Path -LiteralPath $wqPath) {
+    $wqRawAlign = Get-Content -LiteralPath $wqPath -Raw -Encoding UTF8
+    $doneBodyAlign = Get-SectionBody $wqRawAlign '## Done log' @('## Cross-references')
+    $doneIdSet = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]](Get-WqIdsFromSection $doneBodyAlign)
+    )
+    foreach ($rule in $shippedWqContradictions) {
+        if (-not $doneIdSet.Contains($rule.WqId)) { continue }
+        foreach ($src in $uniqueSources) {
+            $rel = $src.Substring($ProjectRoot.Length).TrimStart('\').Replace('/', '\')
+            if ($alignmentSkipRel -contains $rel) { continue }
+            $raw = Get-Content -LiteralPath $src -Raw -Encoding UTF8
+            foreach ($pat in $rule.Patterns) {
+                if ($raw -match $pat) {
+                    $msg = "$rel contradicts $($rule.WqId) Done ($($rule.Label)): matches stale pattern"
+                    if ($AuditMode) { Emit-Audit 'IMPROVE' $msg } else { Write-Fail $msg }
+                    break
+                }
+            }
+        }
+    }
+    # Generic: any Done WQ id must not read as parked / not built in handoff sources
+    $genericStalePatterns = @(
+        '(?i){0}\s*\(\s*parked\s*\)',
+        '(?i)\|\s*{0}\s*\|[^|\n]{{0,240}}\|\s*(Not built|Parked|deferred)',
+        '(?i)\*\*Work queue\*\*\s*\|\s*{0}\s*\(\s*parked'
+    )
+    foreach ($doneId in $doneIdSet) {
+        foreach ($src in $uniqueSources) {
+            $rel = $src.Substring($ProjectRoot.Length).TrimStart('\').Replace('/', '\')
+            if ($alignmentSkipRel -contains $rel) { continue }
+            $raw = Get-Content -LiteralPath $src -Raw -Encoding UTF8
+            foreach ($tpl in $genericStalePatterns) {
+                $pat = $tpl -f [regex]::Escape($doneId)
+                if ($raw -match $pat) {
+                    $msg = "$rel contradicts $doneId Done: still reads parked/not built/deferred"
+                    if ($AuditMode) { Emit-Audit 'IMPROVE' $msg } else { Write-Fail $msg }
+                    break
+                }
+            }
+        }
     }
 }
 

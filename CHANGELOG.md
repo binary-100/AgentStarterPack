@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.8.0 — 2026-08-30
+
+### Maintainer hygiene + rules consolidation
+
+- Canonical status propagation in work-queue / doc-hygiene rules; `pack/docs/RULES_AND_VERIFY_MAP.md`
+- `verify-complete-picture.ps1` — Done-WQ vs stale parked/not-built checks; more handoff sources
+- `Update-AgentStack` runs complete-picture verify on maintainer pack repo
+- Removed legacy **`AGENT_CHAT_SYNC.md`** (superseded by `Refresh-AgentContext.cmd` / `AGENT_REFRESH.md`)
+- `docs/VERSION_SYNC.json` — **`docs/WORK_QUEUE.md`** header in maintainer doc sync (S2-9)
+
 ## 1.7.0 — 2026-08-16
 
 ### Rebrand: Agent Starter Pack

@@ -4,7 +4,7 @@ Portable toolkit: **audits (Fix + Improve)**, **terminal hygiene MCP**, **CI bui
 
 **Full guide:** [pack/docs/START_HERE.md](pack/docs/START_HERE.md)
 
-**Pack version:** see root `VERSION` (**1.7.0**). Audit engine version: `pack/audit/manifest.json` (**2.22.37**).
+**Pack version:** see root `VERSION` (**1.8.0**). Audit engine version: `pack/audit/manifest.json` (**2.22.43**).
 
 ---
 

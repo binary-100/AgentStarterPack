@@ -54,6 +54,22 @@ When **agent-hygiene** MCP is registered:
 
 Same facts as `AGENT_CONTEXT.json` — not a second source of truth.
 
+**Return fields (shipped API):** `stale`, `reasons`, `requiredReads`, `installedEngineVersion`, `stampedEngineVersion`, `packVersion`, `layers`, `canonicalProjectRoot`, `requiredReads` — see `pack/scripts/agent_context_freshness.py`. *(Design-era names `installedVersion` / `desktopVersion` in `PACK_IMPLEMENTER_SPEC.md` were superseded by engine-version fields.)*
+
+---
+
+## Phase D — session-start adapter (WQ-308, shipped)
+
+| Piece | Location |
+|-------|----------|
+| Session-start brief | `docs/AGENT_SESSION_START.md` (regenerated on refresh) |
+| Cursor hook | `.cursor/hooks.json` → `pack/templates/cursor/hooks/session-freshness.ps1` |
+| Hub repair | `pack/scripts/repair-agent-docs.ps1` (also on refresh / `Update-AgentStack.cmd`) |
+
+Behavior steps **38–39**. Plan archive: [`docs/AGENT_FRESHNESS_ADAPTER_PLAN.md`](AGENT_FRESHNESS_ADAPTER_PLAN.md).
+
+**Still parked:** Phase **6c** multi-agent mailbox — **WQ-302** only (`pack/docs/AGENT_COORDINATION_BACKLOG.md`).
+
 ---
 
 ## Related
@@ -62,6 +78,5 @@ Same facts as `AGENT_CONTEXT.json` — not a second source of truth.
 |-----|-------|
 | `docs/PORTABLE_SETUP.md` | Multi-tool setup |
 | `pack/docs/PACK_MAINTENANCE.md` | Sync and install |
-| `docs/MULTI_TOOL_GAP_PLAN.md` | Parity matrix |
-
-**Deferred:** Cursor session hooks and wider session-start adapters (Phase D) — see [`docs/AGENT_FRESHNESS_ADAPTER_PLAN.md`](AGENT_FRESHNESS_ADAPTER_PLAN.md) (WQ-308). Phases A–C are stable; build when promoted from Parked.
+| `docs/MULTI_TOOL_GAP_PLAN.md` | Parity matrix + **phase ID map** |
+| `docs/WORK_QUEUE.md` | Canonical Done / Parked |

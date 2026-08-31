@@ -6,6 +6,45 @@ Bump **`pack/audit/manifest.json`** `"version"` when you change synced audit fil
 
 ---
 
+## 2.22.43 (2026-08-30)
+
+**Hygiene batch (WQ-413):**
+
+- **`VERSION` → 1.8.0** + `CHANGELOG.md`; maintainer doc sync targets refreshed
+- **`AGENT_CHAT_SYNC.md` deleted** — superseded by refresh pipeline
+- **`HANDOVER_NEXT_AGENT.md` §6** — pointer-only (removed stale 2.22.4 block)
+- **`verify-work-queue.ps1`** — allow empty Active **Next** when header says `(none)`
+- **`update-agent-stack.ps1`** — runs **`verify-complete-picture.ps1`** on maintainer pack after refresh
+- **`generic-agent-handoff-discipline.mdc`** — completion defers to **`WORK_COMPLETION.md`** (removed duplicate checklist)
+- **`docs/VERSION_SYNC.json`** — **`docs/WORK_QUEUE.md`** in maintainer doc sync + table `extraReplacements` (S2-9)
+- **`verify-work-queue.ps1`** — header **Pack version** / **Audit engine** vs `VERSION` + manifest
+
+---
+
+## 2.22.42 (2026-08-30)
+
+**Rules / verify consolidation (status drift prevention):**
+
+- **`pack/docs/RULES_AND_VERIFY_MAP.md`** — inventory of rules vs verify scripts, overlaps, prevention vs detection, canonical status propagation
+- **`generic-work-queue-discipline.mdc`** — propagate status to all derivative docs + run `verify-complete-picture.ps1` on Done/Parked
+- **`generic-agent-doc-hygiene.mdc`** — §6 after-ship status alignment (distinct from version sync)
+- **`generic-agent-handoff-discipline.mdc`** — completion checklist defers to `WORK_COMPLETION.md` + map (less duplication)
+- **`verify-complete-picture.ps1`** — scans more pack handoff sources; generic Done-WQ vs parked/not-built patterns for any Done id
+
+---
+
+## 2.22.41 (2026-08-30)
+
+**Handoff / WQ alignment (post-ship doc hygiene):**
+
+- **`verify-complete-picture.ps1`** — when a WQ id is in **Done log**, **FAIL** handoff/spec files that still say that slice is parked, not built, or deferred (WQ-301 / WQ-308 rules; changelog + WORK_QUEUE excluded)
+- **`pack/docs/WORK_COMPLETION.md`** — step **5b**: run complete-picture verify after moving WQ to Done
+- **Docs aligned:** Phase ID map in `docs/MULTI_TOOL_GAP_PLAN.md`; stale 6b/308 parked text removed from HANDOVER, WEEKEND_HANDOFF, PACK_IMPLEMENTER_SPEC, AGENT_COORDINATION_BACKLOG, AGENT_UPGRADE_PATH, AGENT_FRESHNESS_ADAPTER_PLAN
+- **Spec field names:** Phase 6b MCP return shape uses shipped `installedEngineVersion` / `stampedEngineVersion` (not design-era `desktopVersion`)
+- **`generic-deep-task-execution.mdc`** track **(F)** — deferred = **6c / WQ-302** only
+
+---
+
 ## 2.22.40 (2026-08-30)
 
 **Linux CI probe fix:**

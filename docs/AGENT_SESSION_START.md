@@ -1,12 +1,12 @@
 # Agent session start
 
-**Context: OK** (audit engine 2.22.31). No mandatory re-read this session.
+**Context: OK** (audit engine 2.22.43). No mandatory re-read this session.
 
 | Check | Value |
 |-------|-------|
-| Pack version | 1.7.0 |
-| Stamped engine | 2.22.31 |
-| Installed engine | 2.22.31 |
+| Pack version | 1.8.0 |
+| Stamped engine | 2.22.43 |
+| Installed engine | 2.22.43 |
 | Reason | (none) |
 
 **Required reads (absolute paths):**

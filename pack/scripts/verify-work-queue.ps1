@@ -91,8 +91,13 @@ foreach ($g in $dupGroups) {
 
 $activeBody = Get-SectionBody $raw '## Active queue' @('## Inbox', '## Engineering backlog', '## Parked', '## Done log', '## Cross-references')
 $nextRows = @([regex]::Matches($activeBody, '\|\s*WQ-\d+\s*\|[^|]*\|\s*\*\*Next\*\*') )
+$headerAllowsEmpty = ($raw -match '\*\*Next active ID\*\*\s*\|\s*\*\(none')
 if ($nextRows.Count -eq 0) {
-    Write-Fail 'Active queue has no row with status **Next**'
+    if ($headerAllowsEmpty) {
+        Write-Ok 'Active queue has no **Next** row (header allows none - triage Parked/Inbox)'
+    } else {
+        Write-Fail 'Active queue has no row with status **Next**'
+    }
 } elseif ($nextRows.Count -gt 1) {
     Write-Fail "Active queue has $($nextRows.Count) **Next** rows (must be exactly 1)"
 } else {
@@ -106,6 +111,35 @@ if ($raw -match '\*\*Next active ID\*\*\s*\|\s*\*\*(WQ-\d+)') {
         Write-Fail "header Next active ID ($headerNext) does not match Active **Next** row ($activeNext)"
     } else {
         Write-Ok 'header Next active ID aligns with Active queue'
+    }
+}
+
+$versionPath = Join-Path $ProjectRoot 'VERSION'
+$manifestPath = Join-Path $ProjectRoot 'pack\audit\manifest.json'
+if ((Test-Path -LiteralPath $versionPath) -and (Test-Path -LiteralPath $manifestPath)) {
+    $canonicalPack = (Get-Content -LiteralPath $versionPath -Raw -Encoding UTF8).Trim()
+    if ($canonicalPack -match '(\d+\.\d+\.\d+)') { $canonicalPack = $Matches[1] }
+    $manifestJson = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $canonicalAudit = [string]$manifestJson.version
+    if ($raw -match '\|\s*\*\*Pack version\*\*\s*\|\s*(\d+\.\d+\.\d+)\s*\|') {
+        $wqPack = $Matches[1]
+        if ($wqPack -ne $canonicalPack) {
+            Write-Fail "WORK_QUEUE Pack version ($wqPack) != root VERSION ($canonicalPack) - run Sync-DocVersions.cmd"
+        } else {
+            Write-Ok 'WORK_QUEUE Pack version aligns with VERSION'
+        }
+    } else {
+        Write-Fail 'WORK_QUEUE header missing **Pack version** row'
+    }
+    if ($raw -match '\|\s*\*\*Audit engine\*\*\s*\|\s*(\d+\.\d+\.\d+)\s*\|') {
+        $wqAudit = $Matches[1]
+        if ($wqAudit -ne $canonicalAudit) {
+            Write-Fail "WORK_QUEUE Audit engine ($wqAudit) != manifest ($canonicalAudit) - run Sync-DocVersions.cmd"
+        } else {
+            Write-Ok 'WORK_QUEUE Audit engine aligns with manifest'
+        }
+    } else {
+        Write-Fail 'WORK_QUEUE header missing **Audit engine** row'
     }
 }
 

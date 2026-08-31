@@ -60,7 +60,7 @@ BASELINE (ALREADY DONE — DO NOT RE-BUILD)
 - Generic-only pack (no product-specific references in starter pack)
 - Edit boundary, recommendation discipline, doc sync via VERSION_SYNC.json
 - install.ps1, Update-AgentRules.cmd, verify-agent-setup.ps1
-- AGENT_CHAT_SYNC.md (interim manual paste until Phase 6a ships)
+- Refresh-AgentContext.cmd / AGENT_REFRESH.md (6a shipped; AGENT_CHAT_SYNC.md removed 2026-08-30)
 - HANDOVER_NEXT_AGENT.md (session handover for pack maintainers)
 
 WHAT TO PASTE INTO THE AGENT CHAT — PHASE 6a TRACK

@@ -58,6 +58,23 @@ Write-Host ''
 $rc = Invoke-PackScript -NoProfile -ScriptPath $refreshPs1 @refreshArgs
 if ($rc -ne 0) { exit $rc }
 
+$isMaintainerPack = Test-Path -LiteralPath (Join-Path $PackRoot 'pack\audit\manifest.json')
+if ($isMaintainerPack) {
+    $cpScript = Join-Path $PSScriptRoot 'verify-complete-picture.ps1'
+    if (Test-Path -LiteralPath $cpScript) {
+        Write-Host ''
+        Write-Host 'Complete-picture handoff verify (maintainer pack)...'
+        $cpRoot = if ($ProjectRoot) { $ProjectRoot } else { $PackRoot }
+        $cpRc = Invoke-PackScript -NoProfile -ScriptPath $cpScript -ArgumentList @(
+            '-ProjectRoot', $cpRoot
+        )
+        if ($cpRc -ne 0) {
+            Write-Host 'ERROR: verify-complete-picture.ps1 failed - fix handoff/WQ drift before claiming stack update done.'
+            exit $cpRc
+        }
+    }
+}
+
 if (-not $ProjectRoot) {
     $ProjectRoot = if (Test-Path -LiteralPath (Join-Path $PackRoot 'pack\audit\manifest.json')) {
         $PackRoot
