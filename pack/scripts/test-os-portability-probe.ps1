@@ -17,7 +17,10 @@ $ErrorActionPreference = 'Stop'
 $savedTestOs = $env:AGENT_STARTER_PACK_TEST_OS
 $savedHome = $env:HOME
 $savedUserRoot = $env:AGENT_STARTER_PACK_USER_ROOT
-$fakeHome = Join-Path $env:TEMP "asp-os-probe-$PID"
+$tempRoot = if ($env:TEMP -and $env:TEMP.Trim()) { $env:TEMP.Trim() }
+    elseif ($env:TMPDIR -and $env:TMPDIR.Trim()) { $env:TMPDIR.Trim() }
+    else { [System.IO.Path]::GetTempPath() }
+$fakeHome = Join-Path $tempRoot "asp-os-probe-$PID"
 
 function Write-ProbeFail([string]$Message) {
     Write-Host "[FAIL] $Message"
@@ -68,8 +71,10 @@ try {
 
     $cursorRoot = Get-DefaultCursorUserRoot
     $expectedRoot = Join-Path $fakeHome '.cursor'
-    if ($cursorRoot -ne $expectedRoot) {
-        Write-ProbeFail "Get-DefaultCursorUserRoot expected $expectedRoot got $cursorRoot"
+    $cursorResolved = (Resolve-Path -LiteralPath $cursorRoot).Path
+    $expectedResolved = (Resolve-Path -LiteralPath $expectedRoot).Path
+    if ($cursorResolved -ne $expectedResolved) {
+        Write-ProbeFail "Get-DefaultCursorUserRoot expected $expectedResolved got $cursorResolved"
     }
 
     $psPath = Get-PackPowerShellPath
@@ -126,7 +131,7 @@ try {
     $echoPs1 = Join-Path $fakeHome 'echo-probe.ps1'
     Write-Utf8NoBom -Path $echoPs1 -Text "Write-Output 'invoke-ok'`r`nexit 7`r`n"
     $code = Invoke-PackScript -ScriptPath $echoPs1 -NoProfile
-    if ($code -ne 7) { Write-ProbeFail "Invoke-PackScript exit code expected 7 got $code" }
+    if ($null -eq $code -or $code -ne 7) { Write-ProbeFail "Invoke-PackScript exit code expected 7 got $code" }
 
     Write-Output 'os-portability-probe-ok'
     exit 0
