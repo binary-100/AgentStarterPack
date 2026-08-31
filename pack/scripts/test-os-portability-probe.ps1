@@ -71,10 +71,8 @@ try {
 
     $cursorRoot = Get-DefaultCursorUserRoot
     $expectedRoot = Join-Path $fakeHome '.cursor'
-    $cursorResolved = (Resolve-Path -LiteralPath $cursorRoot).Path
-    $expectedResolved = (Resolve-Path -LiteralPath $expectedRoot).Path
-    if ($cursorResolved -ne $expectedResolved) {
-        Write-ProbeFail "Get-DefaultCursorUserRoot expected $expectedResolved got $cursorResolved"
+    if ($cursorRoot.TrimEnd('\', '/') -ne $expectedRoot.TrimEnd('\', '/')) {
+        Write-ProbeFail "Get-DefaultCursorUserRoot expected $expectedRoot got $cursorRoot"
     }
 
     $psPath = Get-PackPowerShellPath
