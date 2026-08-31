@@ -84,7 +84,7 @@ or in Cursor just type **refresh pack context**.
 | File | Meaning |
 |------|---------|
 | Root **`VERSION`** | Starter pack release (**1.8.0**) |
-| **`pack/audit/manifest.json`** | Audit engine version (**2.22.43**) |
+| **`pack/audit/manifest.json`** | Audit engine version (**2.22.44**) |
 
 Pack history: **[CHANGELOG.md](CHANGELOG.md)**  
 Audit engine history: **[pack/docs/AUDIT_SYSTEM_CHANGELOG.md](pack/docs/AUDIT_SYSTEM_CHANGELOG.md)**

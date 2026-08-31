@@ -6,9 +6,9 @@
 | Field | Value |
 |-------|--------|
 | **Next active ID** | **WQ-011** |
-| **Last updated** | 2026-08-30 |
+| **Last updated** | 2026-08-31 |
 | **Pack version** | 1.8.0 |
-| **Audit engine** | 2.22.43 |
+| **Audit engine** | 2.22.44 |
 
 ---
 
@@ -32,7 +32,7 @@ Work **top to bottom**. Do not skip ahead without user approval or marking the r
 | ID | Task | Status | Notes |
 |----|------|--------|-------|
 | WQ-011 | Flash drive / install on other PC | **Next** | Promoted from Parked 2026-08-30 after pack hygiene batch + profile install |
-| WQ-004 | **OS portability (Windows-only interim doc)** | **Superseded** | 2026-08-30 user reopened OS track → **WQ-304**. Was maintainer “document honest limit” (see `WEEKEND_HANDOFF.md` §3), not a permanent veto. |
+| WQ-004 | **OS portability (Windows-only interim doc)** | **Superseded** | 2026-08-30 user reopened OS track → **WQ-304**. Was maintainer “document honest limit” (see `docs/OS_PORTABILITY_PLAN.md`), not a permanent veto. |
 
 ---
 

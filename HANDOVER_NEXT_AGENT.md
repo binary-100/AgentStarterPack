@@ -2,14 +2,12 @@
 
 **Purpose:** Onboard an AI agent on **another machine or in a new chat** to continue work on the Agent Starter Pack without re-discovering context from scratch.
 
-**Last updated:** 2026-08-30 (installed to profile; audit engine **2.22.24**; canonical queue in `docs/WORK_QUEUE.md`)
-
-**Continuing over a weekend or on another machine?** Read **`WEEKEND_HANDOFF.md`** first — it carries the
-transfer path, the one remaining portability limit, and what is deliberately deferred.  
+**Canonical status:** `docs/WORK_QUEUE.md` — **Next: WQ-011** (flash drive / install on other PC).  
+**Human install (new PC / USB stick):** `INSTALL.txt` → `INSTALL.md`.  
 **Pack version:** root `VERSION` (**1.8.0**)  
-**Audit engine version:** `pack/audit/manifest.json` (**2.22.43**)  
-*Both cites above are maintained by `Sync-DocVersions.cmd` — the sync only recognises the parenthesised form, so keep it.*  
-**Repo location:** wherever the pack folder is plugged in. It is carried on a **removable exFAT drive** (was `D:\AgentStarterPack` when this was written; the letter changes per machine). Paths below are relative to the pack root — never hard-code the drive.
+**Audit engine version:** `pack/audit/manifest.json` (**2.22.44**)  
+*Version cites in scanned docs are maintained by `Sync-DocVersions.cmd` — use the parenthesised form in those files.*  
+**Repo location:** wherever the pack folder lives (Desktop checkout, USB stick, or `%USERPROFILE%\.cursor\AgentStarterPack` after install). Never hard-code a drive letter in scripts or docs.
 
 **Also read:** `AGENTS.md` → `pack/docs/START_HERE.md`
 
@@ -520,7 +518,7 @@ but Cursor reads, while `AI_INSTRUCTIONS.md` is the pack's own universal entry. 
 `AI_INSTRUCTIONS.md.template` and `AGENTS.md.template` too, and behavior step 30 asserts all three
 carriers so a Cursor-only implementation cannot pass again.
 
-**The remaining tie is the shell, not the editor.** See `WEEKEND_HANDOFF.md` § "Portability limit".
+**The remaining tie is the shell, not the editor.** See **`docs/OS_PORTABILITY_PLAN.md`** and **`docs/PORTABLE_SETUP.md`** § Platform scope.
 
 Full guide: **`docs/PORTABLE_SETUP.md`**, **`docs/MULTI_INSTANCE_GUIDE.md`**
 
@@ -556,7 +554,7 @@ AgentStarterPack/
 │   ├── starter-pack-repo.mdc
 │   └── audit.mdc                   ← Says "audit" here → docs/AUDIT.md protocol
 └── pack/
-    ├── audit/manifest.json         ← Audit engine version (2.22.43)
+    ├── audit/manifest.json         ← Audit engine version (2.22.44)
     ├── audit/behavior-fixture/     ← Generic app fixture for behavior tests
     ├── rules/                      ← Generic rules → install.ps1
     ├── scripts/                    ← Core tooling (pack-paths.ps1 = root resolution)

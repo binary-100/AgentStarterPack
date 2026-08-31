@@ -49,7 +49,7 @@
 |--------|---------------|--------------|---------------------|
 | `verify-work-queue.ps1` | 31 | WQ structure, duplicate IDs across sections, one **Next**, Done vs open sections, **header pack/audit vs VERSION/manifest** | — |
 | `verify-agent-handoffs.ps1` | 36 | Registry layout, opener format, WQ vs handoff status | Archive-ready Improve |
-| `verify-complete-picture.ps1` | 37 | HANDOVER §11 ↔ WORK_QUEUE; **Done WQ vs stale parked/not-built text** in handoff sources | Pending keyword scan |
+| `verify-complete-picture.ps1` | 37 | HANDOVER §11 ↔ WORK_QUEUE; Done-WQ vs stale text; **pack: parallel install docs, INSTALL.txt vs VERSION, WEEKEND redirect** | Pending keyword scan |
 | `verify-portable-bootstrap.ps1` | 33 | Portable bootstrap files | — |
 | `verify-audit-system.ps1` | (audit L) | Manifest mirror drift | — |
 | `verify-audit-behavior.ps1` | (pack tests) | All of the above in regression | — |

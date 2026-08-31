@@ -1,23 +1,26 @@
 ---
-description: Read existing agent docs before adding rules or AGENTS.md — avoid duplicate guidance
+description: Read existing agent docs before adding rules or guidance — extend canonical files; avoid duplicate docs
 alwaysApply: true
 ---
 
 # Agent doc hygiene (all projects)
 
-Before **creating or substantially editing** agent-facing files — `.cursor/rules/*.mdc`, skills, `AGENTS.md`, `AI_INSTRUCTIONS.md`, or similar tool entry files:
+Before **creating or substantially editing** agent-facing files — `.cursor/rules/*.mdc`, skills, `AGENTS.md`, `AI_INSTRUCTIONS.md`, or similar — and **maintainer entry docs** (`INSTALL.txt`, `INSTALL.md`, `HANDOVER*.md`, handoff `.md` under `docs/handoffs/`):
 
 ## 1. Read what already exists
 
 - List and skim **project** `.cursor/rules/` (and nested paths like `app/.cursor/rules/` if the project uses them)
 - Read **`AGENTS.md`** and linked agent docs (`AI_INSTRUCTIONS.md`, `CLAUDE.md`, etc.)
+- **Agent Starter Pack maintainer repo:** read **`INSTALL.txt`**, **`HANDOVER_NEXT_AGENT.md`**, and **`docs/WORK_QUEUE.md`** before adding any install/handoff/status doc
 - If the project **syncs generic rules from Agent Starter Pack**, treat those as read-only in the project — edit **`pack/rules/`** at the pack source, then sync; do not fork copies locally
 
 ## 2. Prefer extend over duplicate
 
-- **Extend** an existing rule or `AGENTS.md` section when the concern fits
-- **New file** only when the concern is distinct and would bloat an existing rule
+- **Extend** an existing rule, `AGENTS.md` section, or **canonical maintainer doc** when the concern fits
+- **New file** only when the concern is distinct and would bloat an existing rule or doc
 - **One concern per rule** — split only when scopes differ (always-on vs file-specific globs)
+- **Install / handoff / status:** overwrite **`INSTALL.txt`** (human) and **`HANDOVER_NEXT_AGENT.md`** (agent); retire or redirect superseded handoffs — **do not** add `STICK_*`, `*_INSTALL.txt`, or parallel cheat sheets for the same job
+- When consolidating, **delete** the redundant file — do not leave parallel copies
 
 ## 3. Avoid overlap
 

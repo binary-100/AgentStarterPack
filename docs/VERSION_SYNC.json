@@ -43,6 +43,12 @@
         "pattern": "\\| \\*\\*Audit engine\\*\\* \\| \\d+\\.\\d+\\.\\d+ \\|",
         "replace": "| **Audit engine** | {auditVersion} |",
         "versionKind": "audit"
+      },
+      {
+        "file": "INSTALL.txt",
+        "pattern": "QUICK INSTALL \\(v\\d+\\.\\d+\\.\\d+\\)",
+        "replace": "QUICK INSTALL (v{packVersion})",
+        "versionKind": "pack"
       }
     ]
   }

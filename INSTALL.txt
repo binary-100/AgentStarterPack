@@ -1,28 +1,41 @@
-AGENT STARTER PACK - QUICK INSTALL (v1.7.0)
-================================================
+AGENT STARTER PACK - QUICK INSTALL (v1.8.0)
+============================================
+Human read-first. Agents: HANDOVER_NEXT_AGENT.md + docs\WORK_QUEUE.md (status).
 
-1. Double-click:  Install-AgentStarterPack.cmd
-2. Restart Cursor (fully quit and reopen)
-3. Settings -> MCP -> check "agent-hygiene" is on
+NEW PC OR FLASH DRIVE (WQ-011)
+--------------------------------
+1. cd to the pack folder on the stick (drive letter varies).
+2. exFAT + git only:  git config --global --add safe.directory E:/AgentStarterPack
+3. .\Check-Requirements.cmd          (-Fix if Python deps missing)
+4. .\Install-AgentStarterPack.cmd
+   or:  .\install.ps1 -Scope User -NoPause -Prune
+5. Restart Cursor fully.
+6. Verify (expect 0 fail):
+     .\pack\scripts\doctor.ps1 -ProjectRoot (Get-Location).Path
+     .\pack\scripts\verify-audit-behavior.ps1
 
-VERIFY:
-  PowerShell:
-    %USERPROFILE%\.cursor\AgentStarterPack\pack\scripts\doctor.ps1
+THIS PC (already have the folder)
+---------------------------------
+1. Install-AgentStarterPack.cmd
+2. Restart Cursor
+3. doctor.ps1 + verify-audit-system.ps1  (see INSTALL.md)
 
-  Cursor chat:
-    "Run agent_hygiene_full_check"
-
-AFTER KILLING A HUNG TERMINAL:
-  "cleanup orphan agent processes dry run first"
-
-FULL INSTRUCTIONS:  See INSTALL.md in this folder
-
-INSTALLS TO:
-  %USERPROFILE%\.cursor\skills
-  %USERPROFILE%\.cursor\rules
-  %USERPROFILE%\.cursor\mcp.json
+INSTALLS TO (per machine, not portable)
   %USERPROFILE%\.cursor\AgentStarterPack
+  %USERPROFILE%\.cursor\rules
+  %USERPROFILE%\.cursor\skills
+  %USERPROFILE%\.cursor\mcp.json
 
-Works for ALL Cursor projects on this PC.
+VERSIONS (canonical)
+  Pack:   root VERSION  (currently 1.8.0)
+  Audit:  pack\audit\manifest.json  (currently 2.22.43)
+  Queue:  docs\WORK_QUEUE.md  (Next: WQ-011)
 
-NEW PC: Run export.ps1, copy zip, unzip, Install-AgentStarterPack.cmd again.
+MORE
+  INSTALL.md              full install + upgrade
+  HANDOVER_NEXT_AGENT.md  agent handoff (architecture, commands)
+  pack\docs\START_HERE.md maintainer onboarding
+
+CURSOR CHAT
+  "Run agent_hygiene_full_check"
+  After killing a hung terminal: cleanup orphan agent processes dry run first

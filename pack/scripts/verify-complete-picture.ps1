@@ -128,6 +128,48 @@ if ($isPackRepo) {
         $p = Join-Path $ProjectRoot $rel
         if (Test-Path -LiteralPath $p) { [void]$handoffSources.Add($p) }
     }
+
+    Get-ChildItem -LiteralPath $ProjectRoot -Filter 'STICK_*.txt' -File -ErrorAction SilentlyContinue |
+        ForEach-Object { Write-Fail "parallel install doc - use INSTALL.txt: $($_.Name)" }
+    Get-ChildItem -LiteralPath $ProjectRoot -Filter '*_INSTALL.txt' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne 'INSTALL.txt' } |
+        ForEach-Object { Write-Fail "parallel install doc - use INSTALL.txt: $($_.Name)" }
+
+    $installTxtPath = Join-Path $ProjectRoot 'INSTALL.txt'
+    $versionPath = Join-Path $ProjectRoot 'VERSION'
+    if ((Test-Path -LiteralPath $installTxtPath) -and (Test-Path -LiteralPath $versionPath)) {
+        $canonicalPack = (Get-Content -LiteralPath $versionPath -Raw -Encoding UTF8).Trim()
+        if ($canonicalPack -match '(\d+\.\d+\.\d+)') { $canonicalPack = $Matches[1] }
+        $installRaw = Get-Content -LiteralPath $installTxtPath -Raw -Encoding UTF8
+        if ($installRaw -match 'QUICK INSTALL \(v(\d+\.\d+\.\d+)\)') {
+            if ($Matches[1] -ne $canonicalPack) {
+                Write-Fail "INSTALL.txt title ($($Matches[1])) != VERSION ($canonicalPack) - run Sync-DocVersions.cmd"
+            } else {
+                Write-Ok 'INSTALL.txt title version aligns with VERSION'
+            }
+        } else {
+            Write-Fail 'INSTALL.txt missing QUICK INSTALL (vX.Y.Z) title line'
+        }
+    }
+
+    if (Test-Path -LiteralPath $weekend) {
+        $weekendRaw = Get-Content -LiteralPath $weekend -Raw -Encoding UTF8
+        if ($weekendRaw -match '(?m)^## 2\. State as of this handoff') {
+            Write-Fail 'WEEKEND_HANDOFF.md still has legacy handoff body - replace with superseded redirect'
+        } elseif ($weekendRaw -notmatch '(?i)superseded') {
+            Write-Fail 'WEEKEND_HANDOFF.md must declare superseded redirect'
+        } else {
+            Write-Ok 'WEEKEND_HANDOFF.md is redirect stub'
+        }
+    }
+
+    $handoverMain = Join-Path $ProjectRoot 'HANDOVER_NEXT_AGENT.md'
+    if (Test-Path -LiteralPath $handoverMain) {
+        $handoverMainRaw = Get-Content -LiteralPath $handoverMain -Raw -Encoding UTF8
+        if ($handoverMainRaw -match 'Read \*\*`WEEKEND_HANDOFF\.md`\*\* first') {
+            Write-Fail 'HANDOVER points to WEEKEND_HANDOFF as primary - use INSTALL.txt for human install'
+        }
+    }
 }
 
 if ($handoffSources.Count -eq 0) {

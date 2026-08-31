@@ -3,7 +3,7 @@
 **Audience:** AI coding agents, maintainers, and anyone setting up or using this pack.
 
 **Pack version:** root `VERSION` file (currently **1.8.0**).  
-**Audit engine version:** `pack/audit/manifest.json` → `"version"` (currently **2.22.43**). These numbers track different things — both are normal.
+**Audit engine version:** `pack/audit/manifest.json` → `"version"` (currently **2.22.44**). These numbers track different things — both are normal.
 
 ---
 

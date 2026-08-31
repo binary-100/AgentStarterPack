@@ -2,9 +2,19 @@
 
 Portable toolkit: **audits (Fix + Improve)**, **terminal hygiene MCP**, **CI builds**, **bootstrap**.
 
+**Human quick start:** [`INSTALL.txt`](INSTALL.txt) (new PC, flash drive, or this machine).  
+**Agent / status:** [`HANDOVER_NEXT_AGENT.md`](HANDOVER_NEXT_AGENT.md) + [`docs/WORK_QUEUE.md`](docs/WORK_QUEUE.md).  
 **Full guide:** [pack/docs/START_HERE.md](pack/docs/START_HERE.md)
 
-**Pack version:** see root `VERSION` (**1.8.0**). Audit engine version: `pack/audit/manifest.json` (**2.22.43**).
+**Pack version:** see root `VERSION` (**1.8.0**). Audit engine version: `pack/audit/manifest.json` (**2.22.44**).
+
+---
+
+## Flash drive or other PC (WQ-011)
+
+Copy the pack folder to the stick (or `git clone` / `git pull` from `https://github.com/binary-100/AgentStarterPack.git`). On the other machine, open PowerShell in that folder and follow **`INSTALL.txt`**. If the stick is exFAT and you use git there, run the one-time `safe.directory` line in **`INSTALL.txt`** before other git commands.
+
+After install, agents on that PC read the **installed** mirror at `%USERPROFILE%\.cursor\AgentStarterPack\` unless the stick folder is the open workspace.
 
 ---
 

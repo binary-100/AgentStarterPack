@@ -6,6 +6,16 @@ Bump **`pack/audit/manifest.json`** `"version"` when you change synced audit fil
 
 ---
 
+---
+
+## 2.22.44 (2026-08-31)
+
+**Doc hygiene widen + enforce (no new rule):**
+
+- **`generic-agent-doc-hygiene.mdc`** — maintainer entry docs in scope; forbid parallel `STICK_*` / `*_INSTALL.txt`; delete redundant copies when consolidating
+- **`verify-complete-picture.ps1`** — pack repo: INSTALL.txt vs VERSION, WEEKEND redirect stub, no parallel install docs, HANDOVER must not primary-point WEEKEND
+- **Doc consolidation:** `INSTALL.txt` / `INSTALL.md` / `HANDOVER` / `WEEKEND_HANDOFF` redirect; `INSTALL.txt` in `VERSION_SYNC.json`
+
 ## 2.22.43 (2026-08-30)
 
 **Hygiene batch (WQ-413):**
