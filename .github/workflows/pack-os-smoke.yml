@@ -28,8 +28,8 @@ jobs:
       - name: Verify pwsh (preinstalled on ubuntu-latest)
         run: pwsh --version
 
-      - name: OS portability probe (native Linux)
-        run: pwsh -NoProfile -File pack/scripts/test-os-portability-probe.ps1 -PackRoot "$GITHUB_WORKSPACE"
-
       - name: Check requirements JSON
         run: pwsh -NoProfile -File pack/scripts/check-requirements.ps1 -Json
+
+      - name: OS portability probe (native Linux)
+        run: pwsh -NoProfile -File pack/scripts/test-os-portability-probe.ps1 -PackRoot "$GITHUB_WORKSPACE"
