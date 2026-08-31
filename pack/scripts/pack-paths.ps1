@@ -288,7 +288,7 @@ function Invoke-PackScript {
         & $exe @invokeArgs
         return
     }
-    & $exe @invokeArgs | Out-Null
+    & $exe @invokeArgs 1>$null 2>$null
     return $LASTEXITCODE
 }
 

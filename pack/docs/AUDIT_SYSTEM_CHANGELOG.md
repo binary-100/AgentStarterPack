@@ -6,6 +6,15 @@ Bump **`pack/audit/manifest.json`** `"version"` when you change synced audit fil
 
 ---
 
+## 2.22.40 (2026-08-30)
+
+**Linux CI probe fix:**
+
+- **`Invoke-PackScript`** — capture exit code without stdout pipeline (Linux `$LASTEXITCODE` loss)
+- **`test-os-portability-probe.ps1`** — native Linux uses PATH python; absolute `-PythonCommand` only for mock
+
+---
+
 ## 2.22.39 (2026-08-30)
 
 **Linux CI probe fix:**
