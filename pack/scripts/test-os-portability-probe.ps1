@@ -41,8 +41,12 @@ function Get-HostPythonCommandForProbe {
 }
 
 try {
-    $hostPythonCmd = Get-HostPythonCommandForProbe -PackRootPath $PackRoot
-    if (-not $hostPythonCmd) { Write-ProbeFail 'host Python required for portability probe' }
+    $needMockPython = ($TestOs -eq 'linux')
+    $hostPythonCmd = $null
+    if ($needMockPython) {
+        $hostPythonCmd = Get-HostPythonCommandForProbe -PackRootPath $PackRoot
+        if (-not $hostPythonCmd) { Write-ProbeFail 'host Python required for mock Linux probe' }
+    }
 
     if ($TestOs) { $env:AGENT_STARTER_PACK_TEST_OS = $TestOs }
     if (Test-Path -LiteralPath $fakeHome) {
@@ -101,7 +105,9 @@ try {
 
     $req = Join-Path (Join-Path (Join-Path $PackRoot 'pack') 'scripts') 'check-requirements.ps1'
     if (-not (Test-Path -LiteralPath $req)) { Write-ProbeFail 'check-requirements.ps1 missing' }
-    $reqJson = & $psPath -NoProfile -ExecutionPolicy Bypass -File $req -Json -PythonCommand $hostPythonCmd 2>&1 | Out-String
+    $reqArgs = @('-Json')
+    if ($needMockPython) { $reqArgs += @('-PythonCommand', $hostPythonCmd) }
+    $reqJson = & $psPath -NoProfile -ExecutionPolicy Bypass -File $req @reqArgs 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) { Write-ProbeFail "check-requirements -Json exit $LASTEXITCODE on probe host" }
     $start = $reqJson.IndexOf('{')
     $end = $reqJson.LastIndexOf('}')
