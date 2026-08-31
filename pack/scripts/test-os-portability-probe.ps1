@@ -27,7 +27,7 @@ function Write-ProbeFail([string]$Message) {
 function Get-HostPythonCommandForProbe {
     param([string]$PackRootPath)
     Remove-Item Env:AGENT_STARTER_PACK_TEST_OS -ErrorAction SilentlyContinue
-    . (Join-Path $PackRootPath 'pack\scripts\pack-paths.ps1')
+    . (Get-PackScriptPath -Root $PackRootPath -Name 'pack-paths.ps1')
     $probe = Resolve-PackPythonInvoke
     if (-not $probe) { return $null }
     if ($probe.prefix -and $probe.prefix.Count -gt 0) {
@@ -52,7 +52,7 @@ try {
     $env:HOME = $fakeHome
     Remove-Item Env:AGENT_STARTER_PACK_USER_ROOT -ErrorAction SilentlyContinue
 
-    . (Join-Path $PackRoot 'pack\scripts\pack-paths.ps1')
+    . (Get-PackScriptPath -Root $PackRoot -Name 'pack-paths.ps1')
 
     $expectNonWindows = if ($TestOs -eq 'linux') { $true } elseif ($TestOs -eq 'windows') { $false } else { -not (Test-PackIsWindows) }
     if ($TestOs -eq 'linux' -and (Test-PackIsWindows)) {
@@ -77,6 +77,7 @@ try {
         if ($pyFix -match '(?i)winget') {
             Write-ProbeFail 'Get-PackPythonInstallFix should not mention winget off Windows'
         }
+        if ($expectNonWindows -and $env:USERPROFILE -and $env:USERPROFILE.Trim()) {
         $candidates = @(Get-AgentStarterPackCandidates)
         $sourceRoot = Get-SourceAgentStarterPack
         $winHeuristics = @(
@@ -95,9 +96,10 @@ try {
                 Write-ProbeFail "Get-AgentStarterPackCandidates should skip Windows-only heuristic off Windows: $w"
             }
         }
+        }
     }
 
-    $req = Join-Path $PackRoot 'pack\scripts\check-requirements.ps1'
+    $req = Get-PackScriptPath -Root $PackRoot -Name 'check-requirements.ps1'
     if (-not (Test-Path -LiteralPath $req)) { Write-ProbeFail 'check-requirements.ps1 missing' }
     $reqJson = & $psPath -NoProfile -ExecutionPolicy Bypass -File $req -Json -PythonCommand $hostPythonCmd 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) { Write-ProbeFail "check-requirements -Json exit $LASTEXITCODE on probe host" }

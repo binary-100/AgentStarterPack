@@ -6,6 +6,15 @@ Bump **`pack/audit/manifest.json`** `"version"` when you change synced audit fil
 
 ---
 
+## 2.22.38 (2026-08-30)
+
+**Linux CI path fixes (WQ-304 / pack-os-smoke):**
+
+- **`Get-PackManifestPath` / `Get-PackScriptPath`** in `pack-paths.ps1` — forward-slash-safe joins for manifest and script paths
+- **`check-requirements.ps1`** — audit engine self-test path uses helper (fixes ubuntu CI probe)
+
+---
+
 ## 2.22.37 (2026-08-30)
 
 **OS portability Phases 5–6 (WQ-304):**

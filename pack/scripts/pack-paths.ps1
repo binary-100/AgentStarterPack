@@ -13,13 +13,26 @@
 # Resolution is source-first so pack scripts always act on the pack they were launched from,
 # never on a stale installed copy that happens to exist elsewhere on the machine.
 
-# Captured while this file is dot-sourced: <packRoot>\pack\scripts
+# Captured while this file is dot-sourced: <packRoot>/pack/scripts
 $script:AgentStarterPackToolsDir = if ($PSCommandPath) { Split-Path -Parent $PSCommandPath } else { $PSScriptRoot }
+
+function Get-PackManifestPath {
+    param([Parameter(Mandatory = $true)][string]$Root)
+    return (Join-Path (Join-Path (Join-Path $Root 'pack') 'audit') 'manifest.json')
+}
+
+function Get-PackScriptPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+    return (Join-Path (Join-Path (Join-Path $Root 'pack') 'scripts') $Name)
+}
 
 function Test-AgentStarterPackRoot {
     param([string]$Path)
     if (-not $Path -or -not $Path.Trim()) { return $false }
-    return (Test-Path -LiteralPath (Join-Path $Path 'pack\audit\manifest.json'))
+    return (Test-Path -LiteralPath (Get-PackManifestPath -Root $Path))
 }
 
 function Get-SourceAgentStarterPack {
@@ -92,9 +105,9 @@ function Get-InstalledAgentStarterPack {
     $cursorRoot = Get-DefaultCursorUserRoot
     if (-not $cursorRoot) { return $null }
     $preferred = Join-Path $cursorRoot 'AgentStarterPack'
-    if (Test-Path -LiteralPath (Join-Path $preferred 'pack\audit\manifest.json')) { return $preferred }
+    if (Test-Path -LiteralPath (Get-PackManifestPath -Root $preferred)) { return $preferred }
     $legacy = Join-Path $cursorRoot 'agent-starter-pack'
-    if (Test-Path -LiteralPath (Join-Path $legacy 'pack\audit\manifest.json')) { return $legacy }
+    if (Test-Path -LiteralPath (Get-PackManifestPath -Root $legacy)) { return $legacy }
     return $preferred
 }
 

@@ -189,7 +189,7 @@ if ($py) {
 
 # --- Audit engine actually runs ----------------------------------------------
 # Presence of an interpreter is not proof the engine works on this machine - the self-test is.
-$codePy = if ($PackRoot) { Join-Path $PackRoot 'pack\scripts\audit_code_checks.py' } else { $null }
+$codePy = if ($PackRoot) { Get-PackScriptPath -Root $PackRoot -Name 'audit_code_checks.py' } else { $null }
 if (-not $py) {
     Add-Result -Name 'Audit engine self-test' -Status missing -Required $true -Detail 'skipped (no Python)' `
         -Purpose 'run_audit.cmd on any project' -Fix 'install Python (see above), then re-run this check'
