@@ -4,6 +4,28 @@
 
 **Audit:** `verify-agent-handoffs.ps1` (wired into `run_audit_core.ps1` as **Improve** / **Fix** — never auto-deletes files).
 
+## Terminology: **handoff**, never the synonym
+
+English offers two words for this and treats them as interchangeable — the other one is simply the
+British-leaning form. That is exactly why the pack picks one: a reader cannot infer a distinction
+that the language does not carry, and alternating produced 519 mixed occurrences across 56 files
+before this was settled.
+
+**Handoff** covers both scales of the same act:
+
+| Scale | Artifact |
+|-------|----------|
+| One work slice, one agent | `docs/handoffs/active/HANDOFF_WQnnn_<slug>.md` + registry table |
+| One session to the next | The repo's session doc — in this pack, `HANDOFF_NEXT_AGENT.md` |
+
+Behavior **step 49** fails when the retired synonym reappears in any `.md`, `.mdc`, `.ps1`, `.py`,
+`.cmd`, `.bat`, `.json`, `.txt` or `.template`. Three things stay legal, each for a reason:
+
+- **The old filename**, `HANDOVER_NEXT_AGENT.md` — someone searching for it has to land somewhere,
+  and a total ban would leave no doc able to say what this file used to be called
+- **The changelog**, which records the retirement and therefore has to name it
+- **The checker itself**, since a linter has to spell the word it bans
+
 ---
 
 ## Folder layout

@@ -5,6 +5,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -15,6 +16,7 @@ CODE = ROOT / "pack" / "scripts" / "audit_code_checks.py"
 DOC_VERSION_SYNC = ROOT / "pack" / "scripts" / "doc_version_sync.py"
 INSTALL_LAUNCHER = ROOT / "install_launcher.py"
 MCP_SERVER = ROOT / "mcp" / "agent_hygiene_server.py"
+FRESHNESS = ROOT / "pack" / "scripts" / "agent_context_freshness.py"
 
 
 def test_audit_code_checks_self_test() -> None:
@@ -295,6 +297,159 @@ def test_layout_policy_is_disabled_in_the_generic_template() -> None:
     assert policy.get("enabled") is False, "layoutPolicy must ship disabled"
     for key in ("buildOutputDir", "portableDataDirname", "forbiddenInRepoStableCopy"):
         assert policy.get(key) == "", f"{key} must ship empty, not a placeholder folder name"
+
+
+def _load_script_module(name: str):
+    spec = importlib.util.spec_from_file_location(name, ROOT / "pack" / "scripts" / f"{name}.py")
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_split_modules_keep_the_engine_under_its_own_threshold() -> None:
+    """The engine enforces a LOC ceiling on every module; it was 92 lines over its own.
+
+    Section M version cites and the checks that read outside the repo now live in siblings. If
+    this file creeps back over the threshold, the audit reports it as an Improve, which is how the
+    split was prompted in the first place.
+    """
+    cfg = json.loads((ROOT / "docs" / "AUDIT.config.json").read_text(encoding="utf-8-sig"))
+    threshold = (cfg.get("codeChecks") or {}).get("largeModuleLocThreshold", 2000)
+    loc = len(CODE.read_text(encoding="utf-8", errors="replace").splitlines())
+    assert loc <= threshold, f"audit_code_checks.py is {loc} LOC, over its own {threshold} ceiling"
+
+
+def test_moved_checks_are_still_reachable_through_the_engine() -> None:
+    """Splitting a module must not move its public surface.
+
+    `run_audit_core.ps1` and the self-test call these by name through `audit_code_checks`; the
+    sibling modules are an implementation detail of where the bodies live.
+    """
+    sys.path.insert(0, str(ROOT / "pack" / "scripts"))
+    try:
+        engine = _load_script_module("audit_code_checks")
+    finally:
+        sys.path.pop(0)
+    for name in (
+        "resolve_repo_root",
+        "read_canonical_version",
+        "read_audit_manifest_version",
+        "check_audit_version_docs_improve",
+        "check_pack_version_docs_improve",
+        "check_changelog_version_improve",
+        "check_installed_vs_source_improve",
+        "check_mcp_wiring_improve",
+        "check_pack_reference_config_improve",
+    ):
+        assert hasattr(engine, name), f"audit_code_checks no longer exposes {name}"
+
+
+def test_audit_version_docs_flags_only_stale_cites() -> None:
+    """A doc citing the current engine version is clean; one citing an older one is an Improve."""
+    sys.path.insert(0, str(ROOT / "pack" / "scripts"))
+    try:
+        _load_script_module("audit_common")
+        mod = _load_script_module("audit_version_docs")
+    finally:
+        sys.path.pop(0)
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "pack" / "audit").mkdir(parents=True)
+        (root / "pack" / "audit" / "manifest.json").write_text(
+            json.dumps({"version": "3.0.0"}), encoding="utf-8"
+        )
+        (root / "docs").mkdir()
+        (root / "NOTES.md").write_text(
+            "Audit engine version: `pack/audit/manifest.json` (**3.0.0**)\n", encoding="utf-8"
+        )
+        cfg = {
+            "codeChecks": {
+                "auditVersionDocs": {
+                    "enabled": True,
+                    "manifestPath": "pack/audit/manifest.json",
+                    "scanFiles": ["NOTES.md"],
+                }
+            }
+        }
+        assert mod.check_audit_version_docs_improve(root, cfg) == []
+        (root / "NOTES.md").write_text(
+            "Audit engine version: `pack/audit/manifest.json` (**2.9.9**)\n", encoding="utf-8"
+        )
+        found = mod.check_audit_version_docs_improve(root, cfg)
+        assert len(found) == 1 and "2.9.9" in found[0] and "3.0.0" in found[0], found
+
+
+def test_install_wiring_reads_the_install_root_override() -> None:
+    """The installed-vs-source check must follow the override, not the real profile."""
+    sys.path.insert(0, str(ROOT / "pack" / "scripts"))
+    try:
+        _load_script_module("audit_common")
+        mod = _load_script_module("audit_install_wiring")
+    finally:
+        sys.path.pop(0)
+    with tempfile.TemporaryDirectory() as tmp:
+        installed = Path(tmp) / "installed"
+        (installed / "pack" / "audit").mkdir(parents=True)
+        (installed / "pack" / "audit" / "manifest.json").write_text(
+            json.dumps({"version": "1.2.3"}), encoding="utf-8"
+        )
+        prev = os.environ.get("AGENT_STARTER_PACK_INSTALL_ROOT")
+        os.environ["AGENT_STARTER_PACK_INSTALL_ROOT"] = str(installed)
+        try:
+            assert mod._installed_pack_root() == installed.resolve()
+            assert mod._user_cursor_root() == installed.resolve().parent
+        finally:
+            if prev is None:
+                os.environ.pop("AGENT_STARTER_PACK_INSTALL_ROOT", None)
+            else:
+                os.environ["AGENT_STARTER_PACK_INSTALL_ROOT"] = prev
+
+
+def _load_agent_context_freshness():
+    spec = importlib.util.spec_from_file_location("agent_context_freshness", FRESHNESS)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_freshness_resolves_the_install_root_override() -> None:
+    """The override decides which install a project's stamp is compared against.
+
+    PowerShell has honoured AGENT_STARTER_PACK_INSTALL_ROOT since 2.22.4. While Python read
+    %USERPROFILE% instead, the freshness verdict - and the behavior step built on it - was a
+    property of the developer's machine rather than of the pack.
+    """
+    mod = _load_agent_context_freshness()
+    with tempfile.TemporaryDirectory() as tmp:
+        scratch = Path(tmp) / "installed"
+        (scratch / "pack" / "audit").mkdir(parents=True)
+        (scratch / "pack" / "audit" / "manifest.json").write_text(
+            json.dumps({"version": "9.9.9"}), encoding="utf-8"
+        )
+        prev = os.environ.get("AGENT_STARTER_PACK_INSTALL_ROOT")
+        os.environ["AGENT_STARTER_PACK_INSTALL_ROOT"] = str(scratch)
+        try:
+            resolved = mod.resolve_pack_root()
+            assert resolved == scratch.resolve(), f"override ignored, resolved {resolved}"
+            assert mod.installed_engine_version(resolved) == "9.9.9"
+        finally:
+            if prev is None:
+                os.environ.pop("AGENT_STARTER_PACK_INSTALL_ROOT", None)
+            else:
+                os.environ["AGENT_STARTER_PACK_INSTALL_ROOT"] = prev
+
+
+def test_freshness_trigger_phrases_match_the_rules() -> None:
+    """Every phrase the docs tell a user to type has to be one the module recognises."""
+    mod = _load_agent_context_freshness()
+    documented = (ROOT / "pack" / "templates" / "portable" / "AI_INSTRUCTIONS.md.template").read_text(
+        encoding="utf-8-sig"
+    ).lower()
+    missing = [p for p in mod.TRIGGER_PHRASES if p not in documented]
+    assert not missing, f"trigger phrases absent from the portable instructions: {missing}"
 
 
 def main() -> int:

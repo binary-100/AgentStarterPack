@@ -3,7 +3,7 @@
 **Audience:** AI coding agents, maintainers, and anyone setting up or using this pack.
 
 **Pack version:** root `VERSION` file (currently **1.8.0**).  
-**Audit engine version:** `pack/audit/manifest.json` → `"version"` (currently **2.22.44**). These numbers track different things — both are normal.
+**Audit engine version:** `pack/audit/manifest.json` → `"version"` (currently **2.22.53**). These numbers track different things — both are normal.
 
 ---
 
@@ -61,6 +61,8 @@ Both should exit **0**. See **`INSTALL.md`** at the pack root for flags (`-Regis
 The **pack folder** you edit is the source of truth, and it travels: pack scripts resolve the pack they were launched from, so it runs from a clone, an external disk, or a USB stick with no fixed location and no drive-letter assumption.
 
 **The install does not travel.** The paths above live under `%USERPROFILE%\.cursor\` on one machine, so every machine you carry the pack to needs its own `install.ps1` run. That copy is machine-local and disposable; `sync-audit-system.ps1` only pushes pack folder → installed, never the reverse (see `-PullFromInstalled` for recovery).
+
+Install copies the whole checkout **except** the paths listed under `maintainerOnlyPaths` in `pack/audit/manifest.json` — session handoffs and implementation specs, which are notes between pack maintainers and mean nothing in someone's profile. Add a new one there when you write it; behavior step 2 fails on any root file that is neither mirrored nor maintainer-only.
 
 USB workflow, per-machine steps, and the MCP-path caveat: **`docs/PORTABLE_SETUP.md`**.
 
@@ -126,6 +128,10 @@ One command:
 ```
 
 Or double-click **`Bootstrap-Project.cmd`** from the starter pack folder.
+
+Every root `.cmd` launcher ends in a `pause` so a double-clicked window stays open, gated behind
+**`BUILD_NOPAUSE`**. An agent running one should `set BUILD_NOPAUSE=1` first, exactly as it would for
+a project build — otherwise the launcher waits for a keypress nobody is there to press.
 
 Target layout after bootstrap:
 

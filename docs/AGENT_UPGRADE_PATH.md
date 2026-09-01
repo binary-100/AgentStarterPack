@@ -54,7 +54,7 @@ When **agent-hygiene** MCP is registered:
 
 Same facts as `AGENT_CONTEXT.json` — not a second source of truth.
 
-**Return fields (shipped API):** `stale`, `reasons`, `requiredReads`, `installedEngineVersion`, `stampedEngineVersion`, `packVersion`, `layers`, `canonicalProjectRoot`, `requiredReads` — see `pack/scripts/agent_context_freshness.py`. *(Design-era names `installedVersion` / `desktopVersion` in `PACK_IMPLEMENTER_SPEC.md` were superseded by engine-version fields.)*
+**Return fields (shipped API):** `stale`, `reasons`, `requiredReads`, `installedEngineVersion`, `stampedEngineVersion`, `packVersion`, `layers`, `canonicalProjectRoot`, `requiredReads` — see `pack/scripts/agent_context_freshness.py`. *(Design-era names `installedVersion` / `desktopVersion` were superseded by engine-version fields.)*
 
 ---
 

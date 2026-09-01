@@ -53,6 +53,6 @@ followed by the version **in parentheses**:
 | ``Audit engine version (2.22.5)`` | **Yes** |
 | `` `pack/audit/manifest.json` = **2.22.5** `` | **No** — no pattern matches, and `--verify` reports `ok: true` because it sees nothing to change |
 
-That last row is not hypothetical: `HANDOVER_NEXT_AGENT.md` carried its engine cite that way, so it
+That last row is not hypothetical: `HANDOFF_NEXT_AGENT.md` carried its engine cite that way, so it
 drifted a full four bumps while verify stayed green. Adding a file to `auditVersionScanFiles` does
 nothing on its own if the cite inside it is written in an unrecognised form.

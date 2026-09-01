@@ -24,15 +24,42 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Run as a script the pack scripts folder is already sys.path[0], but this module is also imported
+# by tooling that loads it by path, and import smoke runs it with PYTHONPATH set to a single dir.
+# One insert keeps the sibling check modules importable in every one of those cases.
+_SCRIPT_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPT_DIR)
 
-def load_config(app_root: Path) -> dict:
-    # utf-8-sig everywhere this module reads project files: Windows PowerShell 5.1 writes a BOM for
-    # -Encoding UTF8, so files produced by pack scripts (or edited in a Windows editor) carry one.
-    # Plain "utf-8" made json.loads fail with "Unexpected UTF-8 BOM" on every bootstrapped project.
-    cfg_path = app_root / "docs" / "AUDIT.config.json"
-    if not cfg_path.is_file():
-        return {}
-    return json.loads(cfg_path.read_text(encoding="utf-8-sig"))
+# Re-exported rather than moved wholesale: callers (and the self-test) still reach these through
+# audit_code_checks, and the split is meant to shrink this file, not rewrite its public surface.
+from audit_common import (  # noqa: E402
+    VERSION_IN_DOC_RE,
+    load_config,
+    read_audit_manifest_version,
+    read_canonical_version,
+    resolve_repo_root,
+)
+from audit_install_wiring import (  # noqa: E402
+    _installed_pack_root,
+    _user_cursor_root,
+    check_installed_vs_source_improve,
+    check_mcp_wiring_improve,
+    check_pack_reference_config_improve,
+)
+from audit_version_docs import (  # noqa: E402
+    AUDIT_ENGINE_VERSION_PATTERNS,
+    DOC_INLINE_VERSION_RE,
+    PACK_RELEASE_VERSION_PATTERNS,
+    _collect_app_version_doc_paths,
+    _extract_audit_engine_semvers,
+    _extract_pack_release_semvers,
+    _pack_version_line_segment,
+    check_app_version_docs_improve,
+    check_audit_version_docs_improve,
+    check_changelog_version_improve,
+    check_pack_version_docs_improve,
+)
 
 
 def parse_checklist_sections(audit_md: Path) -> dict[str, dict]:
@@ -213,31 +240,6 @@ def semantic_report_path(app_root: Path, cfg: dict) -> Path:
     return app_root / rel.replace("\\", "/")
 
 
-def resolve_repo_root(app_root: Path) -> Path:
-    """Repo root for git, version-doc, and evidence lookups.
-
-    This rule must stay in step with run_audit.ps1.template: two layers deriving the repo root from
-    different rules is how the audit ended up scanning a folder above the project. The old rule here
-    promoted the parent whenever it held a README.md, which swept in every sibling of a flat app
-    that happened to live under a folder with a README, while the wrapper stayed on the app root.
-    Behavior step 23 asserts both layers agree. Deliberately derived from app_root rather than taken
-    from the wrapper: the behavior fixture's wrapper declares an outer repo root, and honouring that
-    would tie its test-pass proof to the pack's git HEAD instead of the fixture's own files.
-    """
-    app_root = app_root.resolve()
-    # .git is a file in worktrees and submodules, so test existence rather than is_dir().
-    if (app_root / ".git").exists():
-        return app_root
-    parent = app_root.parent
-    if (
-        app_root.name.lower() == "app"
-        and (app_root / "docs" / "AUDIT.md").is_file()
-        and (parent / ".git").exists()
-    ):
-        return parent.resolve()
-    return app_root
-
-
 CLEAN_SUMMARY_RE = re.compile(
     r"^(nothing found\.?|no issues?\.?|clean\.?|n/a\.?|none\.?|ok\.?)$",
     re.I,
@@ -246,7 +248,6 @@ CITE_RE = re.compile(
     r"(`[^`]+`|[a-zA-Z0-9_\-\\./]+\.(?:py|md|mdc|json|cmd|bat|ps1|spec|txt)|tests/|\\|/)"
 )
 EVIDENCE_TYPES = frozenset({"file", "test", "command", "behavior"})
-VERSION_IN_DOC_RE = re.compile(r"\bv(\d+\.\d+\.\d+)\b")
 
 
 def is_clean_summary(summary: str) -> bool:
@@ -255,26 +256,6 @@ def is_clean_summary(summary: str) -> bool:
 
 def summary_has_cite(summary: str) -> bool:
     return bool(CITE_RE.search(summary))
-
-
-def read_canonical_version(app_root: Path, cfg: dict) -> str | None:
-    try:
-        from doc_version_sync import read_canonical_version as _read_vs
-
-        v = _read_vs(app_root)
-        if v:
-            return v
-    except ImportError:
-        pass
-    vs = cfg.get("versionSync")
-    if not vs:
-        return None
-    txt = app_root / (vs.get("txtFile") or "VERSION.txt")
-    if not txt.is_file():
-        return None
-    pat = re.compile(vs.get("txtPattern") or r"^Version:\s*(\S+)", re.M)
-    m = pat.search(txt.read_text(encoding="utf-8", errors="replace"))
-    return m.group(1) if m else None
 
 
 def resolve_evidence_path(app_root: Path, repo_root: Path, ref: str) -> Path | None:
@@ -1617,383 +1598,6 @@ def build_machine_coverage(
             "agentFocus": hints,
         }
     return coverage
-
-
-DOC_INLINE_VERSION_RE = re.compile(
-    r"\*\*(\d+\.\d+\.\d+)\*\*|\((\d+\.\d+\.\d+)\)|starter pack (\d+\.\d+\.\d+)",
-    re.I,
-)
-AUDIT_ENGINE_VERSION_PATTERNS = (
-    re.compile(r"manifest\.json[^|\n]*\(\*?\*?(\d+\.\d+\.\d+)\*?\*?\)", re.I),
-    re.compile(r"audit engine[^|\n]*\(\*?\*?(\d+\.\d+\.\d+)\*?\*?\)", re.I),
-    re.compile(r"audit engine version[^|\n]*\(\*?\*?(\d+\.\d+\.\d+)\*?\*?\)", re.I),
-    re.compile(r"currently \*\*(\d+\.\d+\.\d+)\*\*", re.I),
-    re.compile(r"starter pack (\d+\.\d+\.\d+)", re.I),
-)
-
-
-def read_audit_manifest_version(app_root: Path, manifest_rel: str) -> str | None:
-    repo_root = resolve_repo_root(app_root)
-    manifest_path = repo_root / manifest_rel.replace("\\", "/")
-    if not manifest_path.is_file():
-        return None
-    try:
-        data = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    ver = data.get("version")
-    return str(ver).strip() if ver else None
-
-
-def _extract_audit_engine_semvers(line: str) -> list[str]:
-    found: list[str] = []
-    for pat in AUDIT_ENGINE_VERSION_PATTERNS:
-        for m in pat.finditer(line):
-            found.append(m.group(1))
-    return found
-
-
-def check_audit_version_docs_improve(app_root: Path, cfg: dict) -> list[str]:
-    """Improve when maintainer docs cite a stale audit-engine version vs manifest.json."""
-    improve: list[str] = []
-    avd = (cfg.get("codeChecks") or {}).get("auditVersionDocs") or {}
-    if not avd.get("enabled", False):
-        return improve
-    manifest_rel = (avd.get("manifestPath") or "pack/audit/manifest.json").replace("\\", "/")
-    canonical = read_audit_manifest_version(app_root, manifest_rel)
-    if not canonical:
-        return improve
-    repo_root = resolve_repo_root(app_root)
-    keywords = [k.lower() for k in (avd.get("contextKeywords") or ["manifest.json", "audit engine"])]
-    reported: set[tuple[str, str]] = set()
-    for rel in avd.get("scanFiles") or []:
-        md = repo_root / rel.replace("\\", "/")
-        if not md.is_file():
-            continue
-        try:
-            lines = md.read_text(encoding="utf-8", errors="replace").splitlines()
-        except OSError:
-            continue
-        for line in lines:
-            low = line.lower()
-            if not any(k in low for k in keywords):
-                continue
-            for found in _extract_audit_engine_semvers(line):
-                if found == canonical:
-                    continue
-                key = (rel, found)
-                if key in reported:
-                    continue
-                reported.add(key)
-                improve.append(
-                    f"Section M - stale audit engine version {found} in {rel} "
-                    f"(manifest.json is {canonical})"
-                )
-    return improve
-
-
-PACK_RELEASE_VERSION_PATTERNS = (
-    re.compile(r"pack version[^.\n]*\(\*?\*?(\d+\.\d+\.\d+)\*?\*?\)", re.I),
-    re.compile(r"starter pack release[^|\n]*\(\*?\*?(\d+\.\d+\.\d+)\*?\*?\)", re.I),
-    re.compile(r"root `VERSION`[^|\n]*\(\*?\*?(\d+\.\d+\.\d+)\*?\*?\)", re.I),
-    re.compile(r"see root `VERSION`[^|\n]*\(\*?\*?(\d+\.\d+\.\d+)\*?\*?\)", re.I),
-    re.compile(r"pack version:[^.\n]*currently \*\*(\d+\.\d+\.\d+)\*\*", re.I),
-)
-
-
-def _pack_version_line_segment(line: str) -> str:
-    """Use text before audit-engine mentions when both appear on one line."""
-    low = line.lower()
-    cut = len(line)
-    for marker in ("audit engine", "manifest.json"):
-        idx = low.find(marker)
-        if idx >= 0:
-            cut = min(cut, idx)
-    return line[:cut]
-
-
-def _extract_pack_release_semvers(line: str) -> list[str]:
-    segment = _pack_version_line_segment(line)
-    low = segment.lower()
-    if not any(k in low for k in ("pack version", "starter pack release", "root `version`")):
-        return []
-    found: list[str] = []
-    for pat in PACK_RELEASE_VERSION_PATTERNS:
-        for m in pat.finditer(segment):
-            found.append(m.group(1))
-    return found
-
-
-def check_pack_version_docs_improve(app_root: Path, cfg: dict) -> list[str]:
-    """Improve when maintainer docs cite a stale pack release vs root VERSION."""
-    improve: list[str] = []
-    pvd = (cfg.get("codeChecks") or {}).get("packVersionDocs") or {}
-    if not pvd.get("enabled", False):
-        return improve
-    canonical = read_canonical_version(app_root, cfg)
-    if not canonical:
-        return improve
-    repo_root = resolve_repo_root(app_root)
-    reported: set[tuple[str, str]] = set()
-    for rel in pvd.get("scanFiles") or []:
-        md = repo_root / rel.replace("\\", "/")
-        if not md.is_file():
-            continue
-        try:
-            lines = md.read_text(encoding="utf-8", errors="replace").splitlines()
-        except OSError:
-            continue
-        for line in lines:
-            for found in _extract_pack_release_semvers(line):
-                if found == canonical:
-                    continue
-                key = (rel, found)
-                if key in reported:
-                    continue
-                reported.add(key)
-                improve.append(
-                    f"Section M - stale pack version {found} in {rel} "
-                    f"(root VERSION is {canonical})"
-                )
-    return improve
-
-
-def _collect_app_version_doc_paths(app_root: Path, repo_root: Path, avd: dict) -> list[Path]:
-    exclude = set(
-        avd.get("excludeFiles") or ["AUDIT.md", "ROADMAP.md", "KNOWN_LIMITATIONS.md"]
-    )
-    seen: set[Path] = set()
-    out: list[Path] = []
-
-    def add(path: Path) -> None:
-        if not path.is_file() or path.name in exclude:
-            return
-        rp = path.resolve()
-        if rp in seen:
-            return
-        seen.add(rp)
-        out.append(path)
-
-    for rel in avd.get("scanFiles") or []:
-        norm = rel.replace("\\", "/")
-        add(repo_root / norm)
-        if app_root != repo_root:
-            add(app_root / norm)
-    for pattern in avd.get("scanGlobs") or []:
-        pat = pattern.replace("\\", "/")
-        for base in (app_root, repo_root):
-            if base.is_dir():
-                for p in base.glob(pat):
-                    add(p)
-    return out
-
-
-def check_app_version_docs_improve(app_root: Path, cfg: dict) -> list[str]:
-    """Improve when app docs cite vX.Y.Z that differs from versionSync canonical."""
-    improve: list[str] = []
-    avd = (cfg.get("codeChecks") or {}).get("appVersionDocs") or {}
-    if not avd.get("enabled", False):
-        return improve
-    canonical = read_canonical_version(app_root, cfg)
-    if not canonical:
-        return improve
-    repo_root = resolve_repo_root(app_root)
-    reported: set[tuple[str, str]] = set()
-    for path in _collect_app_version_doc_paths(app_root, repo_root, avd):
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        try:
-            rel = str(path.relative_to(repo_root))
-        except ValueError:
-            rel = str(path.relative_to(app_root))
-        for m in VERSION_IN_DOC_RE.finditer(text):
-            found = m.group(1)
-            if found == canonical:
-                continue
-            key = (rel, found)
-            if key in reported:
-                continue
-            reported.add(key)
-            improve.append(
-                f"Section M - stale app version v{found} in {rel} "
-                f"(canonical v{canonical} from versionSync)"
-            )
-    return improve
-
-
-def check_pack_reference_config_improve(app_root: Path, cfg: dict) -> list[str]:
-    """Improve when pack self-audit config diverges from the pack reference template."""
-    improve: list[str] = []
-    prc = (cfg.get("codeChecks") or {}).get("packReferenceConfig") or {}
-    if not prc.get("enabled", False):
-        return improve
-    repo_root = resolve_repo_root(app_root)
-    source = repo_root / (prc.get("source") or "docs/AUDIT.config.json").replace("\\", "/")
-    reference = repo_root / (
-        prc.get("reference") or "pack/templates/docs/AUDIT.config.pack.reference.json"
-    ).replace("\\", "/")
-    if not source.is_file() or not reference.is_file():
-        return improve
-    try:
-        src = json.loads(source.read_text(encoding="utf-8-sig"))
-        ref = json.loads(reference.read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError):
-        return improve
-    if src != ref:
-        improve.append(
-            "Section L - docs/AUDIT.config.json differs from "
-            "pack/templates/docs/AUDIT.config.pack.reference.json - sync reference copy"
-        )
-    # The checklist has a reference copy too, and nothing compared it: it had drifted 16 lines from
-    # docs/AUDIT.md, so the template shipped to new pack-style projects described a different audit.
-    src_md = repo_root / (prc.get("sourceMd") or "docs/AUDIT.md").replace("\\", "/")
-    ref_md = repo_root / (
-        prc.get("referenceMd") or "pack/templates/docs/AUDIT.pack.reference.md"
-    ).replace("\\", "/")
-    if src_md.is_file() and ref_md.is_file():
-        left = src_md.read_text(encoding="utf-8-sig").replace("\r\n", "\n").strip()
-        right = ref_md.read_text(encoding="utf-8-sig").replace("\r\n", "\n").strip()
-        if left != right:
-            improve.append(
-                f"Section L - {src_md.name} differs from {ref_md.name} - sync reference copy"
-            )
-    return improve
-
-
-def _installed_pack_root() -> Path | None:
-    preferred = Path(os.environ.get("USERPROFILE", "")) / ".cursor" / "AgentStarterPack"
-    if (preferred / "pack" / "audit" / "manifest.json").is_file():
-        return preferred.resolve()
-    legacy = Path(os.environ.get("USERPROFILE", "")) / ".cursor" / "agent-starter-pack"
-    if (legacy / "pack" / "audit" / "manifest.json").is_file():
-        return legacy.resolve()
-    return None
-
-
-def check_installed_vs_source_improve(app_root: Path, cfg: dict) -> list[str]:
-    """Improve when the source pack folder differs from ~/.cursor/AgentStarterPack."""
-    improve: list[str] = []
-    ivs = (cfg.get("codeChecks") or {}).get("installedVsSource") or {}
-    if not ivs.get("enabled", False):
-        return improve
-    repo_root = resolve_repo_root(app_root)
-    if not (repo_root / "install.ps1").is_file():
-        return improve
-    installed = _installed_pack_root()
-    if not installed or installed == repo_root.resolve():
-        return improve
-    manifest_rel = (ivs.get("manifestPath") or "pack/audit/manifest.json").replace("\\", "/")
-    local_ver = read_audit_manifest_version(app_root, manifest_rel)
-    installed_ver = read_audit_manifest_version(installed, manifest_rel)
-    if local_ver and installed_ver and local_ver != installed_ver:
-        improve.append(
-            f"Section F - installed audit engine {installed_ver} != workspace {local_ver} "
-            "- run install.ps1 -Scope User"
-        )
-    for rel in ivs.get("compareFiles") or []:
-        local_f = repo_root / rel.replace("\\", "/")
-        inst_f = installed / rel.replace("\\", "/")
-        if not local_f.is_file() or not inst_f.is_file():
-            continue
-        if hashlib.sha256(local_f.read_bytes()).digest() != hashlib.sha256(inst_f.read_bytes()).digest():
-            improve.append(
-                f"Section F - installed copy differs from workspace for {rel} "
-                "- run install.ps1 -Scope User"
-            )
-            break
-    return improve
-
-
-def check_changelog_version_improve(app_root: Path, cfg: dict) -> list[str]:
-    """Improve when CHANGELOG.md latest release does not match root VERSION."""
-    improve: list[str] = []
-    cvc = (cfg.get("codeChecks") or {}).get("changelogVersionDocs") or {}
-    if not cvc.get("enabled", False):
-        return improve
-    canonical = read_canonical_version(app_root, cfg)
-    if not canonical:
-        return improve
-    repo_root = resolve_repo_root(app_root)
-    rel = (cvc.get("changelogFile") or "CHANGELOG.md").replace("\\", "/")
-    chg = repo_root / rel
-    if not chg.is_file():
-        improve.append(f"Section M - missing {rel} for pack release history")
-        return improve
-    try:
-        text = chg.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return improve
-    m = re.search(r"^##\s+(\d+\.\d+\.\d+)", text, re.M)
-    if not m:
-        improve.append(f"Section M - {rel} has no ## X.Y.Z release entry")
-    elif m.group(1) != canonical:
-        improve.append(
-            f"Section M - {rel} latest release {m.group(1)} != root VERSION {canonical}"
-        )
-    return improve
-
-
-def check_mcp_wiring_improve(app_root: Path, cfg: dict) -> list[str]:
-    """Improve when MCP hygiene server wiring or deps look wrong (pack section G)."""
-    improve: list[str] = []
-    mw = (cfg.get("codeChecks") or {}).get("mcpWiring") or {}
-    if not mw.get("enabled", False):
-        return improve
-    repo_root = resolve_repo_root(app_root)
-    req_rel = (mw.get("requirementsFile") or "mcp/requirements.txt").replace("\\", "/")
-    req_path = repo_root / req_rel
-    pin = (mw.get("pinPattern") or r"mcp\s*>=\s*[\d.]+\s*,\s*<\s*2")
-    if not req_path.is_file():
-        improve.append(f"Section G - missing {req_rel}")
-    else:
-        try:
-            req_text = req_path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            req_text = ""
-        if req_text and not re.search(pin, req_text, re.I):
-            improve.append(
-                "Section G - mcp/requirements.txt should pin mcp<2 for FastMCP compatibility"
-            )
-    mcp_json = Path(os.environ.get("USERPROFILE", "")) / ".cursor" / "mcp.json"
-    server_name = mw.get("serverName") or "agent-hygiene"
-    if not mcp_json.is_file():
-        improve.append("Section G - mcp.json not found - run install.ps1 -RegisterMcp")
-    else:
-        try:
-            data = json.loads(mcp_json.read_text(encoding="utf-8-sig"))
-            entry = (data.get("mcpServers") or {}).get(server_name)
-            if not entry:
-                improve.append(
-                    f"Section G - mcp.json missing {server_name} server - run install.ps1 -RegisterMcp"
-                )
-            else:
-                server_py = next(
-                    (a for a in (entry.get("args") or []) if "agent_hygiene_server.py" in str(a)),
-                    None,
-                )
-                if server_py and not Path(str(server_py)).is_file():
-                    improve.append(
-                        "Section G - mcp.json agent-hygiene path stale - run install.ps1 -RegisterMcp"
-                    )
-        except (OSError, json.JSONDecodeError):
-            improve.append("Section G - mcp.json parse error - run install.ps1 -RegisterMcp")
-    if mw.get("requireImport", True):
-        try:
-            r = subprocess.run(
-                [sys.executable, "-c", "import mcp"],
-                capture_output=True,
-                text=True,
-                timeout=20,
-            )
-            if r.returncode != 0:
-                improve.append(
-                    "Section G - Python package mcp not importable - run install.ps1 -InstallMcpDeps"
-                )
-        except (OSError, subprocess.TimeoutExpired):
-            improve.append("Section G - could not verify Python mcp import")
-    return improve
 
 
 def check_section_n_improve(app_root: Path, cfg: dict) -> list[str]:

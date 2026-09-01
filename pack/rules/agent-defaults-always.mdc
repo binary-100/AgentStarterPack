@@ -5,6 +5,12 @@ alwaysApply: true
 
 # Agent defaults (all sessions)
 
+## Session start
+
+On the **first turn** in a project, read **`docs/AGENT_SESSION_START.md`** when it exists, before substantial work. It carries the stale/fresh verdict for this project's agent context and the absolute paths you are expected to have read. If it reports **stale**, follow **Context refresh** below rather than working from whatever this chat already believes.
+
+The project's `AGENTS.md` and `AI_INSTRUCTIONS.md` say the same thing — this rule covers projects whose entry files predate that line or were customized.
+
 ## Loop-back (all projects)
 
 On **any repeated error**, **same question again**, or **still broken** / **anything else** / **check everything again**:
@@ -18,13 +24,15 @@ Follow **`loop-back-protocol.mdc`** and **`pack/docs/AGENT_WORKFLOW.md`** — in
 - **After force-killing a terminal** (`exit_code: 4294967295`): run `scan_orphan_agent_processes`, then `cleanup_orphan_agent_processes` with `dry_run=True` first; only set `dry_run=False` after confirming targets.
 - Repair stale logs: `fix_stale_terminal_logs`. Kill a specific PID: `kill_terminal_process`.
 - Without MCP: `pack/scripts/cleanup-orphan-processes.ps1` (add `-Kill` to terminate).
-- Agent-initiated Windows builds: set **`BUILD_NOPAUSE=1`** or run **`build_ci.bat`** — never leave batch files waiting on `pause`.
+- Agent-initiated Windows builds: set **`BUILD_NOPAUSE=1`** or run **`build_ci.bat`** — never leave batch files waiting on `pause`. The same applies to any double-click launcher you run yourself.
 - GUI/offscreen test suites: expect ~20s; full PyInstaller builds: allow 2–5+ minutes (`block_until_ms` accordingly).
-- If the user reports "taking longer than expected": check OS process table; run full hygiene check; tell user to **Kill Terminal** in Cursor UI if tab still spins (agents cannot dismiss UI tabs).
+- If the user reports "taking longer than expected": check OS process table; run full hygiene check; tell user to **Kill Terminal** in the editor UI if the tab still spins (agents cannot dismiss UI tabs).
+
+Depth beyond this: skill **`agent-terminal-hygiene`** (diagnosis, stale metadata, orphans) and **`generic-terminal-and-build-hygiene.mdc`** (writing builds that never wait on a prompt). This section is the operational default; those two do not repeat it.
 
 ## Audits (Fix / Improve only)
 
-On **audit**, **full scan**, or audit-system maintenance:
+On **audit**, **full scan**, **check everything**, **find problems**, a repeated **still broken** / **anything else**, or audit-system maintenance (same trigger list as **`audit-protocol.mdc`**):
 
 1. **Loop back** first if this is a repeat ask (see above).
 2. Product: step 1 **`run_audit.cmd`** (full tests, never `-SkipTests`); step 2 semantic report; step 3 **`finalize_audit.cmd`**. System: **`verify-audit-system.ps1`**.

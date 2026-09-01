@@ -30,14 +30,14 @@ If `docs/WORK_QUEUE.md` is missing in a bootstrapped project, treat `docs/ROADMA
 
 - **Append** with a new stable ID (`WQ-001`, `WQ-002`, … — never reuse).
 - Put surprises in **Inbox**; triage to Active / Parked / Done in the same session when possible.
-- Do **not** silently drop rows because a handoff doc or §11 table was rewritten.
+- Do **not** silently drop rows because a handoff doc or status table was rewritten.
 
 ### When completing work
 
 - Move row to **Done log** with date and evidence (test exit code, path, commit — whatever applies).
 - Set the next Active row to **Next** (exactly one).
 - If a **`docs/handoffs/active/HANDOFF_*.md`** row exists for that WQ: set handoff **`status: completed`**, **`completed:`** date, clear **`agents_remaining`**. Run **`run_audit.cmd`** before archiving; audit **Improve** may suggest `handoff_archive/` — never auto-delete (see **`generic-agent-handoff-discipline.mdc`**).
-- **Canonical status propagation (required):** WORK_QUEUE is the source of truth. After editing it, align **every derivative** that mentions that WQ or slice — handoff §11, phase/gap plan rows, spec status headers, PARKED/backlog docs. Full channel list: **`pack/docs/RULES_AND_VERIFY_MAP.md`** § Canonical status propagation.
+- **Canonical status propagation (required):** WORK_QUEUE is the source of truth. After editing it, align **every derivative** that mentions that WQ or slice — the handoff's status section, phase/gap plan rows, spec status headers, PARKED/backlog docs. Full channel list: **`pack/docs/RULES_AND_VERIFY_MAP.md`** § Canonical status propagation.
 - **Maintainer pack repo:** run **`verify-complete-picture.ps1`** (behavior step 37) — exit **0** before claiming the slice done. Same checklist: **`pack/docs/WORK_COMPLETION.md`** step 5b.
 
 ### When deferring
@@ -56,11 +56,11 @@ Order in **Active queue** is **not frozen**. Move rows when dependencies, blocke
 5. **Avoid duplicate WQ IDs** — before appending, scan Active + Inbox + Engineering for the same task; extend an existing row or note **Superseded** instead of parallel IDs.
 6. **Chat/handoff** — may summarize the new **Next** ID only after `WORK_QUEUE.md` reflects the reorder.
 
-**Hard invariant:** no row removed without landing in **Done**, **Parked**, or **Superseded by …** in Notes. Rewriting §11 or a chat bullet list is not a substitute.
+**Hard invariant:** no row removed without landing in **Done**, **Parked**, or **Superseded by …** in Notes. Rewriting a status table or a chat bullet list is not a substitute.
 
 ### Status changes only
 
-- Rewriting HANDOVER §11 or chat summaries **without** updating `WORK_QUEUE.md` is incomplete handoff.
+- Rewriting the handoff's status section or chat summaries **without** updating `WORK_QUEUE.md` is incomplete handoff.
 
 ## Separation of concerns
 
@@ -69,7 +69,7 @@ Order in **Active queue** is **not frozen**. Move rows when dependencies, blocke
 | `run_audit.cmd` report | Ephemeral **Fix** / **Improve** for that audit run |
 | `WORK_QUEUE.md` → Engineering backlog | Recurring gaps worth scheduling (e.g. audit depth findings) |
 | `ROADMAP.md` | Product features and phased plans |
-| `HANDOVER_*.md` | Session context + pointer to **Next** ID in work queue |
+| Handoff / session notes | Session context + pointer to **Next** ID in work queue |
 
 ## Forbidden
 

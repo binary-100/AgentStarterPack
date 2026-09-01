@@ -23,7 +23,7 @@ $items = @(
     "INSTALL.txt",
     "CHANGELOG.md",
     "AGENTS.md",
-    "HANDOVER_NEXT_AGENT.md",
+    "HANDOFF_NEXT_AGENT.md",
     "install.ps1",
     "install.sh",
     "export.ps1",

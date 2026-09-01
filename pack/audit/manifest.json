@@ -1,5 +1,5 @@
 {
-  "version": "2.22.44",
+  "version": "2.22.53",
   "description": "Audit system manifest - every file that must stay in sync. Used by sync-audit-system.ps1 and verify-audit-system.ps1.",
 
   "packMirror": [
@@ -80,6 +80,8 @@
     "pack/templates/docs/ROADMAP.md.template",
     "pack/templates/docs/WORK_QUEUE.md.template",
     "pack/templates/docs/WORK_COMPLETION.md.template",
+    "pack/templates/docs/handoffs/README.md.template",
+    "pack/templates/docs/handoffs/HANDOFF_BUILD.md.template",
     "pack/templates/cursor/hooks.json.template",
     "pack/templates/cursor/hooks/session-freshness.ps1",
     "pack/templates/docs/audit_allowlist.json.template",
@@ -98,6 +100,9 @@
     "pack/scripts/check-requirements.ps1",
     "pack/scripts/run_audit_core.ps1",
     "pack/scripts/audit_code_checks.py",
+    "pack/scripts/audit_common.py",
+    "pack/scripts/audit_version_docs.py",
+    "pack/scripts/audit_install_wiring.py",
     "pack/scripts/sync-audit-system.ps1",
     "pack/scripts/verify-audit-system.ps1",
     "pack/scripts/verify-audit-behavior.ps1",
@@ -165,7 +170,14 @@
     "tests/test_pack_audit.py",
     "pack/templates/docs/AUDIT.pack.reference.md",
     "pack/templates/docs/AUDIT.app.reference.md",
-    "pack/templates/docs/AUDIT.config.pack.reference.json"
+    "pack/templates/docs/AUDIT.config.pack.reference.json",
+
+    "VERSION",
+    "README.md",
+    "INSTALL.md",
+    "INSTALL.txt",
+    "CHANGELOG.md",
+    "install_launcher.py"
   ],
 
   "packToUser": [
@@ -239,6 +251,14 @@
 
   "forbiddenPackPaths": [
     "pack/templates/AUDIT.md.template"
+  ],
+
+  "_maintainerOnlyPaths": "Repo files that belong to pack development and must not land in a user's install. install.ps1 copies the whole checkout, so anything not listed here ships to %USERPROFILE%; sync-audit-system.ps1 also deletes these from an existing install. Session handoffs and implementation specs are notes between maintainers - they age badly and mean nothing to someone who just installed the pack.",
+  "maintainerOnlyPaths": [
+    ".cursor/rules/no-publish-from-this-machine.mdc",
+    "HANDOFF_NEXT_AGENT.md",
+    "docs/handoffs",
+    "docs/handoff_archive"
   ],
 
   "auditConfigTemplate": {

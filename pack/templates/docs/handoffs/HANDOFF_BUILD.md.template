@@ -1,0 +1,47 @@
+# Handoff — {{TITLE}}
+
+## Handoff registry
+
+| Field | Value |
+|-------|-------|
+| **handoff_id** | HANDOFF_WQ001 |
+| **kind** | build |
+| **status** | active |
+| **multi_agent** | no |
+| **wq_id** | WQ-001 |
+| **plan** | |
+| **phases** | |
+| **agents_remaining** | |
+| **completed** | |
+
+**Session opener (only — give the other agent this single line):**
+
+`Read {{PROJECT_ROOT}}\docs\handoffs\active\HANDOFF_WQ001_<slug>.md and implement.`
+
+Absolute path, always — a relative path opens the wrong file in the wrong workspace.
+
+---
+
+## Context
+
+What the next agent needs to know that is not obvious from the code. Why this work exists, what was
+already tried, and what is deliberately out of scope for this slice.
+
+## Instructions
+
+1. Read the plan named in the registry — only the phases listed there.
+2. *(Implementation steps.)*
+3. Run the project's test entry point before claiming done.
+
+## Acceptance checklist
+
+- [ ] *(Observable outcome, not "code written".)*
+- [ ] Tests pass
+- [ ] `docs/WORK_QUEUE.md` row moved to **Done** with evidence
+- [ ] Registry `status` set to `completed`
+
+---
+
+**On completion:** set `status: completed` here **and** move the work-queue row to Done in the same
+session. The audit compares the two and reports when they disagree. Archiving is a separate step a
+human confirms — see `pack/docs/WORK_COMPLETION.md`.

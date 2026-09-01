@@ -13,7 +13,6 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
-
 # At script scope, not inside Get-PackRoot: dot-sourcing within a function scopes the definitions to
 # that function, so the shared helpers were invisible everywhere else in this file.
 . (Join-Path $PSScriptRoot 'pack-paths.ps1')
@@ -159,7 +158,7 @@ function Test-ManifestFinalizeAllowed([string]$AppRoot, [string]$RepoRoot, $Cfg)
         return $false
     }
     try {
-        $script:FinalizeManifest = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        $script:FinalizeManifest = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
     } catch {
         Add-Fix 'Audit finalize blocked - invalid docs\.audit_agent_manifest.json'
         return $false
@@ -252,7 +251,10 @@ function Update-ManifestMachineFixes(
         $out = @{}
         foreach ($k in $bySec.Keys) { $out[$k] = @($bySec[$k]) }
         $sectionsWithFixes = @($bySec.Keys | Sort-Object)
-        $man = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
+        # -Encoding UTF8, not cosmetic: PowerShell 5.1 reads a BOM-less UTF-8 file as ANSI, so this
+        # read turned every em dash in the manifest into three characters and the write below stored
+        # them as UTF-8 - the agent's brief was double-encoded a little more on each audit.
+        $man = Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $man | Add-Member -NotePropertyName machineFixesBySection -NotePropertyValue $out -Force
         $man | Add-Member -NotePropertyName machineSectionsWithFixes -NotePropertyValue $sectionsWithFixes -Force
         # Improve lines get their own channel: an agent that only reads machineFixesBySection sees
@@ -354,7 +356,7 @@ function Load-AuditConfig([string]$Path) {
         return $null
     }
     try {
-        return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+        return Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
     } catch {
         Add-Fix "Invalid AUDIT.config.json - $_"
         return $null
@@ -674,7 +676,7 @@ $forbidden = @('code-audit-checklist.mdc', 'generic-code-audit-checklist.mdc', '
 if ($packRoot) {
     $manifestPath = Join-Path $packRoot 'pack\audit\manifest.json'
     if (Test-Path -LiteralPath $manifestPath) {
-        $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($manifest.forbiddenArtifacts) { $forbidden = @($manifest.forbiddenArtifacts) }
     }
 }
@@ -809,7 +811,7 @@ if ($cfg.domainMap) {
 
 # --- Project required files (manifest) ---
 if ($packRoot) {
-    $manifest = Get-Content -LiteralPath (Join-Path $packRoot 'pack\audit\manifest.json') -Raw | ConvertFrom-Json
+    $manifest = Get-Content -LiteralPath (Join-Path $packRoot 'pack\audit\manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     $reqBase = $RepoRoot
     $layout = $manifest.projectRequired.flatLayout
     if (Test-Path -LiteralPath (Join-Path $RepoRoot 'app\docs\AUDIT.md')) {

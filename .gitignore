@@ -26,3 +26,7 @@ docs/.audit_receipt.json
 docs/AGENT_CONTEXT.json
 docs/AGENT_REFRESH.md
 docs/AGENT_PASTE.txt
+
+# Machine-scoped agent rule: true on the maintainer's working copy, false on the machine
+# that publishes. Committing it would tell an agent there to refuse the push it is being asked for.
+.cursor/rules/no-publish-from-this-machine.mdc

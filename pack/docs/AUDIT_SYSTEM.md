@@ -1,4 +1,4 @@
-# Audit system (starter pack 2.22.44 — manifest-driven)
+# Audit system (starter pack 2.22.53 — manifest-driven)
 
 **One audit = closed scope.** Two report sections: Fix and Improve. **One standard:** full `run_audit.cmd` — never `-SkipTests` for an audit.
 
@@ -76,7 +76,7 @@ Section B's machine checks were delete-only (`Build cruft - dist - delete`), so 
 
 ### Telling open chats the pack changed
 
-Installing updates the disk; it reaches no chat that is already open. `refresh-agent-context.ps1` syncs a project and writes `docs/AGENT_CONTEXT.json` (versions, `rulesRevision` over `pack/rules/*.mdc`, per-layer state, `changedLayers`) plus `docs/AGENT_REFRESH.md` (what to re-read, plus a paste line). Versions are read from the pack at generation time, never templated. Step 27 asserts that: an unchanged pack reports no changes but still restamps, a rule edit moves `rulesRevision`, a version bump is re-cited in the brief, and the app brief does not send agents to the pack's `HANDOVER_NEXT_AGENT.md`.
+Installing updates the disk; it reaches no chat that is already open. `refresh-agent-context.ps1` syncs a project and writes `docs/AGENT_CONTEXT.json` (versions, `rulesRevision` over `pack/rules/*.mdc`, per-layer state, `changedLayers`) plus `docs/AGENT_REFRESH.md` (what to re-read, plus a paste line). Versions are read from the pack at generation time, never templated. Step 27 asserts that: an unchanged pack reports no changes but still restamps, a rule edit moves `rulesRevision`, a version bump is re-cited in the brief, and the app brief does not send agents to the pack's `HANDOFF_NEXT_AGENT.md`.
 
 A brief nobody knows is stale is no better than no brief, and until 2.22.7 the only way to find out was
 to run the refresh — the very thing you needed telling. So the audit now reads `docs/AGENT_CONTEXT.json`
@@ -138,7 +138,7 @@ The source pack wins on every conflict, including deletions: a manifest-listed f
 | `AUDIT.md` domain map | Every production `*.py` at app root (configurable) |
 | `run_audit_core.ps1` | Full tests + machine checks + semantic report verify |
 | `audit_code_checks.py` | Import smoke, static patterns, evidence/cite validation, manifest JSON |
-| `verify-audit-system.ps1` | Sync drift, doc version vs manifest, behavior self-test (31 labelled steps, 1–30 plus 5b; skipped with `-SkipBehavior` outside the pack) |
+| `verify-audit-system.ps1` | Sync drift, doc version vs manifest, behavior self-test (45 labelled steps, 1–44 plus 5b; skipped with `-SkipBehavior` outside the pack). Both children stream their output, so a failure names the drifted file or failing step |
 | `verify-audit-behavior.ps1` | JSON parse, semantic/evidence gates, machineCoverage shape |
 | Agent + skill | Semantic review via `.audit_agent_manifest.json` + `.audit_semantic_report.json` |
 

@@ -40,7 +40,8 @@ if ($installOverride) {
 $LegacyCanonical = Join-Path $UserCursor "agent-starter-pack"
 
 function Copy-Tree($src, $dst, [string[]]$SkipNames = @(), [string[]]$SkipDirNames = @(),
-                  [string[]]$SkipExtensions = @(), [string[]]$SkipNamePatterns = @()) {
+                   [string[]]$SkipExtensions = @(), [string[]]$SkipNamePatterns = @(),
+                   [string[]]$SkipRelPaths = @()) {
     if (-not (Test-Path $dst)) {
         New-Item -ItemType Directory -Path $dst -Force | Out-Null
     }
@@ -51,6 +52,15 @@ function Copy-Tree($src, $dst, [string[]]$SkipNames = @(), [string[]]$SkipDirNam
             if ($_.Name -like $pattern) { return }
         }
         $rel = $_.FullName.Substring($src.Length).TrimStart("\")
+        # Exact relative paths, so excluding a root doc cannot also exclude a same-named file
+        # somewhere under pack\. A listed folder excludes everything under it: docs\handoffs
+        # accumulates a file per work slice, and naming them one by one guarantees the next one ships.
+        if ($SkipRelPaths -contains $rel) { return }
+        $inSkippedDir = $false
+        foreach ($skipRel in $SkipRelPaths) {
+            if ($rel -like "$skipRel\*") { $inSkippedDir = $true; break }
+        }
+        if ($inSkippedDir) { return }
         foreach ($skipDir in $SkipDirNames) {
             # Nested matches count too: __pycache__ sits under pack\scripts, not at the root.
             if ($rel -like "$skipDir*" -or $rel -like "*\$skipDir*") { return }
@@ -209,9 +219,25 @@ if ((Test-Path $LegacyCanonical) -and -not (Test-Path $CanonicalRoot)) {
 # The skips matter because Copy-Tree only ever adds: bytecode from another Python version, a live
 # .tmp scratch dir, git internals, and the source machine's audit results (.audit_* - a recorded
 # test-pass proof and semantic report) would all take up permanent residence in the profile.
+#
+# maintainerOnlyPaths keeps pack-development notes out of the install: handoffs and implementation
+# specs are written for whoever picks up the pack next, and a user who installed it has no use for
+# a stale one. .zip is excluded for the same reason - a release archive in the checkout is a build
+# artifact, not something to carry into every profile.
+$maintainerOnly = @()
+$mirrorManifest = Join-Path $PSScriptRoot 'pack\audit\manifest.json'
+if (Test-Path -LiteralPath $mirrorManifest) {
+    try {
+        $mm = Get-Content -LiteralPath $mirrorManifest -Raw | ConvertFrom-Json
+        $maintainerOnly = @($mm.maintainerOnlyPaths | Where-Object { $_ }) | ForEach-Object { $_ -replace '/', '\' }
+    } catch {
+        Write-Warning "Could not read maintainerOnlyPaths from the manifest - shipping the full tree: $_"
+    }
+}
 Copy-Tree $PSScriptRoot $CanonicalRoot `
     -SkipDirNames @('.git\', '.tmp\', '__pycache__\', '.pytest_cache\') `
-    -SkipExtensions @('.pyc', '.pyo') -SkipNamePatterns @('.audit_*')
+    -SkipExtensions @('.pyc', '.pyo', '.zip') -SkipNamePatterns @('.audit_*') `
+    -SkipRelPaths $maintainerOnly
 Write-Host "Canonical: $CanonicalRoot"
 
 if ($Scope -eq "User" -or $Scope -eq "Both") {

@@ -3,10 +3,10 @@
 Portable toolkit: **audits (Fix + Improve)**, **terminal hygiene MCP**, **CI builds**, **bootstrap**.
 
 **Human quick start:** [`INSTALL.txt`](INSTALL.txt) (new PC, flash drive, or this machine).  
-**Agent / status:** [`HANDOVER_NEXT_AGENT.md`](HANDOVER_NEXT_AGENT.md) + [`docs/WORK_QUEUE.md`](docs/WORK_QUEUE.md).  
+**Agent / status:** [`HANDOFF_NEXT_AGENT.md`](HANDOFF_NEXT_AGENT.md) + [`docs/WORK_QUEUE.md`](docs/WORK_QUEUE.md).  
 **Full guide:** [pack/docs/START_HERE.md](pack/docs/START_HERE.md)
 
-**Pack version:** see root `VERSION` (**1.8.0**). Audit engine version: `pack/audit/manifest.json` (**2.22.44**).
+**Pack version:** see root `VERSION` (**1.8.0**). Audit engine version: `pack/audit/manifest.json` (**2.22.53**).
 
 ---
 

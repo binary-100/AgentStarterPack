@@ -87,6 +87,10 @@ try {
         if ($expectNonWindows -and $env:USERPROFILE -and $env:USERPROFILE.Trim()) {
         $candidates = @(Get-AgentStarterPackCandidates)
         $sourceRoot = Get-SourceAgentStarterPack
+        # These are the Windows-only Desktop heuristics from pack-paths.ps1, spelled out so the probe
+        # can assert none of them is picked off Windows. The names include the old CursorAgentStarterPack
+        # folder on purpose; this file is excluded from the legacy-pack-folder-name static check for the
+        # same reason pack-paths.ps1 is - it is the code that owns that list, not a stale reference to it.
         $winHeuristics = @(
             (Join-Path $env:USERPROFILE 'OneDrive\Desktop\AgentStarterPack')
             (Join-Path $env:USERPROFILE 'OneDrive\Desktop\CursorAgentStarterPack')

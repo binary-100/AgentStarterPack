@@ -220,8 +220,13 @@ if (Test-Path $sync) {
     Write-Host 'Sync drift check:'
     $syncArgs = @('-VerifyOnly')
     if ($ProjectRoot) { $syncArgs += '-ProjectRoot', $ProjectRoot }
-    $syncExit = Invoke-PackScript -NoProfile -ScriptPath $sync @syncArgs
-    if ($syncExit -ne 0) { $fail++ }
+    # -PassOutput matters: without it the child's [DRIFT] lines are swallowed and the run ends at
+    # "Summary: 1 fail(s)" with nothing above it saying which file drifted or what to run.
+    Invoke-PackScript -PassOutput -NoProfile -ScriptPath $sync @syncArgs 2>&1 | Out-Host
+    $syncExit = $LASTEXITCODE
+    if ($syncExit -ne 0) {
+        Fail 'Audit sync drift (see [DRIFT] lines above) - run sync-audit-system.ps1, or install.ps1 -Scope User if the installed copy is behind'
+    }
     Write-Host ''
 }
 
@@ -234,8 +239,11 @@ if ($SkipBehavior) {
     Write-Host ''
 } elseif (Test-Path $behavior) {
     Write-Host 'Behavior self-test:'
-    $behaviorExit = Invoke-PackScript -NoProfile -ScriptPath $behavior
-    if ($behaviorExit -ne 0) { $fail++ }
+    Invoke-PackScript -PassOutput -NoProfile -ScriptPath $behavior 2>&1 | Out-Host
+    $behaviorExit = $LASTEXITCODE
+    if ($behaviorExit -ne 0) {
+        Fail 'Behavior self-test failed (see [FAIL] lines above) - run verify-audit-behavior.ps1 from the pack folder'
+    }
     Write-Host ''
 }
 

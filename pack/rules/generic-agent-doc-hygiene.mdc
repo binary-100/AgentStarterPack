@@ -5,13 +5,13 @@ alwaysApply: true
 
 # Agent doc hygiene (all projects)
 
-Before **creating or substantially editing** agent-facing files — `.cursor/rules/*.mdc`, skills, `AGENTS.md`, `AI_INSTRUCTIONS.md`, or similar — and **maintainer entry docs** (`INSTALL.txt`, `INSTALL.md`, `HANDOVER*.md`, handoff `.md` under `docs/handoffs/`):
+Before **creating or substantially editing** agent-facing files — `.cursor/rules/*.mdc`, skills, `AGENTS.md`, `AI_INSTRUCTIONS.md`, or similar — and **maintainer entry docs** (install instructions, the session handoff note, handoff `.md` under `docs/handoffs/`):
 
 ## 1. Read what already exists
 
 - List and skim **project** `.cursor/rules/` (and nested paths like `app/.cursor/rules/` if the project uses them)
 - Read **`AGENTS.md`** and linked agent docs (`AI_INSTRUCTIONS.md`, `CLAUDE.md`, etc.)
-- **Agent Starter Pack maintainer repo:** read **`INSTALL.txt`**, **`HANDOVER_NEXT_AGENT.md`**, and **`docs/WORK_QUEUE.md`** before adding any install/handoff/status doc
+- **Agent Starter Pack maintainer repo:** read **`INSTALL.txt`**, **`HANDOFF_NEXT_AGENT.md`**, and **`docs/WORK_QUEUE.md`** before adding any install/handoff/status doc
 - If the project **syncs generic rules from Agent Starter Pack**, treat those as read-only in the project — edit **`pack/rules/`** at the pack source, then sync; do not fork copies locally
 
 ## 2. Prefer extend over duplicate
@@ -19,7 +19,7 @@ Before **creating or substantially editing** agent-facing files — `.cursor/rul
 - **Extend** an existing rule, `AGENTS.md` section, or **canonical maintainer doc** when the concern fits
 - **New file** only when the concern is distinct and would bloat an existing rule or doc
 - **One concern per rule** — split only when scopes differ (always-on vs file-specific globs)
-- **Install / handoff / status:** overwrite **`INSTALL.txt`** (human) and **`HANDOVER_NEXT_AGENT.md`** (agent); retire or redirect superseded handoffs — **do not** add `STICK_*`, `*_INSTALL.txt`, or parallel cheat sheets for the same job
+- **Install / handoff / status:** keep **one** install doc for humans and **one** handoff doc for agents, and overwrite them; retire or redirect superseded handoffs — **do not** add `STICK_*`, `*_INSTALL.txt`, or parallel cheat sheets for the same job
 - When consolidating, **delete** the redundant file — do not leave parallel copies
 
 ## 3. Avoid overlap
@@ -44,13 +44,12 @@ pipeline in detail.
 
 ## 6. After shipping or changing status (Done / Parked / Next)
 
-**Version sync (§5) is not status sync.** Bumping engine version in docs does not update "Phase 6b not built" paragraphs.
+**Version cites in documentation (above) is not status sync.** Bumping a version string in docs does not update the prose around it — a "not built yet" paragraph survives every version bump until someone edits it.
 
 When a work item moves on **`docs/WORK_QUEUE.md`** (especially to **Done** or **Parked**):
 
-1. Update **derivative docs** that still describe the old state — HANDOVER §11, gap/plan rows, spec headers, coordination backlog — not only the queue file.
-2. Prefer **WQ ids** (`WQ-301`) over phase-only labels in handoffs; use **`docs/MULTI_TOOL_GAP_PLAN.md`** § Phase ID map when multiple phase numbers exist.
-3. **Maintainer pack:** run **`verify-complete-picture.ps1`** before claiming done (see **`pack/docs/WORK_COMPLETION.md`** step 5b).
-4. Inventory of rules vs verify scripts: **`pack/docs/RULES_AND_VERIFY_MAP.md`**.
+1. Update **derivative docs** that still describe the old state — the handoff's status section, gap/plan rows, spec headers, coordination backlog — not only the queue file.
+2. Prefer **WQ ids** over phase-only labels in handoffs; when a slice carries more than one phase number, keep the id map in the plan doc that owns those phases.
+3. **Agent Starter Pack maintainer repo:** run **`verify-complete-picture.ps1`** before claiming done (see **`pack/docs/WORK_COMPLETION.md`** step 5b) — rules-vs-verify inventory in **`pack/docs/RULES_AND_VERIFY_MAP.md`**.
 
 Do **not** add a second always-on rule for this — extend the work queue row and run the verify script.

@@ -170,7 +170,7 @@ try {
     # The machinery itself had the same hole, and it bites harder than docs: bootstrap-project.ps1 and
     # every template it writes were unmirrored, and bootstrapping *from the installed pack* is the
     # documented normal path - so a project generated after the second pack update would have been
-    # built from the first update's templates. doctor.ps1 was unmirrored too, and the handover tells
+    # built from the first update's templates. doctor.ps1 was unmirrored too, and the handoff tells
     # you to run it out of the profile. Enumerated so a new script or template is covered on creation.
     $machinery = @()
     foreach ($f in (Get-ChildItem -LiteralPath (Join-Path $PackRoot 'pack\scripts') -File)) {
@@ -196,6 +196,32 @@ try {
     if ($rootUnmirrored.Count -gt 0) {
         Fail "root entry points missing from manifest packMirror (install copies them, sync would not): $($rootUnmirrored -join ', ')"
     } else { Ok "all $($rootEntry.Count) root entry points are tracked for sync" }
+
+    # Same hole once more, this time for the files nobody thought of as pack content: install.ps1 copies
+    # the entire checkout, so README.md and VERSION shipped without being mirrored (stale in the profile
+    # until the next full install) while session handoffs and implementation specs shipped when they
+    # should never leave the repo. Every root file now has to be one or the other, so a new document
+    # forces the question at test time rather than showing up in someone's profile months later.
+    $generatedAtRoot = @('install-manifest.json')
+    $maintainerOnly = @($mf.maintainerOnlyPaths | Where-Object { $_ })
+    $rootDocs = @()
+    foreach ($f in (Get-ChildItem -LiteralPath $PackRoot -File)) {
+        if ($f.Extension -in @('.cmd', '.bat', '.ps1', '.sh', '.zip')) { continue }
+        if ($f.Name -in $generatedAtRoot -or $f.Name -like '.*') { continue }
+        $rootDocs += $f.Name
+    }
+    $unclassified = @($rootDocs | Where-Object { $mirror -notcontains $_ -and $maintainerOnly -notcontains $_ })
+    $bothWays = @($rootDocs | Where-Object { $mirror -contains $_ -and $maintainerOnly -contains $_ })
+    $installPs1 = Get-Content -LiteralPath (Join-Path $PackRoot 'install.ps1') -Raw
+    if ($unclassified.Count -gt 0) {
+        Fail "root files are neither mirrored nor maintainer-only - install ships them and sync cannot refresh them: $($unclassified -join ', ')"
+    } elseif ($bothWays.Count -gt 0) {
+        Fail "root files listed as both mirrored and maintainer-only: $($bothWays -join ', ')"
+    } elseif ($installPs1 -notmatch 'maintainerOnlyPaths') {
+        Fail 'install.ps1 ignores maintainerOnlyPaths - handoffs and specs would still ship to the profile'
+    } else {
+        Ok "all $($rootDocs.Count) root files classified ($($maintainerOnly.Count) maintainer-only, rest mirrored)"
+    }
 
     # Sixth appearance, found by asking "what class of file have we not enumerated yet" instead of
     # waiting for the next symptom: mcp/agent_hygiene_server.py, the server install.ps1 registers in
@@ -750,6 +776,19 @@ try {
     if ($bomHits.Count -gt 0) { Fail "generated files carry a UTF-8 BOM: $($bomHits -join ', ')" }
     else { Ok 'generated files are BOM-free' }
 
+    # Same failure shape as the BOM check: the generator hands the user a file it half-finished.
+    # ensure-work-completion.ps1 substituted {{PROJECT_NAME}} for WORK_COMPLETION.md but plain-copied
+    # the handoffs README, so every project got a literal placeholder in its title.
+    $placeholderHits = @()
+    foreach ($gen in @(Get-ChildItem -LiteralPath $smokeProj -Recurse -File -Include *.json, *.cmd, *.bat, *.md, *.py, *.mdc -ErrorAction SilentlyContinue)) {
+        $genText = Get-Content -LiteralPath $gen.FullName -Raw -Encoding UTF8
+        if ($genText -match '\{\{[A-Z_]+\}\}') {
+            $placeholderHits += "$($gen.Name) ($($Matches[0]))"
+        }
+    }
+    if ($placeholderHits.Count -gt 0) { Fail "generated files still contain template placeholders: $($placeholderHits -join ', ')" }
+    else { Ok 'no unsubstituted template placeholders' }
+
     $env:AGENT_STARTER_PACK_ROOT = $PackRoot
     $auditCmd = Join-Path $smokeProj 'run_audit.cmd'
     $auditOut = & cmd /c "`"$auditCmd`" 2>&1" | Out-String
@@ -1073,7 +1112,12 @@ try {
     $ctDst = Join-Path $probe 'ct-dst'
     foreach ($rel in @('install.ps1', 'pack\scripts\x.py', 'pack\scripts\__pycache__\x.cpython-314.pyc',
             '.git\config', '.tmp\scratch.txt', '.pytest_cache\c.json',
-            'docs\.audit_semantic_report.json', 'docs\AUDIT.md', '.gitignore')) {
+            'docs\.audit_semantic_report.json', 'docs\AUDIT.md', '.gitignore',
+            # A maintainer-only entry may name a folder. SkipRelPaths matched exact files only, so
+            # docs\handoffs would have shipped every work slice into the profile - and listing the
+            # files one by one guarantees the next one is missed.
+            'HANDOFF_NEXT_AGENT.md', 'docs\handoffs\active\HANDOFF_WQ001_x.md',
+            'docs\handoffs\README.md', 'docs\handoffs-notes.md')) {
         $full = Join-Path $ctSrc $rel
         $dir = Split-Path $full -Parent
         if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
@@ -1082,11 +1126,14 @@ try {
     (Get-Item -LiteralPath (Join-Path $ctSrc '.git') -Force).Attributes = 'Directory,Hidden'
     Copy-Tree $ctSrc $ctDst `
         -SkipDirNames @('.git\', '.tmp\', '__pycache__\', '.pytest_cache\') `
-        -SkipExtensions @('.pyc', '.pyo') -SkipNamePatterns @('.audit_*')
+        -SkipExtensions @('.pyc', '.pyo') -SkipNamePatterns @('.audit_*') `
+        -SkipRelPaths @('HANDOFF_NEXT_AGENT.md', 'docs\handoffs')
     $leaked = @('pack\scripts\__pycache__\x.cpython-314.pyc', '.git\config', '.tmp\scratch.txt',
-        '.pytest_cache\c.json', 'docs\.audit_semantic_report.json') |
+        '.pytest_cache\c.json', 'docs\.audit_semantic_report.json',
+        'HANDOFF_NEXT_AGENT.md', 'docs\handoffs\active\HANDOFF_WQ001_x.md', 'docs\handoffs\README.md') |
         Where-Object { Test-Path -LiteralPath (Join-Path $ctDst $_) }
-    $dropped = @('install.ps1', 'pack\scripts\x.py', 'docs\AUDIT.md', '.gitignore') |
+    # A skipped folder must not take a same-prefixed neighbour with it.
+    $dropped = @('install.ps1', 'pack\scripts\x.py', 'docs\AUDIT.md', '.gitignore', 'docs\handoffs-notes.md') |
         Where-Object { -not (Test-Path -LiteralPath (Join-Path $ctDst $_)) }
     if ($leaked) { Fail "install copy filter leaks into the profile: $($leaked -join ', ')" }
     elseif ($dropped) { Fail "install copy filter drops needed files: $($dropped -join ', ')" }
@@ -1338,11 +1385,11 @@ try {
     [void](Invoke-Refresh $packProj)
     $packMd = Get-Content (Join-Path $packProj 'docs\AGENT_REFRESH.md') -Raw
     $appMd = Get-Content $mdFile -Raw
-    # Sending an app agent into the pack's handover is the failure this split exists to prevent.
-    if ($packMd -notmatch '(?m)^\d+\. .*HANDOVER_NEXT_AGENT\.md') {
-        Fail 'pack-repo brief does not list HANDOVER_NEXT_AGENT.md as required reading'
-    } elseif ($appMd -match '(?m)^\d+\. .*HANDOVER_NEXT_AGENT\.md') {
-        Fail 'app brief sends the agent to the pack handover'
+    # Sending an app agent into the pack's handoff is the failure this split exists to prevent.
+    if ($packMd -notmatch '(?m)^\d+\. .*HANDOFF_NEXT_AGENT\.md') {
+        Fail 'pack-repo brief does not list HANDOFF_NEXT_AGENT.md as required reading'
+    } elseif ($appMd -match '(?m)^\d+\. .*HANDOFF_NEXT_AGENT\.md') {
+        Fail 'app brief sends the agent to the pack handoff'
     } elseif ((Get-Ctx $packProj).isPackRepo -ne $true) {
         Fail 'pack repo was not detected as a pack repo'
     } else { Ok 'pack and app briefs point at different required reading' }
@@ -1833,8 +1880,8 @@ try {
         $probeRoot = Join-Path $PackRoot ".tmp\complete-picture-probe-$PID"
         if (Test-Path -LiteralPath $probeRoot) { Remove-Item -LiteralPath $probeRoot -Recurse -Force -ErrorAction SilentlyContinue }
         New-Item -ItemType Directory -Path (Join-Path $probeRoot 'docs') -Force | Out-Null
-        $badHandover = @"
-# Handover probe
+        $badHandoff = @"
+# Handoff probe
 
 ## 11. Recommended next steps
 
@@ -1845,7 +1892,7 @@ try {
 
 ## 12. Pitfalls
 "@
-        Write-Utf8NoBom (Join-Path $probeRoot 'HANDOVER_PROBE.md') $badHandover
+        Write-Utf8NoBom (Join-Path $probeRoot 'HANDOFF_PROBE.md') $badHandoff
         Write-Utf8NoBom (Join-Path $probeRoot 'docs\WORK_QUEUE.md') @"
 # Work queue probe
 
@@ -1861,9 +1908,9 @@ try {
 |----|------|-----------|----------|
 | WQ-999 | old | 2026-01-01 | done |
 "@
-        Rename-Item (Join-Path $probeRoot 'HANDOVER_PROBE.md') 'HANDOVER_NEXT_AGENT.md'
+        Rename-Item (Join-Path $probeRoot 'HANDOFF_PROBE.md') 'HANDOFF_NEXT_AGENT.md'
         $auditOut = Invoke-PackScript -PassOutput -NoProfile -ScriptPath $cpScript -ProjectRoot $probeRoot -AuditMode 2>&1 | Out-String
-        if ($auditOut -notmatch '\[IMPROVE\]') { Fail 'AuditMode did not report stale HANDOVER Improve' }
+        if ($auditOut -notmatch '\[IMPROVE\]') { Fail 'AuditMode did not report stale HANDOFF Improve' }
         else { Ok 'AuditMode flags stale section 11 phrases' }
     }
 } catch {
@@ -1873,6 +1920,18 @@ try {
 }
 
 Write-Host "`n38. Agent session-start freshness (WQ-308 Phase D1)"
+# This step used to measure the probe's stamp against whatever pack happened to be installed in the
+# real %USERPROFILE%, so its result depended on the machine: green where the profile matched the source
+# pack, green on CI where nothing is installed at all, and red on a machine carrying an older install.
+# The probe now redirects the install root at a scratch manifest, so "fresh" and "stale" are both
+# properties of the fixture rather than of the developer's profile.
+$prevFreshInstall = $env:AGENT_STARTER_PACK_INSTALL_ROOT
+# The generated Cursor hook resolves its pack from AGENT_STARTER_PACK_ROOT, falling back to the
+# installed copy in the profile - so without this the hook assertion ran the *installed* pack's
+# freshness module, not the one in this checkout. On a machine whose install was several versions
+# behind, the step was grading code that is not under test.
+$prevFreshSource = $env:AGENT_STARTER_PACK_ROOT
+$env:AGENT_STARTER_PACK_ROOT = $PackRoot
 try {
     $freshPy = Join-Path $PSScriptRoot 'agent_context_freshness.py'
     $invokeFresh = Join-Path $PSScriptRoot 'invoke-agent-freshness.ps1'
@@ -1884,6 +1943,10 @@ try {
         New-Item -ItemType Directory -Path (Join-Path $probeRoot 'docs') -Force | Out-Null
         Write-Utf8NoBom -Path (Join-Path $probeRoot 'AGENTS.md') -Text "# probe`r`n"
         $engine = (Get-Content -LiteralPath (Join-Path $PackRoot 'pack\audit\manifest.json') -Raw | ConvertFrom-Json).version
+        $freshInstall = Join-Path $probeRoot 'installed-fresh'
+        New-Item -ItemType Directory -Path (Join-Path $freshInstall 'pack\audit') -Force | Out-Null
+        Write-Utf8NoBom -Path (Join-Path $freshInstall 'pack\audit\manifest.json') -Text "{`"version`": `"$engine`"}`r`n"
+        $env:AGENT_STARTER_PACK_INSTALL_ROOT = $freshInstall
         Write-Utf8NoBom -Path (Join-Path $probeRoot 'docs\AGENT_CONTEXT.json') -Text (@{
             schemaVersion = 2
             auditEngineVersion = [string]$engine
@@ -1966,10 +2029,38 @@ try {
                 Pop-Location
             }
         }
+
+        # Both directions, or the step proves nothing: a probe that reports "fresh" because it cannot
+        # find an install to compare against would have passed every assertion above. Point the same
+        # fixture at an install one version behind and the verdict must flip, naming both versions.
+        $staleInstall = Join-Path $probeRoot 'installed-stale'
+        New-Item -ItemType Directory -Path (Join-Path $staleInstall 'pack\audit') -Force | Out-Null
+        Write-Utf8NoBom -Path (Join-Path $staleInstall 'pack\audit\manifest.json') -Text "{`"version`": `"0.0.1`"}`r`n"
+        $env:AGENT_STARTER_PACK_INSTALL_ROOT = $staleInstall
+        $staleJson = & py -3 $freshPy --session-brief --project-root $probeRoot 2>&1 | Out-String
+        if ($LASTEXITCODE -ne 0) { Fail "session-brief failed against stale install: $staleJson" }
+        else {
+            $staleBrief = $staleJson | ConvertFrom-Json
+            if (-not $staleBrief.stale) { Fail 'stamp ahead of the installed pack should report stale' }
+            elseif ($staleBrief.openerLine -notmatch '0\.0\.1') { Fail 'stale opener does not name the installed engine version' }
+            elseif ($staleBrief.permission -eq 'none') { Fail 'stale context should ask for more than permission none' }
+            else { Ok 'stale install flips the verdict and names both versions' }
+        }
+
+        # Python must read the same override PowerShell does, which is what made this step machine
+        # dependent in the first place.
+        $freshPyText = Get-Content -LiteralPath $freshPy -Raw
+        if ($freshPyText -notmatch 'AGENT_STARTER_PACK_INSTALL_ROOT') {
+            Fail 'agent_context_freshness.py ignores AGENT_STARTER_PACK_INSTALL_ROOT (PowerShell honours it)'
+        } else { Ok 'freshness module honours the install-root override' }
     }
 } catch {
     Fail "session-start freshness checks error: $_"
 } finally {
+    if ($null -eq $prevFreshInstall) { Remove-Item Env:\AGENT_STARTER_PACK_INSTALL_ROOT -ErrorAction SilentlyContinue }
+    else { $env:AGENT_STARTER_PACK_INSTALL_ROOT = $prevFreshInstall }
+    if ($null -eq $prevFreshSource) { Remove-Item Env:\AGENT_STARTER_PACK_ROOT -ErrorAction SilentlyContinue }
+    else { $env:AGENT_STARTER_PACK_ROOT = $prevFreshSource }
     Remove-Item (Join-Path $PackRoot ".tmp\session-start-probe-$PID") -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item (Join-Path $PackRoot ".tmp\session-hook-probe-$PID") -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -2137,6 +2228,221 @@ try {
     }
 } catch {
     Fail "OS mock non-Windows checks error: $_"
+}
+
+Write-Host "`n44. Verify failures explain themselves"
+# verify-audit-system.ps1 counted the sync and behavior child exits as failures while discarding their
+# output, so a red run ended at "Summary: 1 fail(s)" with no drifted file named and nothing to act on.
+# A test that cannot say why it failed costs more than it saves.
+try {
+    $vsysPath = Join-Path $PackRoot 'pack\scripts\verify-audit-system.ps1'
+    $vsys = Get-Content -LiteralPath $vsysPath -Raw
+    $silent = [regex]::Matches($vsys, '(?m)^\s*\$\w+Exit\s*=\s*Invoke-PackScript(?![^\r\n]*-PassOutput)')
+    if ($silent.Count -gt 0) {
+        Fail "verify-audit-system.ps1 has $($silent.Count) child invocation(s) whose output is discarded - a failure there prints no reason"
+    } elseif ($vsys -notmatch "Fail 'Audit sync drift") {
+        Fail 'verify-audit-system.ps1 counts sync drift without a Fail message naming the remedy'
+    } elseif ($vsys -notmatch "Fail 'Behavior self-test failed") {
+        Fail 'verify-audit-system.ps1 counts a behavior failure without a Fail message naming the remedy'
+    } else { Ok 'sync + behavior failures print their reason and remedy' }
+} catch {
+    Fail "verify reporting checks error: $_"
+}
+
+# 45. The agent brief survives the pipe from Python
+# An em dash in AUDIT.md reached docs\.audit_agent_manifest.json as three characters, because
+# PowerShell 5.1 decodes child stdout with the console code page. The file read was fixed once
+# with -Encoding UTF8 and the pipe kept the bug, so assert on the artifact rather than the plumbing.
+Write-Host "`n45. Agent manifest keeps non-ASCII intact"
+try {
+    $encProj = Join-Path ([System.IO.Path]::GetTempPath()) ("packenc_" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    Copy-Item -LiteralPath $fixture -Destination $encProj -Recurse -Force
+    $encAudit = Join-Path $encProj 'docs\AUDIT.md'
+    $emDash = [char]0x2014
+    # Inside a checklist section, not appended at the end: only section bullets and domain-map rows
+    # are copied into the manifest, so a trailing line proves nothing.
+    $marker = "encoding probe $emDash keep this dash"
+    $encText = (Get-Content -LiteralPath $encAudit -Raw -Encoding UTF8) -replace '- no legacy audit rules', "- no legacy audit rules`r`n- $marker"
+    Write-Utf8NoBom $encAudit $encText
+    Invoke-PackScript -NoProfile -ScriptPath $corePs1 -RepoRoot $encProj -AppRoot $encProj -SkipTests *> $null
+    $encMan = Join-Path $encProj 'docs\.audit_agent_manifest.json'
+    if (-not (Test-Path $encMan)) {
+        Fail 'encoding probe produced no agent manifest'
+    } else {
+        $manText = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes($encMan))
+        if ($manText -match [char]0x00E2 + [char]0x20AC) {
+            Fail 'agent manifest is double-encoded - run_audit_core.ps1 must pin PYTHONIOENCODING and [Console]::OutputEncoding before capturing py output'
+        } elseif ($manText -notmatch 'encoding probe') {
+            Fail 'encoding probe line never reached the agent manifest - check the AUDIT.md read path'
+        } elseif ($manText -notmatch [regex]::Escape($marker)) {
+            Fail 'agent manifest lost the em dash from AUDIT.md'
+        } else { Ok 'non-ASCII survives AUDIT.md -> python -> agent manifest' }
+    }
+    Remove-Item -LiteralPath $encProj -Recurse -Force -ErrorAction SilentlyContinue
+} catch {
+    Fail "encoding probe error: $_"
+}
+
+# 46. Rules that install everywhere must not describe this repo
+# 2.22.47 found three rules naming WQ ids, phase numbers and HANDOFF sections that exist only here.
+# An agent in a bootstrapped app was told to check work items and doc sections it does not have.
+# Reading caught those; this catches the next one. A line may still name pack internals when it says
+# so - the difference between guidance for every project and a note for the maintainer is the scope
+# marker on the line, not the reader's charity.
+Write-Host "`n46. Shipped rules stay generic"
+try {
+    $scopeMarker = 'maintainer repo|maintainer pack|Pack maintenance|Agent Starter Pack maintainer'
+    $banned = [ordered]@{
+        'WQ-\d+'                     = "a work-queue id from this repo's queue"
+        # The full name, not bare HANDOFF: `docs/handoffs/` and `HANDOFF_WQnnn` are the shipped
+        # convention every project uses, and rules are supposed to name them.
+        'HANDOFF_NEXT_AGENT'         = "this repo's session handoff doc"
+        'WEEKEND_HANDOFF'            = 'a maintainer-only transfer note'
+        'MULTI_TOOL_GAP_PLAN'        = 'a pack-only plan doc'
+        'PACK_IMPLEMENTER'           = 'a pack-only spec'
+        'AGENT_COORDINATION_BACKLOG' = 'a pack-only backlog'
+        'Phase 6[a-z]?\b'            = 'a phase number that means nothing outside this repo'
+        '\u00A7\s*\d+'               = 'a section number in one of this repo''s docs'
+    }
+    $ruleDir = Join-Path $PackRoot 'pack\rules'
+    $leaks = @()
+    foreach ($rule in (Get-ChildItem -LiteralPath $ruleDir -Filter *.mdc -File)) {
+        $lineNo = 0
+        foreach ($line in (Get-Content -LiteralPath $rule.FullName -Encoding UTF8)) {
+            $lineNo++
+            if ($line -match $scopeMarker) { continue }
+            foreach ($pattern in $banned.Keys) {
+                # The work-queue rule owns the id convention, so its `WQ-001` examples are the subject
+                # matter rather than a reference to live work.
+                if ($pattern -eq 'WQ-\d+' -and $rule.Name -eq 'generic-work-queue-discipline.mdc') { continue }
+                # -cmatch, because these are file-name tokens: a rule may say "the handoff's status
+                # section" as plain English, but naming HANDOFF_NEXT_AGENT.md points at a file only
+                # this repo has.
+                if ($line -cmatch $pattern) {
+                    $leaks += "$($rule.Name):$lineNo names $($banned[$pattern])"
+                }
+            }
+        }
+    }
+    if ($leaks.Count -gt 0) {
+        Fail "pack/rules install into every project and must not name this repo's private state - scope the line to the maintainer repo, or reword it (name a section, do not number into a doc the reader may not have): $($leaks -join '; ')"
+    } else {
+        Ok "all $((Get-ChildItem -LiteralPath $ruleDir -Filter *.mdc -File).Count) shipped rules are free of this repo's ids, docs and section numbers"
+    }
+} catch {
+    Fail "generic rule check error: $_"
+}
+
+# 47. Rules and docs may not send an agent to a file that is not there
+# Step 46 checks that a rule's wording stays generic; nothing checked whether its advice is still
+# true. `ensure-work-completion.ps1` copied pack\templates\docs\handoffs\README.md.template, which
+# was never created - the copy sat behind a Test-Path, so the promised file simply never appeared
+# and no test noticed. Only `pack/`-rooted references are resolved: a doc naming `docs/ROADMAP.md`
+# or `scripts/apply_version.py` is describing the reader's project, not this pack.
+Write-Host "`n47. Cited pack files exist"
+try {
+    $refFiles = @()
+    $refFiles += Get-ChildItem -LiteralPath (Join-Path $PackRoot 'pack\rules') -Filter *.mdc -File
+    $refFiles += Get-ChildItem -LiteralPath (Join-Path $PackRoot 'pack\skills') -Filter SKILL.md -File -Recurse
+    # Changelogs describe past state on purpose: a file that existed at 2.22.3 and was renamed later
+    # is history, not a broken link.
+    $refFiles += Get-ChildItem -LiteralPath (Join-Path $PackRoot 'pack\docs') -Filter *.md -File |
+        Where-Object { $_.Name -notmatch 'CHANGELOG' }
+    $wsRules = Join-Path $PackRoot '.cursor\rules'
+    if (Test-Path -LiteralPath $wsRules) {
+        $refFiles += Get-ChildItem -LiteralPath $wsRules -Filter *.mdc -File
+    }
+    # Longest extension first and no second extension after it, or `.md.template` truncates to `.md`
+    # and `.jsonl` to `.json` - both looked like 6 broken links on the first run and were neither.
+    $extAlt = 'template|mdc|ps1|py|md|json|cmd|bat|sh'
+    $refRx = "(?<![\w./\\-])(pack[\\/][\w./\\-]+?\.($extAlt))(?![\w]|\.[A-Za-z]{2,8})"
+    $missing = @{}
+    foreach ($f in $refFiles) {
+        $lineNo = 0
+        foreach ($line in (Get-Content -LiteralPath $f.FullName -Encoding UTF8)) {
+            $lineNo++
+            # A line whose point is that a file must not exist is not a broken reference.
+            if ($line -match 'forbidden|never in pack|must not exist|no longer|removed|deleted') { continue }
+            foreach ($m in [regex]::Matches($line, $refRx)) {
+                $ref = $m.Groups[1].Value
+                if ($ref -match '[*<>{}$]|MyApp|YourApp') { continue }
+                $abs = Join-Path $PackRoot ($ref -replace '/', '\')
+                if (-not (Test-Path -LiteralPath $abs)) {
+                    $missing["$($f.Name)|$ref"] = "$($f.Name):$lineNo -> $ref"
+                }
+            }
+        }
+    }
+    if ($missing.Count -gt 0) {
+        Fail "rules and docs name pack files that do not exist - create the file or fix the reference: $(($missing.Values | Sort-Object) -join '; ')"
+    } else {
+        Ok "every pack/ path cited by $($refFiles.Count) rules, skills and docs resolves on disk"
+    }
+} catch {
+    Fail "cited path check error: $_"
+}
+
+# 48. The pack's own launchers obey the pack's own pause rule
+# generic-terminal-and-build-hygiene.mdc tells every project to gate `pause` behind BUILD_NOPAUSE,
+# and four root .cmd launchers did not - Bootstrap-Project, Bootstrap-Portable-Project,
+# Install-AgentStarterPack and Register-Tool-Adapters, twelve bare pauses between them. The suite
+# never caught it because every test calls the .ps1 underneath with -NoPause; the .cmd layer is what
+# a human double-clicks and what an agent runs, and there it blocks on a keypress.
+Write-Host "`n48. Root .cmd launchers gate every pause"
+try {
+    $ungated = @()
+    foreach ($launcher in (Get-ChildItem -LiteralPath $PackRoot -Filter *.cmd -File)) {
+        $lineNo = 0
+        foreach ($line in (Get-Content -LiteralPath $launcher.FullName)) {
+            $lineNo++
+            # A gated pause carries its condition on the same line; a bare one is the whole statement.
+            if ($line -match '^\s*pause\s*$') { $ungated += "$($launcher.Name):$lineNo" }
+        }
+    }
+    if ($ungated.Count -gt 0) {
+        Fail "bare pause blocks an agent run - use 'if not defined BUILD_NOPAUSE pause': $($ungated -join ', ')"
+    } else {
+        Ok "all $((Get-ChildItem -LiteralPath $PackRoot -Filter *.cmd -File).Count) root launchers keep the window open without blocking an agent"
+    }
+} catch {
+    Fail "launcher pause check error: $_"
+}
+
+# 49. One word for one thing: handoff
+# "handoff" and "handover" are synonyms in English - British usage prefers the second - so nothing
+# stops a writer alternating, and 2.22.52 found 519 mixed occurrences across 56 files. The pack now
+# says handoff everywhere: the work-slice system (docs/handoffs/, HANDOFF_WQnnn, the registry) and
+# the session doc (HANDOFF_NEXT_AGENT.md) are the same verb applied at two scales. The changelog is
+# exempt because that is where the retired term is explained.
+Write-Host "`n49. Vocabulary: handoff only"
+try {
+    $vocabExts = @('.md', '.mdc', '.ps1', '.py', '.cmd', '.bat', '.json', '.txt', '.template')
+    $strays = @()
+    foreach ($f in (Get-ChildItem -LiteralPath $PackRoot -Recurse -File -Force -ErrorAction SilentlyContinue |
+            Where-Object {
+                $_.FullName -notmatch '\\\.git\\|\\__pycache__\\|\\\.tmp\\' -and
+                $_.Name -ne 'AUDIT_SYSTEM_CHANGELOG.md' -and
+                # A linter has to spell the word it bans, so it cannot lint itself.
+                $_.FullName -ne $PSCommandPath -and
+                $vocabExts -contains $_.Extension
+            })) {
+        $lineNo = 0
+        foreach ($line in (Get-Content -LiteralPath $f.FullName -Encoding UTF8 -ErrorAction SilentlyContinue)) {
+            $lineNo++
+            # The retired *word* is banned; the retired *filename* may be cited. Someone searching
+            # for HANDOVER_NEXT_AGENT.md has to land somewhere, and a total ban would mean no doc
+            # could ever say what this file used to be called.
+            $prose = $line -replace 'HANDOVER_NEXT_AGENT', ''
+            if ($prose -imatch 'handover') { $strays += "$($f.Name):$lineNo" }
+        }
+    }
+    if ($strays.Count -gt 0) {
+        Fail "'handover' is retired - the pack says handoff for both the work-slice files and the session doc: $($strays -join ', ')"
+    } else {
+        Ok 'no stray handover; one word for one concept'
+    }
+} catch {
+    Fail "vocabulary check error: $_"
 }
 
 Write-Host "`nSummary: $fail fail(s)"

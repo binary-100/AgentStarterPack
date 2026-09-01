@@ -8,7 +8,7 @@ if "%ROOT%"=="" (
     echo.
     echo Optional third arg: -Repair to write missing adapter files from templates
     echo Optional fourth arg: -InstallMcp to register Claude Desktop MCP on this machine
-    pause
+    if not defined BUILD_NOPAUSE pause
     exit /b 1
 )
 set "TOOL=%~2"
@@ -19,9 +19,10 @@ if /I "%~4"=="-InstallMcp" set "EXTRA=%EXTRA% -InstallMcp"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0pack\scripts\register-tool-adapters.ps1" -ProjectRoot "%ROOT%" -Tool %TOOL% %EXTRA% -NoPause
 if errorlevel 1 (
     echo Tool adapter verification failed.
-    pause
+    if not defined BUILD_NOPAUSE pause
     exit /b 1
 )
 echo.
 echo Done. See docs/PORTABLE_SETUP.md for per-tool setup.
-pause
+REM Keeps the window open for a double-click; agents set BUILD_NOPAUSE=1 so it never blocks.
+if not defined BUILD_NOPAUSE pause

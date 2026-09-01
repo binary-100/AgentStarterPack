@@ -217,7 +217,7 @@ if (Test-Path -LiteralPath (Join-Path $canonicalProjectRoot 'docs\WORK_QUEUE.md'
     [void]$requiredReads.Add((Join-Path $canonicalProjectRoot 'docs\WORK_QUEUE.md'))
 }
 if ($isPackRepo) {
-    [void]$requiredReads.Add((Join-Path $canonicalProjectRoot 'HANDOVER_NEXT_AGENT.md'))
+    [void]$requiredReads.Add((Join-Path $canonicalProjectRoot 'HANDOFF_NEXT_AGENT.md'))
 }
 
 $syncedAt = (Get-Date).ToUniversalTime().ToString('o')
@@ -261,7 +261,7 @@ $changeLines = if ($changed.Count -eq 0) {
 $readList = New-Object System.Collections.ArrayList
 $idx = 1
 foreach ($abs in @($requiredReads)) {
-    if ($abs -match 'HANDOVER_NEXT_AGENT\.md$') {
+    if ($abs -match 'HANDOFF_NEXT_AGENT\.md$') {
         [void]$readList.Add("$idx. ``$abs`` - pack maintainers only")
     } else {
         [void]$readList.Add("$idx. ``$abs``")
@@ -283,7 +283,7 @@ $agentsPath = Join-Path $ProjectRoot 'AGENTS.md'
 $pasteLine = if ($isPackRepo) {
     "PACK CONTEXT REFRESHED $stampShort (pack $packVersion, audit engine $auditEngineVersion). " +
     "Before your next action: read $refreshDocPath, then re-read $agentsPath and " +
-    "$(Join-Path $ProjectRoot 'HANDOVER_NEXT_AGENT.md'). Treat conclusions from earlier in this chat " +
+    "$(Join-Path $ProjectRoot 'HANDOFF_NEXT_AGENT.md'). Treat conclusions from earlier in this chat " +
     "as possibly stale. Confirm by replying with the pack version and audit engine version you just read."
 } else {
     "PACK CONTEXT REFRESHED $stampShort (pack $packVersion, audit engine $auditEngineVersion). " +
@@ -317,7 +317,7 @@ $($changeLines -join "`n")
 
 - Version and doc cites are a build step (``docs/VERSION_SYNC.json`` / ``apply_version.py sync``), not an audit step.
 - Audits report Fix and Improve; they do not delete or restructure anything on their own.
-$(if (-not $isPackRepo) { "- ``HANDOVER_NEXT_AGENT.md`` belongs to the Agent Starter Pack repo - do not read it for this project.`n" })
+$(if (-not $isPackRepo) { "- ``HANDOFF_NEXT_AGENT.md`` belongs to the Agent Starter Pack repo - do not read it for this project.`n" })
 ## Paste into an open chat
 
 Three ways to do this, easiest first:

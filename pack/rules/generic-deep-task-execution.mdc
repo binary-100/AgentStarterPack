@@ -59,7 +59,7 @@ Use when the user compares **two locations** or asks whether one copy covers ano
 
 Use for **audit**, **full scan**, **check everything**, **review the whole codebase**.
 
-Follow project audit rules when present (`audit.mdc`, skill `agent-code-audit`). Additionally:
+Follow project audit rules when present (`audit.mdc`, skill `agent-code-audit`) — **`audit-protocol.mdc`** holds the canonical audit trigger list, and the words below add depth requirements rather than a second vocabulary. Additionally:
 
 - Run the project's **full test / verify entry point** when one exists — never `-SkipTests` on audits unless docs explicitly allow it.
 - Do not report "complete" until required gates exit 0 or you list failing gates explicitly.
@@ -86,9 +86,9 @@ Use when the user asks for **where we stand**, **what's pending**, **handoff cle
 
 | Step | Requirement |
 |------|-------------|
-| 1 | **Inventory all agent/handoff sources** at repo root and `pack/docs/` — list every file read or explicitly skipped with reason. Include **`docs/WORK_QUEUE.md`** when present. |
-| 2 | **Grep all of them** for: `deferred`, `not built`, `not implemented`, `open question`, `design goal`, `next step`, `pick up`, `parked`, `remaining`, `tool-neutral`, `multi-tool`, `Cursor-specific`, `Windows-only`, `audit depth` |
-| 3 | **Separate tracks** — do not collapse into one "portability" bucket. At minimum distinguish: **(A) OS/shell**, **(B) editor/tool/model**, **(C) audit depth**, **(D) git/release**, **(E) agent refresh**, **(F) explicitly deferred (6c mailbox / WQ-302 only — 6b/WQ-301 shipped)** |
+| 1 | **Inventory all agent/handoff sources** — repo root plus every agent-doc folder the project uses (`docs/`, `docs/handoffs/`, `pack/docs/`) — and list every file read or explicitly skipped with reason. Include **`docs/WORK_QUEUE.md`** when present. |
+| 2 | **Grep all of them** for: `deferred`, `not built`, `not implemented`, `open question`, `design goal`, `next step`, `pick up`, `parked`, `remaining`, plus the project's own recurring qualifiers (e.g. `tool-neutral`, `multi-tool`, `editor-specific`, `Windows-only`, `audit depth`) |
+| 3 | **Separate tracks** — do not collapse related-sounding work into one bucket. Split by what would have to change to close it, and keep **explicitly deferred** work as its own track with the id or doc that deferred it |
 | 4 | **Map each track** to: documented intent → what shipped → what is still open → which doc says so (with path) |
 | 5 | **Live state** — version markers, install sync, test exit codes **in this turn** |
 | 6 | **Cross-check user callouts** — if the user says a topic should be in the docs, search for it before claiming it is missing |
@@ -96,11 +96,10 @@ Use when the user asks for **where we stand**, **what's pending**, **handoff cle
 
 **Forbidden:**
 
-- Replacing HANDOVER §11 or chat bullets **without** updating **`docs/WORK_QUEUE.md`** when that file exists.
-- Reporting §11 or one handoff file while ignoring `HANDOVER` §1/§8, `WEEKEND_HANDOFF`, specs, and `PORTABLE_SETUP.md`.
-- Marking "editor neutrality shipped" as closing **all** multi-tool work while §8 still lists Cursor-only install/skills/MCP surfaces.
-- Marking "Windows-only decided" as closing **tool/model** versatility (they are different tracks).
-- Listing next steps without the **multi-tool / reduce Cursor dependency** track when `HANDOVER` §1 design goal and §8 table are present.
+- Rewriting a handoff status section or chat bullets **without** updating **`docs/WORK_QUEUE.md`** when that file exists.
+- Reporting one status section or one handoff file while ignoring the rest of the sources from step 1 — a project's design goals and gap tables usually live in a different section than its "next steps" list.
+- Treating one track as closed because a **neighbouring** track shipped. Two tracks that share a word in their names still close separately.
+- Dropping a track from "what's next" because it is long-running or was decided against once — a decision to defer keeps the track on the list with its **Re-open when**.
 
 ---
 

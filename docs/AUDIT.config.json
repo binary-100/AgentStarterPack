@@ -232,7 +232,7 @@
         "section": "L",
         "requireMatches": true,
         "glob": "*.{md,ps1,mdc,cmd,bat,json,py}",
-        "excludePathRegex": "\\\\pack\\\\audit\\\\behavior-fixture\\\\|pack[\\\\/]scripts[\\\\/]pack-paths\\.ps1|install\\.ps1|CHANGELOG\\.md|bootstrap-project\\.ps1|PORTABLE_SETUP\\.md|[\\\\/]\\.audit_|AUDIT\\.config[\\w.]*\\.json",
+        "excludePathRegex": "\\\\pack\\\\audit\\\\behavior-fixture\\\\|pack[\\\\/]scripts[\\\\/]pack-paths\\.ps1|pack[\\\\/]scripts[\\\\/]test-os-portability-probe\\.ps1|install\\.ps1|CHANGELOG\\.md|bootstrap-project\\.ps1|PORTABLE_SETUP\\.md|[\\\\/]\\.audit_|AUDIT\\.config[\\w.]*\\.json",
         "forbiddenRegex": "CursorAgentStarterPack|\\\\agent-starter-pack\\\\",
         "allowLineRegex": "[Ll]egacy|[Mm]igrat",
         "message": "legacy starter pack path - use AgentStarterPack"

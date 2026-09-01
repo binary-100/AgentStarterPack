@@ -3,7 +3,7 @@
 .SYNOPSIS
   Auditable checks for the complete-picture handoff contract (generic-deep-task-execution.mdc).
 .DESCRIPTION
-  Pack maintainer repos: HANDOVER section 11 must point at docs/WORK_QUEUE.md; stale Done tasks
+  Pack maintainer repos: HANDOFF section 11 must point at docs/WORK_QUEUE.md; stale Done tasks
   in section 11 are Improve. All repos with handoff docs: inventory + pending-keyword scan (INFO).
 #>
 param(
@@ -98,11 +98,9 @@ $alignmentSkipRel = @(
 )
 
 $handoffSources = [System.Collections.Generic.List[string]]::new()
-foreach ($f in Get-ChildItem -LiteralPath $ProjectRoot -Filter 'HANDOVER*.md' -File -ErrorAction SilentlyContinue) {
+foreach ($f in Get-ChildItem -LiteralPath $ProjectRoot -Filter 'HANDOFF*.md' -File -ErrorAction SilentlyContinue) {
     [void]$handoffSources.Add($f.FullName)
 }
-$weekend = Join-Path $ProjectRoot 'WEEKEND_HANDOFF.md'
-if (Test-Path -LiteralPath $weekend) { [void]$handoffSources.Add($weekend) }
 $wqPath = Join-Path $ProjectRoot 'docs\WORK_QUEUE.md'
 if (Test-Path -LiteralPath $wqPath) { [void]$handoffSources.Add($wqPath) }
 $handoffsDir = Join-Path $ProjectRoot 'docs\handoffs'
@@ -121,9 +119,7 @@ if ($isPackRepo) {
             'pack\docs\RULES_AND_VERIFY_MAP.md',
             'docs\MULTI_TOOL_GAP_PLAN.md',
             'docs\AGENT_UPGRADE_PATH.md',
-            'docs\AGENT_FRESHNESS_ADAPTER_PLAN.md',
-            'PACK_IMPLEMENTER_SPEC.md',
-            'PHASE_6_IMPLEMENTATION_SPEC.md'
+            'docs\AGENT_FRESHNESS_ADAPTER_PLAN.md'
         )) {
         $p = Join-Path $ProjectRoot $rel
         if (Test-Path -LiteralPath $p) { [void]$handoffSources.Add($p) }
@@ -152,24 +148,6 @@ if ($isPackRepo) {
         }
     }
 
-    if (Test-Path -LiteralPath $weekend) {
-        $weekendRaw = Get-Content -LiteralPath $weekend -Raw -Encoding UTF8
-        if ($weekendRaw -match '(?m)^## 2\. State as of this handoff') {
-            Write-Fail 'WEEKEND_HANDOFF.md still has legacy handoff body - replace with superseded redirect'
-        } elseif ($weekendRaw -notmatch '(?i)superseded') {
-            Write-Fail 'WEEKEND_HANDOFF.md must declare superseded redirect'
-        } else {
-            Write-Ok 'WEEKEND_HANDOFF.md is redirect stub'
-        }
-    }
-
-    $handoverMain = Join-Path $ProjectRoot 'HANDOVER_NEXT_AGENT.md'
-    if (Test-Path -LiteralPath $handoverMain) {
-        $handoverMainRaw = Get-Content -LiteralPath $handoverMain -Raw -Encoding UTF8
-        if ($handoverMainRaw -match 'Read \*\*`WEEKEND_HANDOFF\.md`\*\* first') {
-            Write-Fail 'HANDOVER points to WEEKEND_HANDOFF as primary - use INSTALL.txt for human install'
-        }
-    }
 }
 
 if ($handoffSources.Count -eq 0) {
@@ -199,30 +177,32 @@ foreach ($src in $uniqueSources) {
     }
 }
 
-$handoverPath = @($uniqueSources | Where-Object { $_ -match 'HANDOVER' } | Select-Object -First 1)
-if (-not $handoverPath) {
+# The canonical name, not any HANDOFF: $uniqueSources also holds docs\handoffs\active\HANDOFF_WQnnn
+# files, and a bare 'HANDOFF' match would pick a work slice and then look for a section it never had.
+$handoffPath = @($uniqueSources | Where-Object { $_ -match 'HANDOFF_NEXT_AGENT' } | Select-Object -First 1)
+if (-not $handoffPath) {
     if ($AllowMissing) {
-        Write-Info 'no HANDOVER file (allowed for bootstrapped apps)'
+        Write-Info 'no HANDOFF file (allowed for bootstrapped apps)'
         exit 0
     }
-    Write-Ok 'no HANDOVER file; keyword scan only'
+    Write-Ok 'no HANDOFF file; keyword scan only'
     exit 0
 }
 
-$handoverRaw = Get-Content -LiteralPath $handoverPath -Raw -Encoding UTF8
-$sec11 = Get-SectionBody $handoverRaw '## 11.' @('## 12.', '## 13.')
+$handoffRaw = Get-Content -LiteralPath $handoffPath -Raw -Encoding UTF8
+$sec11 = Get-SectionBody $handoffRaw '## 11.' @('## 12.', '## 13.')
 if (-not $sec11.Trim()) {
-    if ($AllowMissing) { Write-Info 'HANDOVER missing section 11 (allowed)'; exit 0 }
-    Write-Fail 'HANDOVER missing section 11'
+    if ($AllowMissing) { Write-Info 'HANDOFF missing section 11 (allowed)'; exit 0 }
+    Write-Fail 'HANDOFF missing section 11'
     exit 1
 }
 
 if (Test-Path -LiteralPath $wqPath) {
     if ($sec11 -notmatch 'WORK_QUEUE\.md' -or $sec11 -notmatch 'canonical') {
-        $msg = 'HANDOVER section 11 must point at docs/WORK_QUEUE.md as the canonical queue'
+        $msg = 'HANDOFF section 11 must point at docs/WORK_QUEUE.md as the canonical queue'
         if ($AuditMode) { Emit-Audit 'IMPROVE' $msg } else { Write-Fail $msg; exit 1 }
     } else {
-        Write-Ok 'HANDOVER section 11 references canonical WORK_QUEUE.md'
+        Write-Ok 'HANDOFF section 11 references canonical WORK_QUEUE.md'
     }
 
     $wqRaw = Get-Content -LiteralPath $wqPath -Raw -Encoding UTF8
@@ -231,15 +211,15 @@ if (Test-Path -LiteralPath $wqPath) {
     )
     $doneBody = Get-SectionBody $wqRaw '## Done log' @('## Cross-references')
     $activeNext = [regex]::Match($activeBody, '\|\s*(WQ-\d+)\s*\|[^|]*\|\s*\*\*Next\*\*').Groups[1].Value
-    $handoverNext = [regex]::Match($sec11, '\*\*Next\*\*\s*\|\s*(WQ-\d+)').Groups[1].Value
-    if (-not $handoverNext) {
-        $handoverNext = [regex]::Match($sec11, 'Next\*\*\s*\|\s*(WQ-\d+)').Groups[1].Value
+    $handoffNext = [regex]::Match($sec11, '\*\*Next\*\*\s*\|\s*(WQ-\d+)').Groups[1].Value
+    if (-not $handoffNext) {
+        $handoffNext = [regex]::Match($sec11, 'Next\*\*\s*\|\s*(WQ-\d+)').Groups[1].Value
     }
-    if ($activeNext -and $handoverNext -and $activeNext -ne $handoverNext) {
-        $msg = "HANDOVER section 11 Next ($handoverNext) != WORK_QUEUE Active Next ($activeNext)"
+    if ($activeNext -and $handoffNext -and $activeNext -ne $handoffNext) {
+        $msg = "HANDOFF section 11 Next ($handoffNext) != WORK_QUEUE Active Next ($activeNext)"
         if ($AuditMode) { Emit-Audit 'IMPROVE' $msg } else { Write-Fail $msg }
     } elseif ($activeNext) {
-        Write-Ok "HANDOVER Next aligns with WORK_QUEUE ($activeNext)"
+        Write-Ok "HANDOFF Next aligns with WORK_QUEUE ($activeNext)"
     }
 
     $doneIds = [System.Collections.Generic.HashSet[string]]::new([string[]](Get-WqIdsFromSection $doneBody))
@@ -248,7 +228,7 @@ if (Test-Path -LiteralPath $wqPath) {
         if ($doneIds.Contains($id) -and $sec11 -match [regex]::Escape($id)) {
             if ($sec11 -match '\*\*Next\*\*[^|]*\|\s*' + [regex]::Escape($id) -or
                 $sec11 -match 'Priority[^`]*' + [regex]::Escape($id)) {
-                $msg = "HANDOVER section 11 still highlights $id but WORK_QUEUE lists it in Done"
+                $msg = "HANDOFF section 11 still highlights $id but WORK_QUEUE lists it in Done"
                 if ($AuditMode) { Emit-Audit 'IMPROVE' $msg } else { Write-Info $msg }
             }
         }
@@ -257,7 +237,7 @@ if (Test-Path -LiteralPath $wqPath) {
 
 foreach ($phrase in $knownStalePhrases) {
     if ($sec11 -match [regex]::Escape($phrase)) {
-        $msg = "HANDOVER section 11 contains stale shipped task phrase: $phrase"
+        $msg = "HANDOFF section 11 contains stale shipped task phrase: $phrase"
         if ($AuditMode) { Emit-Audit 'IMPROVE' $msg } else { Write-Fail $msg }
     }
 }

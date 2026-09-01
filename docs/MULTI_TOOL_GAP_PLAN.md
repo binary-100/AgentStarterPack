@@ -4,7 +4,7 @@
 **Last updated:** 2026-08-30  
 **Tracks:** Editor/tool/model portability only — **not** OS/shell (see `docs/OS_PORTABILITY_PLAN.md` / WQ-304).
 
-**Design goal (HANDOVER §1):** Work in as many agents/models/IDEs as practical via shared docs and scripts. Cursor keeps the deepest integration.
+**Design goal (HANDOFF §1):** Work in as many agents/models/IDEs as practical via shared docs and scripts. Cursor keeps the deepest integration.
 
 **Canonical queue:** `docs/WORK_QUEUE.md` — when any doc disagrees with Done/Parked there, **fix the doc** (not the queue).
 
@@ -14,7 +14,7 @@
 
 The same slice was named in three places during design. **Use WQ IDs in handoffs and the work queue**; cite this table when you need a phase number.
 
-| WQ ID | Work queue name | `PACK_IMPLEMENTER_SPEC` | `AGENT_UPGRADE_PATH` | This plan |
+| WQ ID | Work queue name | Implementer spec (deleted) | `AGENT_UPGRADE_PATH` | This plan |
 |-------|-----------------|-------------------------|----------------------|-----------|
 | **WQ-301** | Phase 6b MCP freshness tools | Phase **6b** | Phase **B** | Phase **5** |
 | **WQ-308** | Phase D freshness adapter | — | Phase **D** | Phase **6** |
@@ -89,7 +89,7 @@ Implement phases **in order** — see `pack/docs/PHASED_FEATURE_DESIGN.md`.
 - Bootstrap `-Targets` (`All`, `Portable`, per-editor)
 - Tool-neutral stale-context remediation in `AI_INSTRUCTIONS.md` + `AGENTS.md` (behavior step 30)
 - `docs/PORTABLE_SETUP.md`, `docs/MULTI_INSTANCE_GUIDE.md`
-- `refresh-agent-context.ps1` tool-neutral brief (does not point apps at pack `HANDOVER`)
+- `refresh-agent-context.ps1` tool-neutral brief (does not point apps at pack `HANDOFF`)
 
 ---
 
@@ -134,4 +134,4 @@ Implement phases **in order** — see `pack/docs/PHASED_FEATURE_DESIGN.md`.
 
 Phase 1 is documentation-only. Phases 2+ should add behavior or verify steps only when they change shipped scripts.
 
-**References:** `HANDOVER_NEXT_AGENT.md` §1, §8; `docs/PORTABLE_SETUP.md`; WQ-003 in `docs/WORK_QUEUE.md`.
+**References:** `HANDOFF_NEXT_AGENT.md` §1, §8; `docs/PORTABLE_SETUP.md`; WQ-003 in `docs/WORK_QUEUE.md`.

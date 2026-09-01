@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Audit (pack self-audit)
 
-On **audit**, **full scan**, or **check everything** in this repo:
+On **audit**, **full scan**, **check everything**, **find problems**, or a repeated **still broken** / **anything else** in this repo (canonical trigger list — see **`audit-protocol.mdc`**):
 
 1. **`run_audit.cmd`** — `run_audit_tests.bat` + machine checks + sync verify; never `-SkipTests`.
 2. Read **`docs/.audit_agent_manifest.json`** — complete semantic report for all required sections.

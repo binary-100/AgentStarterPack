@@ -1,0 +1,31 @@
+# Handoffs — Agent Starter Pack
+
+Work handed from one chat to the next lives here. One file per slice, so the next agent reads a
+document instead of a scrollback.
+
+Convention: `pack/docs/AGENT_HANDOFFS.md` — after install,
+`%USERPROFILE%\.cursor\AgentStarterPack\pack\docs\AGENT_HANDOFFS.md`.
+Checked by `verify-agent-handoffs.ps1` during audit, which reports and **never deletes**.
+
+## Layout
+
+| Path | Holds |
+|------|-------|
+| `active/HANDOFF_WQnnn_<slug>.md` | Build slices in progress — one per work-queue item |
+| `HANDOFF_<topic>.md` | Orientation notes; read and confirm, no code |
+| `../handoff_archive/` | Completed or superseded, moved after audit Improve **and** a human's confirmation |
+
+`<slug>` is lowercase with underscores and names the outcome, not the phase — `usb_data_recovery`,
+not `phase_2`.
+
+## Required on every handoff
+
+A `## Handoff registry` table at the top (`handoff_id`, `kind`, `status`, `multi_agent`, `wq_id`,
+`plan`, `phases`, `agents_remaining`, `completed`) and a session opener line giving the **absolute**
+path of the file. Start from `HANDOFF_BUILD.md.template` in the pack rather than an empty file.
+
+## The rule that catches drift
+
+`status` here and the row in `docs/WORK_QUEUE.md` must agree. A handoff marked `completed` whose WQ
+row is still Active — or the reverse — is what the audit reports, because that pair going out of
+sync is how work gets silently dropped between sessions.

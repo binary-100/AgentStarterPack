@@ -5,9 +5,10 @@ echo Installing Agent Starter Pack (user scope + MCP)...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" -Scope User -RegisterMcp -InstallMcpDeps -NoPause
 if errorlevel 1 (
     echo Install failed.
-    pause
+    if not defined BUILD_NOPAUSE pause
     exit /b 1
 )
 echo.
 echo Install complete. Restart Cursor, then check Settings - MCP - agent-hygiene
-pause
+REM Keeps the window open for a double-click; agents set BUILD_NOPAUSE=1 so it never blocks.
+if not defined BUILD_NOPAUSE pause

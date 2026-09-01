@@ -20,6 +20,12 @@ Source: `pack/rules/agent-defaults-always.mdc`
 
 # Agent defaults (all sessions)
 
+## Session start
+
+On the **first turn** in a project, read **`docs/AGENT_SESSION_START.md`** when it exists, before substantial work. It carries the stale/fresh verdict for this project's agent context and the absolute paths you are expected to have read. If it reports **stale**, follow **Context refresh** below rather than working from whatever this chat already believes.
+
+The project's `AGENTS.md` and `AI_INSTRUCTIONS.md` say the same thing — this rule covers projects whose entry files predate that line or were customized.
+
 ## Loop-back (all projects)
 
 On **any repeated error**, **same question again**, or **still broken** / **anything else** / **check everything again**:
@@ -33,13 +39,15 @@ Follow **`loop-back-protocol.mdc`** and **`pack/docs/AGENT_WORKFLOW.md`** — in
 - **After force-killing a terminal** (`exit_code: 4294967295`): run `scan_orphan_agent_processes`, then `cleanup_orphan_agent_processes` with `dry_run=True` first; only set `dry_run=False` after confirming targets.
 - Repair stale logs: `fix_stale_terminal_logs`. Kill a specific PID: `kill_terminal_process`.
 - Without MCP: `pack/scripts/cleanup-orphan-processes.ps1` (add `-Kill` to terminate).
-- Agent-initiated Windows builds: set **`BUILD_NOPAUSE=1`** or run **`build_ci.bat`** — never leave batch files waiting on `pause`.
+- Agent-initiated Windows builds: set **`BUILD_NOPAUSE=1`** or run **`build_ci.bat`** — never leave batch files waiting on `pause`. The same applies to any double-click launcher you run yourself.
 - GUI/offscreen test suites: expect ~20s; full PyInstaller builds: allow 2–5+ minutes (`block_until_ms` accordingly).
-- If the user reports "taking longer than expected": check OS process table; run full hygiene check; tell user to **Kill Terminal** in Cursor UI if tab still spins (agents cannot dismiss UI tabs).
+- If the user reports "taking longer than expected": check OS process table; run full hygiene check; tell user to **Kill Terminal** in the editor UI if the tab still spins (agents cannot dismiss UI tabs).
+
+Depth beyond this: skill **`agent-terminal-hygiene`** (diagnosis, stale metadata, orphans) and **`generic-terminal-and-build-hygiene.mdc`** (writing builds that never wait on a prompt). This section is the operational default; those two do not repeat it.
 
 ## Audits (Fix / Improve only)
 
-On **audit**, **full scan**, or audit-system maintenance:
+On **audit**, **full scan**, **check everything**, **find problems**, a repeated **still broken** / **anything else**, or audit-system maintenance (same trigger list as **`audit-protocol.mdc`**):
 
 1. **Loop back** first if this is a repeat ask (see above).
 2. Product: step 1 **`run_audit.cmd`** (full tests, never `-SkipTests`); step 2 semantic report; step 3 **`finalize_audit.cmd`**. System: **`verify-audit-system.ps1`**.
@@ -120,7 +128,7 @@ Source: `pack/rules/audit-protocol.mdc`
 
 # Audit protocol
 
-On **audit**, **full scan**, **find problems**, **check everything**, or repeated **still broken** / **anything else**:
+**Trigger list (canonical).** On **audit**, **full scan**, **check everything**, **find problems**, or a repeated **still broken** / **anything else**. `agent-defaults-always.mdc` and any project `audit.mdc` use this same list — one job should not have three vocabularies, and a phrase that only one surface knows is a phrase that gets missed.
 
 1. **Loop back** — per **`loop-back-protocol.mdc`** (all projects) if this is a repeat ask.
 2. Read **`pack/docs/AGENT_WORKFLOW.md`** (audit section: Fix/Improve) — in the starter pack itself, or at `%USERPROFILE%\.cursor\AgentStarterPack\pack\docs\AGENT_WORKFLOW.md` from any other project.
@@ -188,13 +196,13 @@ Source: `pack/rules/generic-agent-doc-hygiene.mdc`
 
 # Agent doc hygiene (all projects)
 
-Before **creating or substantially editing** agent-facing files — `.cursor/rules/*.mdc`, skills, `AGENTS.md`, `AI_INSTRUCTIONS.md`, or similar — and **maintainer entry docs** (`INSTALL.txt`, `INSTALL.md`, `HANDOVER*.md`, handoff `.md` under `docs/handoffs/`):
+Before **creating or substantially editing** agent-facing files — `.cursor/rules/*.mdc`, skills, `AGENTS.md`, `AI_INSTRUCTIONS.md`, or similar — and **maintainer entry docs** (install instructions, the session handoff note, handoff `.md` under `docs/handoffs/`):
 
 ## 1. Read what already exists
 
 - List and skim **project** `.cursor/rules/` (and nested paths like `app/.cursor/rules/` if the project uses them)
 - Read **`AGENTS.md`** and linked agent docs (`AI_INSTRUCTIONS.md`, `CLAUDE.md`, etc.)
-- **Agent Starter Pack maintainer repo:** read **`INSTALL.txt`**, **`HANDOVER_NEXT_AGENT.md`**, and **`docs/WORK_QUEUE.md`** before adding any install/handoff/status doc
+- **Agent Starter Pack maintainer repo:** read **`INSTALL.txt`**, **`HANDOFF_NEXT_AGENT.md`**, and **`docs/WORK_QUEUE.md`** before adding any install/handoff/status doc
 - If the project **syncs generic rules from Agent Starter Pack**, treat those as read-only in the project — edit **`pack/rules/`** at the pack source, then sync; do not fork copies locally
 
 ## 2. Prefer extend over duplicate
@@ -202,7 +210,7 @@ Before **creating or substantially editing** agent-facing files — `.cursor/rul
 - **Extend** an existing rule, `AGENTS.md` section, or **canonical maintainer doc** when the concern fits
 - **New file** only when the concern is distinct and would bloat an existing rule or doc
 - **One concern per rule** — split only when scopes differ (always-on vs file-specific globs)
-- **Install / handoff / status:** overwrite **`INSTALL.txt`** (human) and **`HANDOVER_NEXT_AGENT.md`** (agent); retire or redirect superseded handoffs — **do not** add `STICK_*`, `*_INSTALL.txt`, or parallel cheat sheets for the same job
+- **Install / handoff / status:** keep **one** install doc for humans and **one** handoff doc for agents, and overwrite them; retire or redirect superseded handoffs — **do not** add `STICK_*`, `*_INSTALL.txt`, or parallel cheat sheets for the same job
 - When consolidating, **delete** the redundant file — do not leave parallel copies
 
 ## 3. Avoid overlap
@@ -227,14 +235,13 @@ pipeline in detail.
 
 ## 6. After shipping or changing status (Done / Parked / Next)
 
-**Version sync (§5) is not status sync.** Bumping engine version in docs does not update "Phase 6b not built" paragraphs.
+**Version cites in documentation (above) is not status sync.** Bumping a version string in docs does not update the prose around it — a "not built yet" paragraph survives every version bump until someone edits it.
 
 When a work item moves on **`docs/WORK_QUEUE.md`** (especially to **Done** or **Parked**):
 
-1. Update **derivative docs** that still describe the old state — HANDOVER §11, gap/plan rows, spec headers, coordination backlog — not only the queue file.
-2. Prefer **WQ ids** (`WQ-301`) over phase-only labels in handoffs; use **`docs/MULTI_TOOL_GAP_PLAN.md`** § Phase ID map when multiple phase numbers exist.
-3. **Maintainer pack:** run **`verify-complete-picture.ps1`** before claiming done (see **`pack/docs/WORK_COMPLETION.md`** step 5b).
-4. Inventory of rules vs verify scripts: **`pack/docs/RULES_AND_VERIFY_MAP.md`**.
+1. Update **derivative docs** that still describe the old state — the handoff's status section, gap/plan rows, spec headers, coordination backlog — not only the queue file.
+2. Prefer **WQ ids** over phase-only labels in handoffs; when a slice carries more than one phase number, keep the id map in the plan doc that owns those phases.
+3. **Agent Starter Pack maintainer repo:** run **`verify-complete-picture.ps1`** before claiming done (see **`pack/docs/WORK_COMPLETION.md`** step 5b) — rules-vs-verify inventory in **`pack/docs/RULES_AND_VERIFY_MAP.md`**.
 
 Do **not** add a second always-on rule for this — extend the work queue row and run the verify script.
 
@@ -349,7 +356,7 @@ Use when the user compares **two locations** or asks whether one copy covers ano
 
 Use for **audit**, **full scan**, **check everything**, **review the whole codebase**.
 
-Follow project audit rules when present (`audit.mdc`, skill `agent-code-audit`). Additionally:
+Follow project audit rules when present (`audit.mdc`, skill `agent-code-audit`) — **`audit-protocol.mdc`** holds the canonical audit trigger list, and the words below add depth requirements rather than a second vocabulary. Additionally:
 
 - Run the project's **full test / verify entry point** when one exists — never `-SkipTests` on audits unless docs explicitly allow it.
 - Do not report "complete" until required gates exit 0 or you list failing gates explicitly.
@@ -376,9 +383,9 @@ Use when the user asks for **where we stand**, **what's pending**, **handoff cle
 
 | Step | Requirement |
 |------|-------------|
-| 1 | **Inventory all agent/handoff sources** at repo root and `pack/docs/` — list every file read or explicitly skipped with reason. Include **`docs/WORK_QUEUE.md`** when present. |
-| 2 | **Grep all of them** for: `deferred`, `not built`, `not implemented`, `open question`, `design goal`, `next step`, `pick up`, `parked`, `remaining`, `tool-neutral`, `multi-tool`, `Cursor-specific`, `Windows-only`, `audit depth` |
-| 3 | **Separate tracks** — do not collapse into one "portability" bucket. At minimum distinguish: **(A) OS/shell**, **(B) editor/tool/model**, **(C) audit depth**, **(D) git/release**, **(E) agent refresh**, **(F) explicitly deferred (6c mailbox / WQ-302 only — 6b/WQ-301 shipped)** |
+| 1 | **Inventory all agent/handoff sources** — repo root plus every agent-doc folder the project uses (`docs/`, `docs/handoffs/`, `pack/docs/`) — and list every file read or explicitly skipped with reason. Include **`docs/WORK_QUEUE.md`** when present. |
+| 2 | **Grep all of them** for: `deferred`, `not built`, `not implemented`, `open question`, `design goal`, `next step`, `pick up`, `parked`, `remaining`, plus the project's own recurring qualifiers (e.g. `tool-neutral`, `multi-tool`, `editor-specific`, `Windows-only`, `audit depth`) |
+| 3 | **Separate tracks** — do not collapse related-sounding work into one bucket. Split by what would have to change to close it, and keep **explicitly deferred** work as its own track with the id or doc that deferred it |
 | 4 | **Map each track** to: documented intent → what shipped → what is still open → which doc says so (with path) |
 | 5 | **Live state** — version markers, install sync, test exit codes **in this turn** |
 | 6 | **Cross-check user callouts** — if the user says a topic should be in the docs, search for it before claiming it is missing |
@@ -386,11 +393,10 @@ Use when the user asks for **where we stand**, **what's pending**, **handoff cle
 
 **Forbidden:**
 
-- Replacing HANDOVER §11 or chat bullets **without** updating **`docs/WORK_QUEUE.md`** when that file exists.
-- Reporting §11 or one handoff file while ignoring `HANDOVER` §1/§8, `WEEKEND_HANDOFF`, specs, and `PORTABLE_SETUP.md`.
-- Marking "editor neutrality shipped" as closing **all** multi-tool work while §8 still lists Cursor-only install/skills/MCP surfaces.
-- Marking "Windows-only decided" as closing **tool/model** versatility (they are different tracks).
-- Listing next steps without the **multi-tool / reduce Cursor dependency** track when `HANDOVER` §1 design goal and §8 table are present.
+- Rewriting a handoff status section or chat bullets **without** updating **`docs/WORK_QUEUE.md`** when that file exists.
+- Reporting one status section or one handoff file while ignoring the rest of the sources from step 1 — a project's design goals and gap tables usually live in a different section than its "next steps" list.
+- Treating one track as closed because a **neighbouring** track shipped. Two tracks that share a word in their names still close separately.
+- Dropping a track from "what's next" because it is long-running or was decided against once — a decision to defer keeps the track on the list with its **Re-open when**.
 
 ---
 
@@ -455,45 +461,41 @@ Store plans in `docs/*_PLAN.md` for large features; link from `AGENTS.md` when r
 
 Source: `pack/rules/generic-terminal-and-build-hygiene.mdc`
 
-# Terminal & Build Hygiene (agents)
+# Build hygiene (agents)
 
-Apply when running shell builds, long commands, or when the user reports "taking longer than expected" / stuck terminal.
+Apply when running builds or long shell commands.
+
+**Terminals are covered elsewhere, on purpose.** The before/after sequence for long commands is in
+**`agent-defaults-always.mdc`** (always on, so it is the copy that actually loads). Diagnosis —
+stale metadata, orphan children, what an agent can and cannot fix — is the skill
+**`agent-terminal-hygiene`**. This rule is the third surface of the same subject, so it keeps only
+what neither of those covers: making a build finish without a human at the keyboard.
 
 ## Running builds (agent-initiated)
 
 1. Set **`BUILD_NOPAUSE=1`** (Windows) or use `build_ci.*` / `--ci` / `CI=true` scripts so batch files **do not** wait on `pause`.
 2. Prefer explicit exit: `exit /b %ERRORLEVEL%` (Windows) or `set -e` (Unix).
-3. After build, read terminal output for success/failure — do not assume from UI spinner.
+3. After the build, **read the terminal output** for success or failure — a spinner in the UI is not a result, and an exit code you did not look at is not a pass.
 
 **Windows example:**
+
 ```bat
 set BUILD_NOPAUSE=1
 call build_and_deploy.bat
 ```
 
-## After long shell commands
+## Writing build scripts
 
-1. Run MCP **`agent_hygiene_full_check`** (or `scan_orphan_agent_processes` after any force-kill).
-2. Check process table — PID from terminal header may be stale; **child py/python may still be alive**.
-3. Read terminal log footer — completed sessions have `exit_code:`; missing footer + dead PID = stale metadata.
-4. If process dead but log stale, call MCP **`fix_stale_terminal_logs`** or run `pack/scripts/fix-stale-terminal.ps1`.
-5. If orphans found, MCP **`cleanup_orphan_agent_processes`** (`dry_run=True` first) or `pack/scripts/cleanup-orphan-processes.ps1`.
+- Never use bare `pause` in a script an agent will run; gate it: `if "%BUILD_NOPAUSE%"=="" pause`.
+- Same for `read -p`, `Read-Host`, and any other prompt on the CI path.
+- Copy `pack/templates/build-ci.bat.template` → project `build_ci.bat` for a script that is already gated.
+- Python projects also copy the version sync templates — see **`generic-version-sync.mdc`**.
 
-## What agents can fix vs cannot
+## When a build seems stuck
 
-| Layer | Agent can |
-|-------|-----------|
-| OS process | `Stop-Process` / `taskkill` if still running |
-| Agent log (`terminals/*.txt`) | Patch footer or run fix script |
-| Cursor Terminal UI panel | **Not directly** — user may Kill Terminal tab |
-
-Tell the user when UI may still show a zombie tab after log/process are clean.
-
-## New projects
-
-- Copy `pack/templates/build-ci.bat.template` → project `build_ci.bat`.
-- Copy version sync templates for Python apps — see `generic-version-sync.mdc` and `docs/VERSION_SYNC.md`.
-- Never use bare `pause` in agent-driven scripts; gate with `if "%BUILD_NOPAUSE%"=="" pause`.
+A build waiting on `pause` and a build still working look identical from the outside. Check the
+output for a prompt before killing anything, then follow the skill **`agent-terminal-hygiene`** —
+force-killing the shell first is what leaves orphaned child processes behind.
 
 
 ---
@@ -586,14 +588,14 @@ If `docs/WORK_QUEUE.md` is missing in a bootstrapped project, treat `docs/ROADMA
 
 - **Append** with a new stable ID (`WQ-001`, `WQ-002`, … — never reuse).
 - Put surprises in **Inbox**; triage to Active / Parked / Done in the same session when possible.
-- Do **not** silently drop rows because a handoff doc or §11 table was rewritten.
+- Do **not** silently drop rows because a handoff doc or status table was rewritten.
 
 ### When completing work
 
 - Move row to **Done log** with date and evidence (test exit code, path, commit — whatever applies).
 - Set the next Active row to **Next** (exactly one).
 - If a **`docs/handoffs/active/HANDOFF_*.md`** row exists for that WQ: set handoff **`status: completed`**, **`completed:`** date, clear **`agents_remaining`**. Run **`run_audit.cmd`** before archiving; audit **Improve** may suggest `handoff_archive/` — never auto-delete (see **`generic-agent-handoff-discipline.mdc`**).
-- **Canonical status propagation (required):** WORK_QUEUE is the source of truth. After editing it, align **every derivative** that mentions that WQ or slice — handoff §11, phase/gap plan rows, spec status headers, PARKED/backlog docs. Full channel list: **`pack/docs/RULES_AND_VERIFY_MAP.md`** § Canonical status propagation.
+- **Canonical status propagation (required):** WORK_QUEUE is the source of truth. After editing it, align **every derivative** that mentions that WQ or slice — the handoff's status section, phase/gap plan rows, spec status headers, PARKED/backlog docs. Full channel list: **`pack/docs/RULES_AND_VERIFY_MAP.md`** § Canonical status propagation.
 - **Maintainer pack repo:** run **`verify-complete-picture.ps1`** (behavior step 37) — exit **0** before claiming the slice done. Same checklist: **`pack/docs/WORK_COMPLETION.md`** step 5b.
 
 ### When deferring
@@ -612,11 +614,11 @@ Order in **Active queue** is **not frozen**. Move rows when dependencies, blocke
 5. **Avoid duplicate WQ IDs** — before appending, scan Active + Inbox + Engineering for the same task; extend an existing row or note **Superseded** instead of parallel IDs.
 6. **Chat/handoff** — may summarize the new **Next** ID only after `WORK_QUEUE.md` reflects the reorder.
 
-**Hard invariant:** no row removed without landing in **Done**, **Parked**, or **Superseded by …** in Notes. Rewriting §11 or a chat bullet list is not a substitute.
+**Hard invariant:** no row removed without landing in **Done**, **Parked**, or **Superseded by …** in Notes. Rewriting a status table or a chat bullet list is not a substitute.
 
 ### Status changes only
 
-- Rewriting HANDOVER §11 or chat summaries **without** updating `WORK_QUEUE.md` is incomplete handoff.
+- Rewriting the handoff's status section or chat summaries **without** updating `WORK_QUEUE.md` is incomplete handoff.
 
 ## Separation of concerns
 
@@ -625,7 +627,7 @@ Order in **Active queue** is **not frozen**. Move rows when dependencies, blocke
 | `run_audit.cmd` report | Ephemeral **Fix** / **Improve** for that audit run |
 | `WORK_QUEUE.md` → Engineering backlog | Recurring gaps worth scheduling (e.g. audit depth findings) |
 | `ROADMAP.md` | Product features and phased plans |
-| `HANDOVER_*.md` | Session context + pointer to **Next** ID in work queue |
+| Handoff / session notes | Session context + pointer to **Next** ID in work queue |
 
 ## Forbidden
 

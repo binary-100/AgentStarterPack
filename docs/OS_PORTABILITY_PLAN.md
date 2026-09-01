@@ -3,7 +3,7 @@
 **Status:** Phase 6 complete · **Reopened:** 2026-08-30 (user)  
 **Supersedes:** WQ-004 interim “document Windows-first and defer” — that was maintainer scope documentation, not a permanent platform veto.
 
-**Prior analysis:** `WEEKEND_HANDOFF.md` §3 (blocker inventory), `docs/PORTABLE_SETUP.md` § Platform scope.
+**Prior analysis:** `docs/PORTABLE_SETUP.md` § Platform scope. (The original blocker inventory lived in a root transfer note that was deleted once its work shipped.)
 
 ---
 

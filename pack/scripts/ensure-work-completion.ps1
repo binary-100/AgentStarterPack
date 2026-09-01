@@ -37,7 +37,13 @@ foreach ($sub in @('handoffs', 'handoffs\active', 'handoff_archive')) {
 $readmeTpl = Join-Path $PackRoot 'pack\templates\docs\handoffs\README.md.template'
 $readmeDst = Join-Path $ProjectRoot 'docs\handoffs\README.md'
 if ((Test-Path -LiteralPath $readmeTpl) -and -not (Test-Path -LiteralPath $readmeDst)) {
-    Copy-Item -LiteralPath $readmeTpl -Destination $readmeDst -Force
+    # Substitute and write like the WORK_COMPLETION path below: a plain Copy-Item leaves
+    # {{PROJECT_NAME}} in the title of every generated project and keeps whatever BOM the
+    # template carries.
+    $readmeText = Get-Content -LiteralPath $readmeTpl -Raw -Encoding UTF8
+    $readmeText = $readmeText.Replace('{{PROJECT_NAME}}', $ProjectName)
+    $readmeText = $readmeText.Replace('{{PROJECT_ROOT}}', $ProjectRoot)
+    Write-Utf8NoBom -Path $readmeDst -Text $readmeText
     Write-Host "[ok] created docs/handoffs/README.md from template"
 }
 

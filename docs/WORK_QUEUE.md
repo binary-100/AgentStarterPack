@@ -1,14 +1,14 @@
 # Work queue — Agent Starter Pack
 
 **Canonical radar.** Items are **never deleted** when priorities shift — they move to **Done**, **Parked**, or stay in **Active** / **Inbox**.  
-**Session pointer:** `HANDOVER_NEXT_AGENT.md` §11 summarizes; **this file is the full list.**
+**Session pointer:** `HANDOFF_NEXT_AGENT.md` §11 summarizes; **this file is the full list.**
 
 | Field | Value |
 |-------|--------|
 | **Next active ID** | **WQ-011** |
 | **Last updated** | 2026-08-31 |
 | **Pack version** | 1.8.0 |
-| **Audit engine** | 2.22.44 |
+| **Audit engine** | 2.22.53 |
 
 ---
 
@@ -31,7 +31,7 @@ Work **top to bottom**. Do not skip ahead without user approval or marking the r
 
 | ID | Task | Status | Notes |
 |----|------|--------|-------|
-| WQ-011 | Flash drive / install on other PC | **Next** | Promoted from Parked 2026-08-30 after pack hygiene batch + profile install |
+| WQ-011 | Flash drive / install on other PC | **Next** | Handoff written 2026-08-31: `docs/handoffs/active/HANDOFF_WQ011_primary_system_update.md` — transfer, verify on that machine, install, publish. Promoted from Parked 2026-08-30 |
 | WQ-004 | **OS portability (Windows-only interim doc)** | **Superseded** | 2026-08-30 user reopened OS track → **WQ-304**. Was maintainer “document honest limit” (see `docs/OS_PORTABILITY_PLAN.md`), not a permanent veto. |
 
 ---
@@ -46,7 +46,7 @@ Work **top to bottom**. Do not skip ahead without user approval or marking the r
 
 ## Engineering backlog (from audit depth review — not ephemeral audit)
 
-*(empty — WQ-204 and WQ-206 shipped 2026-08-30)*
+*(empty — WQ-207, WQ-208 and WQ-209 shipped 2026-08-31)*
 
 | ID | Task | Priority hint |
 |----|------|----------------|
@@ -66,7 +66,15 @@ Work **top to bottom**. Do not skip ahead without user approval or marking the r
 
 | ID | Task | Completed | Evidence |
 |----|------|-----------|----------|
-| WQ-001 | Handoff doc cleanup | 2026-08-29 | HANDOVER §11; WEEKEND_HANDOFF historical |
+| WQ-214 | Root cleanup against the settled definitions | 2026-08-31 | Four finished root docs deleted (two specs, implementer notes, a superseded stub) with the checks that policed them; `HANDOFF_NEXT_AGENT.md` trimmed 788 → ~470 lines, section numbers preserved for the `## 11.` reader. Found two defects while doing it: `install.ps1` `SkipRelPaths` ignored folder entries, so `docs/handoffs/` would have shipped every work slice to every profile (**step 26** now asserts folder exclusion and its prefix boundary), and this repo's own handoffs README still read `{{PROJECT_NAME}}`. `no-publish-from-this-machine.mdc` gitignored — it is false on the machine that publishes. Engine 2.22.53 |
+| WQ-213 | One word for one concept: handoff | 2026-08-31 | Two synonyms had been used as if they meant different things — 519 occurrences, 56 files. `HANDOVER_NEXT_AGENT.md` renamed to `HANDOFF_NEXT_AGENT.md` and every reference updated (`manifest.json`, `VERSION_SYNC.json` ×2, `export.ps1`, `AGENTS.md`, freshness `requiredReads`). Two matches narrowed by hand so the rename could not misfire: `verify-complete-picture.ps1` and step 46's token table both had to become `HANDOFF_NEXT_AGENT`, since bare `HANDOFF` also matches the legitimate `docs/handoffs/` convention. **Step 49** guards the vocabulary; glossary in `pack/docs/AGENT_HANDOFFS.md`. Engine 2.22.52 |
+| WQ-212 | Generator sweep — run every generator and read its output | 2026-08-31 | Found 12 bare `pause` calls in 4 root launchers, violating the pack's own build-hygiene rule; the suite missed them because it always calls the `.ps1` with `-NoPause`. All gated behind `BUILD_NOPAUSE`, **step 48** guards it, verified both paths. Bootstrap clean across 6 stack/target combos: manifest matches disk, no placeholders/BOM/mojibake. Engine 2.22.51 |
+| WQ-211 | Generated projects carry no unsubstituted placeholders | 2026-08-31 | `ensure-work-completion.ps1` plain-copied the handoffs README, so it landed with `{{PROJECT_NAME}}` in the title; now substitutes and writes BOM-free like the WORK_COMPLETION path beside it. **Step 23** fails on `{{[A-Z_]+}}` in any generated file. Verified by bootstrap: title renders `# Handoffs - ProbeApp`. Engine 2.22.50 |
+| WQ-210 | Cited pack files must exist (rule advice, not just wording) | 2026-08-31 | Behavior **step 47**; found `ensure-work-completion.ps1` copying `pack/templates/docs/handoffs/README.md.template`, which was never created — both handoff templates written and mirrored. Proven to fire on a renamed script and to ignore project-relative paths, deliberately-forbidden files and globs. Engine 2.22.49 |
+| WQ-209 | Mechanical check that shipped rules stay generic | 2026-08-31 | Behavior **step 46**; caught 11 further leaks the reading pass missed (`§11` refs, `HANDOFF_NEXT_AGENT.md` as a universal instruction), all reworded; proven to fail on a planted leak and to honour maintainer-scoped lines. Engine 2.22.48 |
+| WQ-207 | Terminal hygiene split by job across its three surfaces | 2026-08-31 | `generic-terminal-and-build-hygiene.mdc` rewritten as build hygiene and states what it does **not** cover; diagnosis stays in skill `agent-terminal-hygiene`, the before/after sequence in `agent-defaults-always`. Note: the premise "cuts the always-on budget" was wrong — the duplication lived in an on-demand rule, so this buys one owner per concern, not context |
+| WQ-208 | Audit trigger vocabulary aligned | 2026-08-31 | One list in `audit-protocol.mdc` (canonical), repeated verbatim in `agent-defaults-always` and this repo's `.cursor/rules/audit.mdc`; `generic-deep-task-execution` links to it instead of implying a second vocabulary |
+| WQ-001 | Handoff doc cleanup | 2026-08-29 | Root transfer notes folded into `HANDOFF_NEXT_AGENT.md`; the superseded stubs were deleted 2026-08-31 (WQ-214) |
 | WQ-002 | Audit depth review | 2026-08-29 | Behavior steps 1–30: **0 fail**; Findings → Engineering backlog WQ-201–206 |
 | WQ-100 | D:\ vs Desktop deep compare + merger | 2026-08-29 | Desktop canonical; backup `_AgentStarterPack_merge_staging` |
 | WQ-101 | `generic-deep-task-execution.mdc` complete-picture contract | 2026-08-29 | Engine 2.22.12 |
@@ -106,7 +114,7 @@ Work **top to bottom**. Do not skip ahead without user approval or marking the r
 
 | Doc | Role |
 |-----|------|
-| `HANDOVER_NEXT_AGENT.md` | Session handoff + pitfalls; §11 points here |
+| `HANDOFF_NEXT_AGENT.md` | Session handoff + pitfalls; §11 points here |
 | `docs/MULTI_TOOL_GAP_PLAN.md` | WQ-003 Phase 1 deliverable |
 | `docs/AUDIT.md` | Audit protocol (Fix/Improve per run) |
 | `pack/docs/AGENT_COORDINATION_BACKLOG.md` | WQ-302 detail |

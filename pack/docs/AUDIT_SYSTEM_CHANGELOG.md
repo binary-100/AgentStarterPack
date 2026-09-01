@@ -8,13 +8,108 @@ Bump **`pack/audit/manifest.json`** `"version"` when you change synced audit fil
 
 ---
 
+## 2.22.53 (2026-08-31)
+
+**Root cleanup, and the mechanism that made it unsafe.** With the vocabulary settled, four root
+documents had no remaining job: two implementation specs and the implementer notes whose work shipped,
+and a transfer stub that had already been reduced to a redirect. All four deleted, along with the code
+that policed them — `verify-complete-picture.ps1` no longer collects a stub it will never find, and no
+longer lists two specs among its pack sources.
+
+- **`install.ps1` `SkipRelPaths` matched exact files only**, so a `maintainerOnlyPaths` entry naming a *folder* did nothing. `docs/handoffs/` accumulates a file per work slice, and listing them one at a time guarantees the next one ships into every user's profile. A listed folder now excludes everything under it, `sync-audit-system.ps1` removes a directory entry with `-Recurse`, and **step 26** asserts both — including that skipping `docs\handoffs` does not take a same-prefixed neighbour (`docs\handoffs-notes.md`) with it
+- **`HANDOFF_NEXT_AGENT.md`: 788 lines to ~470.** Roughly 400 lines were a bump-by-bump history the changelog already holds, and it had started to contradict it. What replaced it: the standing decisions in one place, and the findings that generalise past the bump that produced them. Section numbering is unchanged, because `verify-complete-picture.ps1` reads `## 11.` for the queue pointer
+- **The pack's own `docs/handoffs/README.md` still said `{{PROJECT_NAME}}`** — scaffolded before 2.22.50 fixed the substitution, so this repo carried the exact defect it had shipped a guard for. Generated projects were already correct; only this copy predated the fix
+- **`.cursor/rules/no-publish-from-this-machine.mdc` is now gitignored.** It tells an agent never to commit or push, which is true of the working copy and *false* on the machine that publishes — committing it would instruct an agent there to refuse the push it was asked for
+- **`docs/handoffs/active/HANDOFF_WQ011_primary_system_update.md`** — the pack now uses its own handoff convention for the transfer to the primary system, and passes `verify-agent-handoffs.ps1`
+
+## 2.22.52 (2026-08-31)
+
+**One word for one concept: handoff.** The pack had been using "handoff" and "handover" as if they
+were distinct terms — 519 occurrences across 56 files, 132 of them the second spelling. They are not
+distinct: English treats them as synonyms and the second is simply the British-leaning form, so no
+reader, human or agent, can infer a difference that the language does not carry.
+
+- **`HANDOVER_NEXT_AGENT.md` → `HANDOFF_NEXT_AGENT.md`**, with every reference updated: `manifest.json` `maintainerOnlyPaths`, `VERSION_SYNC.json` `scanFiles` (both entries), `export.ps1`, root `AGENTS.md`, the session-start and refresh docs, and the freshness `requiredReads`
+- **Two spots a blind replace would have broken, fixed by hand.** `verify-complete-picture.ps1` picked the session doc out of a source list with `-match 'HANDOVER'`; that list also holds `docs/handoffs/active/HANDOFF_WQnnn` files, so a bare `HANDOFF` match would have grabbed a work slice and then failed to find a section it never had — now `HANDOFF_NEXT_AGENT`. Step 46's banned-token table had the same shape: bare `HANDOFF` would have flagged the shipped handoff convention that rules are *supposed* to name
+- **Two words the sweep left alone on purpose:** `WEEKEND_HANDOFF.md` and `PACK_IMPLEMENTER_HANDOFF.txt` were already correct
+- **Step 49** fails on any reappearance of the retired synonym in `.md`, `.mdc`, `.ps1`, `.py`, `.cmd`, `.bat`, `.json`, `.txt` or `.template`. Proved by planting a stray in `docs/` — which also tripped the unmapped-doc check, so two guards caught one file
+- **Its first real run failed on the documentation of its own change**, which is how the exemptions got their final shape. A total ban meant no file could record what this one used to be called, so the old **filename** `HANDOVER_NEXT_AGENT.md` stays citable while the bare word does not; a search for the old name still has to land somewhere. The changelog is exempt because it records the retirement, and the checker because a linter has to spell the word it bans
+- **Glossary in `pack/docs/AGENT_HANDOFFS.md`** states the decision and the two scales it covers: one work slice (`HANDOFF_WQnnn_<slug>.md` plus registry) and one session (`HANDOFF_NEXT_AGENT.md`). Same verb, different grain
+
+**Encoding note for whoever reads a console during this work:** the sweep rewrote 31 files by reading
+and writing UTF-8 explicitly, and a byte-level check afterward found 194 valid UTF-8 files, 74 with
+real em dashes and zero mojibake. Terminal output during the pass *displayed* em dashes and section
+signs as garbage — that is the console codepage, not the files. Check bytes before "repairing" them.
+
+## 2.22.51 (2026-08-31)
+
+**The pack broke its own rule, in the layer its tests never touch:**
+
+- **Twelve bare `pause` statements across four root launchers** - `Bootstrap-Project.cmd`, `Bootstrap-Portable-Project.cmd`, `Install-AgentStarterPack.cmd`, `Register-Tool-Adapters.cmd` - while `generic-terminal-and-build-hygiene.mdc` tells every project to gate `pause` behind `BUILD_NOPAUSE`. All now read `if not defined BUILD_NOPAUSE pause`, so a double-clicked window still stays open and an agent run never waits for a keypress
+- **Why no test caught it:** every behavior step invokes the `.ps1` underneath with `-NoPause`. The `.cmd` layer is the one a human double-clicks and an agent runs, and it was never exercised. Found by running the launchers instead of the scripts they wrap - `Bootstrap-Portable-Project.cmd` printed "Press any key to continue"
+- **Behavior step 48** fails on any bare `pause` in a root `.cmd`. `START_HERE.md` and the always-on rule now say an agent should set `BUILD_NOPAUSE=1` before running a launcher, the same as for a project build
+- **The rest of the generator sweep came back clean:** bootstrap across 6 stack/target combinations produces no unsubstituted placeholders, no BOM and no mojibake in any file type (including `.windsurfrules`, which the step 23 include list does not cover), and every path in `.agent-bootstrap.json` exists on disk. `bootstrapVersion` is covered by `VERSION_SYNC.json` `extraReplacements`, so it cannot go stale at the next bump. Two citations that looked wrong - `docs/VERSION_SYNC.md` and `docs/PORTABLE_SETUP.md` in generated docs - are correct pack-scoped references, verified rather than "fixed"
+
+## 2.22.50 (2026-08-31)
+
+**Found by using the fix from 2.22.49 instead of trusting it:**
+
+- **The handoffs README shipped with `{{PROJECT_NAME}}` in its title.** `ensure-work-completion.ps1` substitutes `{{PROJECT_NAME}}` and `{{PROJECT_ROOT}}` and writes BOM-free for `WORK_COMPLETION.md`, but plain-copied the handoffs README - a branch written when no such template existed, so nothing ever exercised it. Both paths now use the same substitution and the same writer
+- **Bootstrap smoke (step 23) fails on any unsubstituted placeholder.** Same shape as the BOM assertion beside it: both catch the generator handing a user a file it half-finished. `{{[A-Z_]+}}` anywhere in the generated `.md`, `.json`, `.cmd`, `.bat`, `.py` or `.mdc` output is a failure
+- Verified by bootstrapping a project and reading the file: title renders as **`# Handoffs - ProbeApp`**, no BOM, zero placeholders remaining anywhere in the tree
+
+## 2.22.49 (2026-08-31)
+
+**A rule's wording was checked; its advice was not:**
+
+- **`ensure-work-completion.ps1` copied a template that never existed.** It creates the `docs/handoffs/` scaffold for a project and then copies `pack\templates\docs\handoffs\README.md.template` - a file no one ever wrote. The copy sits behind `Test-Path`, so the promised README simply never appeared, no error was raised, and `pack/docs/AGENT_HANDOFFS.md` advertised that template plus `HANDOFF_BUILD.md.template` in its pack-files table. Both templates now exist and are in `packMirror`: the README explains the folder and the status/WORK_QUEUE invariant, the build starter carries the registry table, the absolute-path opener and an acceptance checklist that ends in "WQ row moved to Done"
+- **Behavior step 47 resolves every `pack/`-rooted path cited by rules, skills and pack docs.** Only `pack/` paths: a doc naming `docs/ROADMAP.md` or `scripts/apply_version.py` is describing the reader's project, not this pack, and flagging those would make the check noise. Changelogs are excluded because describing a file that has since been renamed is their job
+- **Three exclusions the discovery run earned.** A second extension after the first is not a match (`pack/templates/x.md.template` was reading as a missing `x.md`, and `.jsonl` as a missing `.json` - six phantom findings on the first pass); a line whose point is that a file *must not* exist is skipped, so `AUDIT_SYSTEM.md`'s "orphan `pack/templates/AUDIT.md.template` is forbidden" stays legal; globs and placeholders are skipped. Bare `.mdc` names are deliberately **not** resolved - `PACK_MAINTENANCE.md` lists `agent-readiness.mdc` and four others under **Project-only rules (never in pack)**, and a checker that cannot tell those from a pack rule would report the doc for being right
+
+## 2.22.48 (2026-08-31)
+
+**The rules scan's findings, closed mechanically instead of by memory:**
+
+- **Behavior step 46 fails when a shipped rule describes this repo** (WQ-209) - `WQ-\d+`, `HANDOFF`, `WEEKEND_HANDOFF`, pack-only spec and plan names, `Phase 6x`, and section numbers like `§11`. A line may still name pack internals when it carries a scope marker (**Agent Starter Pack maintainer repo:**, **Maintainer pack**, or a **Pack maintenance** section), because the difference between guidance for every project and a note for the maintainer is the marker, not the reader's charity. Case-**sensitive** on purpose: a rule may say "the handoff's status section" in plain English, but naming `HANDOFF_NEXT_AGENT.md` points at a file only this repo has. `generic-work-queue-discipline.mdc` is exempt from the id ban - it owns the id convention, so its `WQ-001` examples are the subject matter
+- **It immediately found 11 more leaks that reading had missed** - `§11` and `§5` cross-references, `HANDOFF*.md` in a doc-pattern list, and an instruction to overwrite `HANDOFF_NEXT_AGENT.md` given to every project. All reworded to name sections rather than number into documents the reader may not have
+- **Terminal hygiene now has one owner per job** (WQ-207) - `generic-terminal-and-build-hygiene.mdc` is build hygiene (prompt gating, exit codes, reading output) and opens by saying what it does *not* cover; diagnosis stays in skill `agent-terminal-hygiene`; the before/after sequence stays in `agent-defaults-always.mdc`, which is the copy that actually loads. The queue row claimed this would cut the always-on budget - it does not, the duplication lived in a rule that never auto-loads, and the real gain is that three copies can no longer drift apart
+- **One audit trigger list** (WQ-208) - canonical in `audit-protocol.mdc`, repeated verbatim in `agent-defaults-always.mdc` and the pack's own `audit.mdc`. Before this, "find problems" reached only one of the three surfaces
+
+## 2.22.47 (2026-08-31)
+
+**Rules that shipped this repo's private state to every project:**
+
+- **`generic-deep-task-execution.mdc` no longer names WQ-301/302, phase 6b/6c, `HANDOFF` §1/§8/§11 or `WEEKEND_HANDOFF`.** Those lines told an agent in a bootstrapped app to check a work item, a phase number and two doc sections that do not exist there. The contract they encoded is real and stays - separate the tracks, keep deferred work on the list, do not close one track because a neighbour shipped - now stated in terms any project can satisfy. Source inventory (step 1) likewise says "every agent-doc folder the project uses" instead of `pack/docs/`, and the grep list ends in "the project's own recurring qualifiers" rather than this pack's
+- **`generic-agent-doc-hygiene.mdc`** loses "Phase 6b not built" and the unscoped `docs/MULTI_TOOL_GAP_PLAN.md` cite; the maintainer-only step keeps its **Agent Starter Pack maintainer repo:** prefix, which is what made the neighbouring `INSTALL.txt` line acceptable all along
+- **The agent's brief was corrupting itself, one audit at a time.** `Update-AgentManifest` re-read `docs\.audit_agent_manifest.json` with `Get-Content -Raw` and no `-Encoding UTF8`, so PowerShell 5.1 decoded a BOM-less UTF-8 file as ANSI, turned every em dash into three characters, and wrote them back as UTF-8 - compounding on each run. All five JSON reads in `run_audit_core.ps1` are pinned now, matching the fix the domain-map read already had. **Behavior step 45** copies the fixture, puts an em dash in a checklist bullet, runs the audit and fails if the manifest lost it or doubled it - the artifact is asserted, not the plumbing, because the first attempt at this fixed the wrong layer (the Python pipe, which was already ASCII-escaped and clean)
+- **`agent-defaults-always.mdc` gains a Session start section.** All five tool entry templates tell agents to read `docs/AGENT_SESSION_START.md` on the first turn and no rule did, so a project bootstrapped before that template - or one with a hand-edited `AGENTS.md` - never heard about the file the freshness system writes. Four lines in the always-on rule rather than a thirteenth rule file, per the pack's own extend-over-duplicate guidance
+
+## 2.22.46 (2026-08-31)
+
+**The engine now passes the rule it enforces:**
+
+- **`audit_code_checks.py` 2592 → 2174 LOC** against its own 2500 ceiling. Two groups moved out whole, no behavior change: **`audit_version_docs.py`** (Section M cites - audit engine, pack release, app docs, changelog) and **`audit_install_wiring.py`** (the checks that read *outside* the repo: installed-vs-source, `mcp.json`, reference templates). **`audit_common.py`** holds the four primitives all three need - config, repo root, canonical version, manifest version - so the modules do not import each other in a circle
+- **Public surface unchanged** - the moved names are re-exported from `audit_code_checks`, because `run_audit_core.ps1` and the self-test call them by name; a test asserts all nine stay reachable, and another fails if the engine creeps back over the threshold
+- **`doc_version_sync.py` untouched** - it keeps its own copy of `resolve_repo_root` and the version regexes on purpose (build pipeline must not depend on the audit engine); behavior step 23 still asserts the copies agree
+- Three new production modules means three new domain-map rows, mirror entries and real tests - the split closes the Improve without opening a Section B orphan or a Section D test gap
+- **`maintainerOnlyPaths` takes nested paths too** - a workspace rule describing one machine's publishing policy has no business in someone else's install, even sitting inert inside the copied tree
+
+## 2.22.45 (2026-08-31)
+
+**Tests that graded the machine instead of the pack, and a failure that said nothing:**
+
+- **`agent_context_freshness.py`** — honours **`AGENT_STARTER_PACK_INSTALL_ROOT`**, which PowerShell has read since 2.22.4. Python resolving the install straight from `%USERPROFILE%` made the freshness verdict a property of the developer's profile: behavior **step 38** passed where the install happened to match the source pack, passed on a machine with no install at all, and failed on one carrying an older install. Same fix in **`audit_code_checks.py`** for the installed-vs-source check, and its `mcp.json` lookup now follows the override's user root
+- **Step 38 is hermetic and proves both directions** — the probe builds its own scratch install to compare against, then repeats the check against an install one version behind and requires the verdict to flip. Previously a probe that found no install to compare against would have satisfied every assertion. It also sets `AGENT_STARTER_PACK_ROOT` for the generated Cursor hook, which otherwise ran the *installed* pack's freshness module rather than the code under test
+- **`verify-audit-system.ps1` printed failures with no reason** — the sync and behavior children were invoked without `-PassOutput`, so a red run ended at `Summary: 1 fail(s)` with no `[DRIFT]` line above it and no remedy. Both now stream their output and emit a `Fail` naming what to run. Locked in by new behavior **step 44**
+- **`maintainerOnlyPaths`** (manifest) — `install.ps1` copies the whole checkout, so session handoffs and implementation specs were landing in every user's profile, while `README.md`, `INSTALL.md`, `CHANGELOG.md`, `INSTALL.txt`, `VERSION` and `install_launcher.py` shipped *without* being mirrored and could only be refreshed by a full re-install. Root docs are now mirrored, maintainer notes are skipped by install and deleted from existing installs by sync, `.zip` release artifacts no longer ship, and a new guard requires every root file to be one or the other
+
 ## 2.22.44 (2026-08-31)
 
 **Doc hygiene widen + enforce (no new rule):**
 
 - **`generic-agent-doc-hygiene.mdc`** — maintainer entry docs in scope; forbid parallel `STICK_*` / `*_INSTALL.txt`; delete redundant copies when consolidating
-- **`verify-complete-picture.ps1`** — pack repo: INSTALL.txt vs VERSION, WEEKEND redirect stub, no parallel install docs, HANDOVER must not primary-point WEEKEND
-- **Doc consolidation:** `INSTALL.txt` / `INSTALL.md` / `HANDOVER` / `WEEKEND_HANDOFF` redirect; `INSTALL.txt` in `VERSION_SYNC.json`
+- **`verify-complete-picture.ps1`** — pack repo: INSTALL.txt vs VERSION, WEEKEND redirect stub, no parallel install docs, HANDOFF must not primary-point WEEKEND
+- **Doc consolidation:** `INSTALL.txt` / `INSTALL.md` / `HANDOFF` / `WEEKEND_HANDOFF` redirect; `INSTALL.txt` in `VERSION_SYNC.json`
 
 ## 2.22.43 (2026-08-30)
 
@@ -22,7 +117,7 @@ Bump **`pack/audit/manifest.json`** `"version"` when you change synced audit fil
 
 - **`VERSION` → 1.8.0** + `CHANGELOG.md`; maintainer doc sync targets refreshed
 - **`AGENT_CHAT_SYNC.md` deleted** — superseded by refresh pipeline
-- **`HANDOVER_NEXT_AGENT.md` §6** — pointer-only (removed stale 2.22.4 block)
+- **`HANDOFF_NEXT_AGENT.md` §6** — pointer-only (removed stale 2.22.4 block)
 - **`verify-work-queue.ps1`** — allow empty Active **Next** when header says `(none)`
 - **`update-agent-stack.ps1`** — runs **`verify-complete-picture.ps1`** on maintainer pack after refresh
 - **`generic-agent-handoff-discipline.mdc`** — completion defers to **`WORK_COMPLETION.md`** (removed duplicate checklist)
@@ -49,7 +144,7 @@ Bump **`pack/audit/manifest.json`** `"version"` when you change synced audit fil
 
 - **`verify-complete-picture.ps1`** — when a WQ id is in **Done log**, **FAIL** handoff/spec files that still say that slice is parked, not built, or deferred (WQ-301 / WQ-308 rules; changelog + WORK_QUEUE excluded)
 - **`pack/docs/WORK_COMPLETION.md`** — step **5b**: run complete-picture verify after moving WQ to Done
-- **Docs aligned:** Phase ID map in `docs/MULTI_TOOL_GAP_PLAN.md`; stale 6b/308 parked text removed from HANDOVER, WEEKEND_HANDOFF, PACK_IMPLEMENTER_SPEC, AGENT_COORDINATION_BACKLOG, AGENT_UPGRADE_PATH, AGENT_FRESHNESS_ADAPTER_PLAN
+- **Docs aligned:** Phase ID map in `docs/MULTI_TOOL_GAP_PLAN.md`; stale 6b/308 parked text removed from HANDOFF, WEEKEND_HANDOFF, PACK_IMPLEMENTER_SPEC, AGENT_COORDINATION_BACKLOG, AGENT_UPGRADE_PATH, AGENT_FRESHNESS_ADAPTER_PLAN
 - **Spec field names:** Phase 6b MCP return shape uses shipped `installedEngineVersion` / `stampedEngineVersion` (not design-era `desktopVersion`)
 - **`generic-deep-task-execution.mdc`** track **(F)** — deferred = **6c / WQ-302** only
 
@@ -218,7 +313,7 @@ Bump **`pack/audit/manifest.json`** `"version"` when you change synced audit fil
 **machineCoverage + complete-picture handoff verify (WQ-204, WQ-206):**
 
 - **`audit_code_checks.py`** — `domain map module existence` in `machineCoverage` only for domain-map sections that list modules (not empty D–K)
-- **`verify-complete-picture.ps1`** — inventories handoff sources, scans pending-work keywords (INFO), flags stale HANDOVER section 11 vs `docs/WORK_QUEUE.md` (Improve in audit mode)
+- **`verify-complete-picture.ps1`** — inventories handoff sources, scans pending-work keywords (INFO), flags stale HANDOFF section 11 vs `docs/WORK_QUEUE.md` (Improve in audit mode)
 - **`verify-agent-setup.ps1`** — runs complete-picture verify on pack + reference project
 - **`verify-audit-behavior.ps1` step 37** — pack repo passes; probe proves stale phrase detection
 
@@ -352,7 +447,7 @@ Bump **`pack/audit/manifest.json`** `"version"` when you change synced audit fil
 **Complete-picture contract for agent analysis (closes shallow handoff/doc reviews):**
 
 - **`generic-deep-task-execution.mdc`** — new **complete picture** contract: inventory all handoff sources, grep pending-work patterns, separate OS vs tool/model vs audit vs git tracks, cross-check user callouts
-- **`HANDOVER_NEXT_AGENT.md` §11** — multi-tool / reduce Cursor dependency restored as active track; OS portability split out
+- **`HANDOFF_NEXT_AGENT.md` §11** — multi-tool / reduce Cursor dependency restored as active track; OS portability split out
 
 ## 2.22.11 (2026-08-29)
 
@@ -453,7 +548,7 @@ led here.
   *from the installed pack* is the documented normal path, so after a second pack update a new project
   would have been generated from the first update's templates - `AGENTS.md`, `AI_INSTRUCTIONS.md`,
   `CLAUDE.md`, the Copilot and Windsurf files, the version-sync rule. `doctor.ps1` was in the same
-  state while the handover tells you to run it out of the profile. Behavior step 5b now enumerates
+  state while the handoff tells you to run it out of the profile. Behavior step 5b now enumerates
   `pack/scripts/*.{ps1,py}` and all of `pack/templates`, so a new script or template is covered the
   moment it is created rather than when someone notices.
 - **`AI_INSTRUCTIONS.md.template` carries all four refresh trigger phrases.** It listed three of the
@@ -483,11 +578,11 @@ each claim against the code instead of re-reading the prose.
   enumerates both folders so a new doc is covered the moment it is created. `docs/AGENT_REFRESH.md` is
   excluded by name: it is generated per machine, so mirroring it would push one machine's absolute
   paths into the install.
-- **`HANDOVER_NEXT_AGENT.md` joined `maintainerDocSync`** in `docs/VERSION_SYNC.json`. Its version
+- **`HANDOFF_NEXT_AGENT.md` joined `maintainerDocSync`** in `docs/VERSION_SYNC.json`. Its version
   cites were hand-maintained, and one had already drifted (the key file map still said 2.22.0). Adding
   it was verified safe first: the sync rewrote exactly that one line and left every historical version
   reference in the narrative alone.
-- **Seven stale or self-contradicting claims corrected in the handover**, each re-checked against code
+- **Seven stale or self-contradicting claims corrected in the handoff**, each re-checked against code
   rather than assumed: the context refresh described as unimplemented in one section and shipped in
   another; a "still never prunes" note fixed in 2.21.22; a dead-code item deleted in 2.21.19; the MCP
   SDK reported absent after it was installed; `sync-project-rules.ps1` described by its old hardcoded
@@ -672,7 +767,7 @@ project and writes what changed as files the agent can read:
   `sync-audit-system.ps1` - so the brief describes a project that has actually been updated rather
   than one that is merely told about it. Run against the pack repo it skips those (the pack is the
   source) and writes the maintainer variant of the brief, which is the only one that names
-  `HANDOVER_NEXT_AGENT.md`; an app brief says explicitly that the handover is not its file
+  `HANDOFF_NEXT_AGENT.md`; an app brief says explicitly that the handoff is not its file
 - **`agent-defaults-always.mdc` gained a six-line trigger** so **refresh pack context** (or *context
   refresh* / *pack update*) sends the agent to the brief without the user pasting anything, and
   `AI_INSTRUCTIONS.md.template` points non-Cursor agents at the same file

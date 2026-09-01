@@ -23,6 +23,21 @@ TRIGGER_PHRASES = (
 
 
 def resolve_pack_root() -> Path | None:
+    """Installed pack the project's stamp is measured against.
+
+    AGENT_STARTER_PACK_INSTALL_ROOT wins, matching Get-InstalledAgentStarterPack in
+    pack-paths.ps1. PowerShell has honoured that override since 2.22.4 precisely so a
+    self-test can point at a scratch install instead of %USERPROFILE%; Python ignoring it
+    made the freshness verdict - and therefore behavior step 38 - depend on whatever the
+    local profile happened to hold. It passed on a machine whose install matched the source
+    pack and on CI where nothing is installed, and failed on a machine with an older install.
+
+    Returned even when the override holds no manifest: "redirected at an empty directory"
+    means "no install to compare against", which is how the PowerShell side reads it too.
+    """
+    override = os.environ.get("AGENT_STARTER_PACK_INSTALL_ROOT", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
     env = os.environ.get("AGENT_STARTER_PACK_ROOT", "").strip()
     if env:
         root = Path(env)

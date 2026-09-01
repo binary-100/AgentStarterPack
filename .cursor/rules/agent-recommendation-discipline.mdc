@@ -18,7 +18,7 @@ Before any recommendation **or** any `Write` / edit / `Shell` command, name expl
 
 | Field | Answer |
 |-------|--------|
-| **Target** | Full path(s) under `C:\Users\binar\OneDrive\Desktop\AgentStarterPack` |
+| **Target** | Full absolute path(s) under the open workspace root — the folder holding `VERSION`, `install.ps1`, and `pack/`, wherever it sits on this machine |
 | **Layer** | Project rule, `AGENTS.md`, `pack/`, script, template, etc. |
 | **Writes elsewhere?** | Yes/No — if yes, stop (see **`pack-only-edit-boundary.mdc`**) |
 | **Does not affect** | e.g. other workspaces, user profile (unless install — see §7) |
@@ -59,7 +59,7 @@ When presenting **two or more real choices** (not routine single-path work), add
 
 ## 7. Install / profile writes
 
-**`install.ps1`** (and similar) write outside this Desktop repo:
+**`install.ps1`** (and similar) write outside this checkout, into the user profile:
 
 - `%USERPROFILE%\.cursor\AgentStarterPack\`
 - `%USERPROFILE%\.cursor\rules\`, `skills\`, `mcp.json`

@@ -230,6 +230,20 @@ if (-not $VerifyOnly -and $manifest.forbiddenPackPaths) {
     }
 }
 
+# Maintainer-only files: deleted from the installed copy, never from the source pack - that is where
+# they belong. Installs made before install.ps1 learned to skip them still carry the old handoffs.
+if (-not $VerifyOnly -and -not $SkipProfileMirror -and $manifest.maintainerOnlyPaths) {
+    foreach ($rel in @($manifest.maintainerOnlyPaths)) {
+        $shipped = Join-Path $Installed ($rel -replace '/', '\')
+        if (Test-Path -LiteralPath $shipped) {
+            # An entry may name a folder (docs/handoffs), and -Force alone will not remove one.
+            $recurse = (Get-Item -LiteralPath $shipped) -is [System.IO.DirectoryInfo]
+            Remove-Item -LiteralPath $shipped -Force -Recurse:$recurse
+            Write-Host "[CLEAN] removed maintainer-only path from install: $shipped"
+        }
+    }
+}
+
 # Mirror pack -> user
 if (-not $SkipProfileMirror) {
     foreach ($item in @($manifest.packToUser)) {
