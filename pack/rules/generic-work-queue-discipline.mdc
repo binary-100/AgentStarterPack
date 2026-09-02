@@ -37,7 +37,7 @@ If `docs/WORK_QUEUE.md` is missing in a bootstrapped project, treat `docs/ROADMA
 - Move row to **Done log** with date and evidence (test exit code, path, commit — whatever applies).
 - Set the next Active row to **Next** (exactly one).
 - If a **`docs/handoffs/active/HANDOFF_*.md`** row exists for that WQ: set handoff **`status: completed`**, **`completed:`** date, clear **`agents_remaining`**. Run **`run_audit.cmd`** before archiving; audit **Improve** may suggest `handoff_archive/` — never auto-delete (see **`generic-agent-handoff-discipline.mdc`**).
-- **Canonical status propagation (required):** WORK_QUEUE is the source of truth. After editing it, align **every derivative** that mentions that WQ or slice — the handoff's status section, phase/gap plan rows, spec status headers, PARKED/backlog docs. Full channel list: **`pack/docs/RULES_AND_VERIFY_MAP.md`** § Canonical status propagation.
+- **Canonical status propagation (required):** WORK_QUEUE is the source of truth. After editing it, align **every derivative** that mentions that WQ or slice — the handoff's status section, phase/gap plan rows, spec status headers, PARKED/backlog docs, **and product-truth docs when behavior changed** (see **`generic-agent-doc-hygiene.mdc`** after-ship status alignment). Full channel list: **`pack/docs/RULES_AND_VERIFY_MAP.md`** § Canonical status propagation.
 - **Maintainer pack repo:** run **`verify-complete-picture.ps1`** (behavior step 37) — exit **0** before claiming the slice done. Same checklist: **`pack/docs/WORK_COMPLETION.md`** step 5b.
 
 ### When deferring

@@ -93,7 +93,7 @@ Implement phases **in order** — see `pack/docs/PHASED_FEATURE_DESIGN.md`.
 
 ---
 
-## Phase 2 — Portable markdown exports (planned)
+## Phase 2 — Portable markdown exports (shipped - WQ-106, 2026-08-29)
 
 **Goal:** Non-Cursor agents can load the same *content* as global rules/skills without `%USERPROFILE%\.cursor\`.
 
@@ -107,7 +107,7 @@ Implement phases **in order** — see `pack/docs/PHASED_FEATURE_DESIGN.md`.
 
 ---
 
-## Phase 3 — Bootstrap defaults (planned)
+## Phase 3 — Bootstrap defaults (shipped - WQ-107, 2026-08-29)
 
 **Goal:** Document and optionally default non-Cursor workflows.
 
@@ -116,7 +116,7 @@ Implement phases **in order** — see `pack/docs/PHASED_FEATURE_DESIGN.md`.
 
 ---
 
-## Phase 4 — Per-tool install adapters (planned)
+## Phase 4 — Per-tool install adapters (shipped - WQ-108, 2026-08-29)
 
 **Goal:** Optional scripts that do **not** replace `install.ps1`:
 
@@ -134,4 +134,4 @@ Implement phases **in order** — see `pack/docs/PHASED_FEATURE_DESIGN.md`.
 
 Phase 1 is documentation-only. Phases 2+ should add behavior or verify steps only when they change shipped scripts.
 
-**References:** `HANDOFF_NEXT_AGENT.md` §1, §8; `docs/PORTABLE_SETUP.md`; WQ-003 in `docs/WORK_QUEUE.md`.
+**References:** `pack/docs/AUDIT_SYSTEM_CHANGELOG.md` §1, §8; `docs/PORTABLE_SETUP.md`; WQ-003 in `docs/WORK_QUEUE.md`.

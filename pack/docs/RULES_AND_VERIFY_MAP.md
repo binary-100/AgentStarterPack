@@ -1,7 +1,7 @@
 # Rules and verify scripts — map (canonical inventory)
 
 **Audience:** Maintainers and agents auditing agent-process design.  
-**Last updated:** 2026-08-31  
+**Last updated:** 2026-09-01  
 **Purpose:** One place to see **what each rule covers**, **what each verify script enforces**, **overlaps**, and **gaps**. Update this file when adding rules or verify scripts.
 
 **Canonical status (ship / park / next):** `docs/WORK_QUEUE.md` only. Every other doc is a **derivative** that must be updated or must link here — never the other way around.
@@ -49,10 +49,10 @@
 |--------|---------------|--------------|---------------------|
 | `verify-work-queue.ps1` | 31 | WQ structure, duplicate IDs across sections, one **Next**, Done vs open sections, **header pack/audit vs VERSION/manifest** | — |
 | `verify-agent-handoffs.ps1` | 36 | Registry layout, opener format, WQ vs handoff status | Archive-ready Improve |
-| `verify-complete-picture.ps1` | 37 | HANDOFF §11 ↔ WORK_QUEUE; Done-WQ vs stale text; **pack: parallel install docs, INSTALL.txt vs VERSION** | Pending keyword scan |
+| `verify-complete-picture.ps1` | 37 | HANDOFF §11 ↔ WORK_QUEUE; Done-WQ vs stale text; **ROADMAP ↔ Done WQ** (active handoff link, **Next** / **In progress** row); **pack:** parallel install docs, INSTALL.txt vs VERSION | Pending keyword scan |
 | `verify-portable-bootstrap.ps1` | 33 | Portable bootstrap files | — |
 | `verify-audit-system.ps1` | (audit L) | Manifest mirror drift | — |
-| `verify-audit-behavior.ps1` | (pack tests) | All of the above in regression; **step 45** an em dash survives AUDIT.md to the agent manifest; **step 46** shipped rules name no id, doc or section number that exists only in this repo; **step 47** every `pack/` path cited by a rule, skill or pack doc resolves on disk; **step 48** root `.cmd` launchers gate every `pause` behind `BUILD_NOPAUSE`; **step 49** one word for the handoff concept — the synonym stays retired | — |
+| `verify-audit-behavior.ps1` | (pack tests) | All of the above in regression; **step 45** an em dash survives AUDIT.md to the agent manifest; **step 46** shipped rules name no id, doc or section number that exists only in this repo; **step 47** every `pack/` path cited by a rule, skill or pack doc resolves on disk; **step 48** root `.cmd` launchers gate every `pause` behind `BUILD_NOPAUSE`; **step 49** one word for the handoff concept — the synonym stays retired; **step 50** no real user profile path in any file that travels, `machineLocalPaths` gitignored and unmirrored, `export.ps1` + `sanitize-machine-state.ps1` read that one list, sanitizer previews without deleting, **no machine-local file is tracked in git** (the arm that catches a tracked copy returning from another machine, since machine-local files are exempt from the identity scan), **no travelling file records this checkout's own absolute path**, **no machine-local file exists here at all** (since 2.22.59 nothing writes them here) and the state root resolves outside the checkout; **step 51** the PowerShell and Python state-root resolvers agree, and two checkouts stay distinct; **step 52** a real `export.ps1` run, unzipped, ships every mirrored file and no machine-local state; **step 53** every consumer of a manifest-declared list still reads it, rather than keeping a narrower private copy | — |
 | `verify-agent-setup.ps1` | doctor | Runs WQ + handoffs + complete-picture on pack + optional reference project | — |
 | `repair-agent-docs.ps1` | 39 | Hub pattern repair on refresh | — |
 | `sync-portable-docs.ps1` | 32 | Portable export drift vs `pack/rules` | — |
@@ -64,7 +64,7 @@
 
 | Concern | Rules / docs that mention it | Canonical owner | Action |
 |---------|------------------------------|-----------------|--------|
-| WQ Done → update files | work-queue, handoff, deep-task, WORK_COMPLETION | **`WORK_COMPLETION.md`** + **work-queue § propagation** | Handoff rule **links**; do not duplicate full checklist |
+| WQ Done → update files | work-queue, handoff, deep-task, WORK_COMPLETION, doc-hygiene §6 | **`WORK_COMPLETION.md`** + **work-queue § propagation** + **doc-hygiene § product-truth** | Handoff rule **links**; do not duplicate full checklist |
 | What's next? | agent-defaults, work-queue, deep-task complete-picture | **WORK_QUEUE** + work-queue rule | deep-task only on explicit status asks |
 | Version in docs | version-sync, doc-hygiene §5 | **build** `doc_version_sync.py` | Not audit (unless Section M enabled) |
 | Handoff archive | handoff rule, WORK_COMPLETION, verify-agent-handoffs | **verify-agent-handoffs** + archive script | — |
@@ -83,9 +83,10 @@
 1. `docs/WORK_QUEUE.md` (required first)
 2. `docs/handoffs/active/HANDOFF_WQ*.md` if tied to that WQ
 3. Phase / gap plan row (e.g. `docs/MULTI_TOOL_GAP_PLAN.md`) — use **WQ id** in Notes, not conflicting phase-only labels
-4. `HANDOFF_NEXT_AGENT.md` §11 — pointer only; no stale **Next** for Done IDs
+4. `docs/WORK_QUEUE.md` Active queue §11 — pointer only; no stale **Next** for Done IDs
 5. Spec **status headers** (plan docs) — or add “superseded — see WORK_QUEUE”
-6. Run `verify-complete-picture.ps1` (maintainer pack repo) — **exit 0** before claiming slice done
+6. **Product-truth docs** when the slice changed runtime behavior — capability reference, known limitations/tradeoffs, install/layout tables (project `DOC_MAP.md` if present); **not** covered by version-string sync alone
+7. Run `verify-complete-picture.ps1` (maintainer pack repo) — **exit 0** before claiming slice done
 
 **Phase ID map:** `docs/MULTI_TOOL_GAP_PLAN.md` § Phase ID map — use when the same slice has multiple phase numbers.
 
@@ -97,7 +98,12 @@
 |-----|------------------|------------|
 | HANDOFF body not auto-updated on WQ Done | verify-complete-picture FAIL | Optional `repair-handoff-status.ps1` (not built) |
 | VERSION_SYNC scope (WORK_QUEUE header drift) | **Closed S2-9:** `docs/VERSION_SYNC.json` + verify-work-queue header checks | — |
+| Product doc drift after ship | WORK_COMPLETION § Step 3 + doc-hygiene §6 + **complete-picture ROADMAP checks** | Audits may flag as Improve — **block WQ Done** until product-truth docs match shipped behavior |
 | complete-picture rule only on user ask | WORK_COMPLETION step 5b | Consider `-VerifyOnly` on Update-AgentStack for pack root |
+| Install from an unsanitized transferred folder | `install.ps1` copies the checkout, so a foreign `docs/AGENT_CONTEXT.json` or overlay could reach the profile; step 50 keeps them out of git and `sanitize-machine-state.ps1` clears a copied folder | Wire `machineLocalPaths` into `install.ps1`'s skip list as well (WQ-425) |
+| Session doc **header** status is unchecked (**WQ-431**) | `verify-complete-picture.ps1` reads `## 11.` only; a header claiming "Active queue empty" passed while §11 and the queue both said WQ-415 (2.22.55) | Read the header status line too, or drop it and keep §11 as the single status claim — |
+| Cited paths under `docs/`, `scripts/`, `tests/` are unchecked in this repo (**WQ-433**) | Step 47 covers `pack/`-rooted cites; a doc cited under `docs/` but absent went unnoticed until a manual sweep (2.22.55) | Same obstacle as the row below — most such cites are project-relative by design, so a check needs per-path ownership to avoid noise |
+| Generated Cursor hooks have no refresh path (**WQ-435**) | `bootstrap-project.ps1 -Force` is the only writer; `repair-agent-docs.ps1` covers docs, not `.cursor/hooks/` | A project bootstrapped before 2.22.63 keeps the hook that blocks on an open stdin, and the pack cannot reach it - needs a repair command run in that project |
 | Many handoff sources, no single index | This file + complete-picture inventory | — |
 | 4 rules no verify script names | `generic-phased-feature-design`, `generic-terminal-and-build-hygiene`, `generic-version-sync`, `new-project-bootstrap` — the last two are covered indirectly (step 23, step 33) | Phased design is behavioural and may not be worth a script |
 | Rule advice pointing at **project** files is unchecked | Step 47 resolves `pack/`-rooted citations; project-relative ones (`docs/ROADMAP.md`, `scripts/apply_version.py`) cannot be resolved from here, since they exist only in a bootstrapped app | Would need a check that runs inside a bootstrapped project, not in the pack |

@@ -12,10 +12,19 @@
 #>
 $ErrorActionPreference = 'Stop'
 
+# Cursor writes its sessionStart payload to stdin and closes the handle, so ReadToEnd returns at once.
+# Any other parent that inherits stdin without writing to it - bash, a CI step, this pack's own
+# behavior probe - leaves the pipe open, and ReadToEnd then waits for an EOF that never arrives. That
+# is how running run_audit.sh through bash hung the whole suite for 11 minutes with no output: a read
+# that never returns raises nothing, so the fail-open promise above cannot catch it. Drain the payload
+# when it is actually there, so a writer never sees a broken pipe, but never wait on it.
 try {
-    $null = [Console]::In.ReadToEnd()
+    if ([Console]::IsInputRedirected) {
+        $drain = [System.Threading.Tasks.Task]::Run([Func[string]] { [Console]::In.ReadToEnd() })
+        [void]$drain.Wait(250)
+    }
 } catch {
-    # stdin optional for sessionStart
+    # stdin is optional for sessionStart; a threadpool read left blocked cannot hold up process exit
 }
 
 function Write-HookJson([string]$Context) {

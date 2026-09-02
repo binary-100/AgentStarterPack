@@ -58,5 +58,7 @@ Override: `AGENT_STARTER_PACK_INSTALL_ROOT` (unchanged).
 | `verify-audit-behavior.ps1` step 40+ | After Phase 1 |
 | `verify-audit-behavior.ps1` step 43 (mock Linux) | After Phase 5 |
 | `test-os-portability-probe.ps1` on native Linux/macOS | After Phase 5–6; also in `.github/workflows/pack-os-smoke.yml` |
-| Manual `pwsh install.ps1` on macOS/Linux | After Phase 2–4 |
+| `verify-audit-behavior.ps1` **step 54** — executes four `.sh` wrappers under bash | 2.22.63; `[SKIP]` with a stated reason where bash is absent |
+| `install.sh User` + `run_audit.sh` under bash on `ubuntu-latest` | 2.22.63, in `pack-os-smoke.yml` — this **supersedes the manual Linux gate below** |
+| Manual `pwsh install.ps1` on **macOS** | Still open (**WQ-436**) — no macOS runner, so nothing has executed the wrappers there |
 | `sync-audit-system.ps1 -VerifyOnly` | Every engine bump |

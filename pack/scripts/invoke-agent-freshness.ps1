@@ -7,7 +7,8 @@
 .PARAMETER SessionBrief
   Emit session-brief JSON to stdout (for Cursor hooks and scripts).
 .PARAMETER WriteSessionStart
-  Write docs/AGENT_SESSION_START.md under the canonical project root.
+  Write AGENT_SESSION_START.md for the canonical project root - in its docs/, or for a portable pack
+  checkout in the machine-local state directory outside it (the path is printed).
 .PARAMETER PrintOpener
   Print only the one-line opener (ASCII) for clipboard or hook injection.
 .PARAMETER Check

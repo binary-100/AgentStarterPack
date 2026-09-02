@@ -52,6 +52,34 @@ function Get-WqIdsFromSection([string]$body) {
     @([regex]::Matches($body, '\|\s*(WQ-\d+)\s*\|') | ForEach-Object { $_.Groups[1].Value })
 }
 
+function Test-ProductTruthRoadmapAlignment {
+    if (-not (Test-Path -LiteralPath $wqPath)) { return }
+    $roadmapPath = Join-Path $ProjectRoot 'docs\ROADMAP.md'
+    if (-not (Test-Path -LiteralPath $roadmapPath)) { return }
+    $wqRawAlign = Get-Content -LiteralPath $wqPath -Raw -Encoding UTF8
+    $doneBodyAlign = Get-SectionBody $wqRawAlign '## Done log' @('## Cross-references')
+    $doneIdSet = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]](Get-WqIdsFromSection $doneBodyAlign)
+    )
+    if ($doneIdSet.Count -eq 0) { return }
+    $roadmapRaw = Get-Content -LiteralPath $roadmapPath -Raw -Encoding UTF8
+    foreach ($doneId in $doneIdSet) {
+        $wqSlug = ($doneId -replace '-', '')
+        if ($roadmapRaw -match ('(?i)handoffs[/\\]active[/\\]HANDOFF_' + [regex]::Escape($wqSlug))) {
+            $msg = "ROADMAP still links handoffs/active for $doneId but WORK_QUEUE lists Done"
+            if ($AuditMode) { Emit-Audit 'IMPROVE' $msg } else { Write-Fail $msg }
+        }
+        foreach ($line in ($roadmapRaw -split "`n")) {
+            if ($line -notmatch [regex]::Escape($doneId)) { continue }
+            if ($line -match '(?i)\|\s*\*\*Next\*\*' -or $line -match '(?i)\|\s*\*\*In progress\*\*') {
+                $msg = "ROADMAP still marks $doneId as Next/In progress but WORK_QUEUE lists Done"
+                if ($AuditMode) { Emit-Audit 'IMPROVE' $msg } else { Write-Fail $msg }
+                break
+            }
+        }
+    }
+}
+
 $pendingPatterns = @(
     'deferred', 'not built', 'not implemented', 'open question', 'design goal',
     'next step', 'pick up', 'parked', 'remaining', 'tool-neutral', 'multi-tool',
@@ -111,6 +139,10 @@ if (Test-Path -LiteralPath $handoffsDir) {
 $isPackRepo = (Test-Path -LiteralPath (Join-Path $ProjectRoot 'install.ps1')) -and
     (Test-Path -LiteralPath (Join-Path $ProjectRoot 'pack\audit\manifest.json'))
 if ($isPackRepo) {
+    # Curated on purpose, unlike the manifest-derived lists elsewhere: these are the documents that
+    # make claims about handoff state, so they are the ones worth scanning for claims that contradict
+    # the work queue. Scanning every pack doc would bury the real contradictions in prose that merely
+    # mentions a handoff. Add a document here when it starts asserting what is in progress.
     foreach ($rel in @(
             'pack\docs\AGENT_HANDOFFS.md',
             'pack\docs\AGENT_WORKFLOW.md',
@@ -177,68 +209,42 @@ foreach ($src in $uniqueSources) {
     }
 }
 
-# The canonical name, not any HANDOFF: $uniqueSources also holds docs\handoffs\active\HANDOFF_WQnnn
-# files, and a bare 'HANDOFF' match would pick a work slice and then look for a section it never had.
-$handoffPath = @($uniqueSources | Where-Object { $_ -match 'HANDOFF_NEXT_AGENT' } | Select-Object -First 1)
-if (-not $handoffPath) {
-    if ($AllowMissing) {
-        Write-Info 'no HANDOFF file (allowed for bootstrapped apps)'
-        exit 0
-    }
-    Write-Ok 'no HANDOFF file; keyword scan only'
-    exit 0
-}
+Test-ProductTruthRoadmapAlignment
 
-$handoffRaw = Get-Content -LiteralPath $handoffPath -Raw -Encoding UTF8
-$sec11 = Get-SectionBody $handoffRaw '## 11.' @('## 12.', '## 13.')
-if (-not $sec11.Trim()) {
-    if ($AllowMissing) { Write-Info 'HANDOFF missing section 11 (allowed)'; exit 0 }
-    Write-Fail 'HANDOFF missing section 11'
-    exit 1
-}
-
+# Until 2.22.65 this script reconciled a session document's "section 11" against the queue: same Next,
+# no Done id still highlighted, a pointer naming the queue as canonical. All three existed because two
+# documents claimed status. One does now, so those checks have nothing to compare and are gone with it.
+# What survives is the half that never depended on that section - a Done id must not read as parked or
+# not built anywhere in the doc set - and it now runs unconditionally. Previously a project with no
+# session document exited here, skipping the contradiction scan entirely: the projects least likely to
+# have such a file were the ones getting the least checking.
 if (Test-Path -LiteralPath $wqPath) {
-    if ($sec11 -notmatch 'WORK_QUEUE\.md' -or $sec11 -notmatch 'canonical') {
-        $msg = 'HANDOFF section 11 must point at docs/WORK_QUEUE.md as the canonical queue'
-        if ($AuditMode) { Emit-Audit 'IMPROVE' $msg } else { Write-Fail $msg; exit 1 }
-    } else {
-        Write-Ok 'HANDOFF section 11 references canonical WORK_QUEUE.md'
-    }
-
     $wqRaw = Get-Content -LiteralPath $wqPath -Raw -Encoding UTF8
     $activeBody = Get-SectionBody $wqRaw '## Active queue' @(
         '## Inbox', '## Engineering backlog', '## Parked', '## Done log', '## Cross-references'
     )
     $doneBody = Get-SectionBody $wqRaw '## Done log' @('## Cross-references')
     $activeNext = [regex]::Match($activeBody, '\|\s*(WQ-\d+)\s*\|[^|]*\|\s*\*\*Next\*\*').Groups[1].Value
-    $handoffNext = [regex]::Match($sec11, '\*\*Next\*\*\s*\|\s*(WQ-\d+)').Groups[1].Value
-    if (-not $handoffNext) {
-        $handoffNext = [regex]::Match($sec11, 'Next\*\*\s*\|\s*(WQ-\d+)').Groups[1].Value
-    }
-    if ($activeNext -and $handoffNext -and $activeNext -ne $handoffNext) {
-        $msg = "HANDOFF section 11 Next ($handoffNext) != WORK_QUEUE Active Next ($activeNext)"
-        if ($AuditMode) { Emit-Audit 'IMPROVE' $msg } else { Write-Fail $msg }
-    } elseif ($activeNext) {
-        Write-Ok "HANDOFF Next aligns with WORK_QUEUE ($activeNext)"
-    }
 
+    # One Next, and it must not already be finished. With a single status claim the failure mode is no
+    # longer disagreement between documents but self-contradiction inside this one.
+    $activeIds = @(Get-WqIdsFromSection $activeBody) | Select-Object -Unique
     $doneIds = [System.Collections.Generic.HashSet[string]]::new([string[]](Get-WqIdsFromSection $doneBody))
-    $sec11Ids = @([regex]::Matches($sec11, 'WQ-\d+') | ForEach-Object { $_.Value }) | Select-Object -Unique
-    foreach ($id in $sec11Ids) {
-        if ($doneIds.Contains($id) -and $sec11 -match [regex]::Escape($id)) {
-            if ($sec11 -match '\*\*Next\*\*[^|]*\|\s*' + [regex]::Escape($id) -or
-                $sec11 -match 'Priority[^`]*' + [regex]::Escape($id)) {
-                $msg = "HANDOFF section 11 still highlights $id but WORK_QUEUE lists it in Done"
-                if ($AuditMode) { Emit-Audit 'IMPROVE' $msg } else { Write-Info $msg }
-            }
-        }
+    $bothIds = @($activeIds | Where-Object { $doneIds.Contains($_) })
+    if ($bothIds) {
+        $msg = "WORK_QUEUE lists in both Active and Done: $($bothIds -join ', ')"
+        if ($AuditMode) { Emit-Audit 'FIX' $msg } else { Write-Fail $msg }
+    } elseif ($activeNext) {
+        Write-Ok "WORK_QUEUE Active Next is $activeNext and is not in Done"
+    } else {
+        Write-Info 'WORK_QUEUE Active queue has no Next row'
     }
-}
 
-foreach ($phrase in $knownStalePhrases) {
-    if ($sec11 -match [regex]::Escape($phrase)) {
-        $msg = "HANDOFF section 11 contains stale shipped task phrase: $phrase"
-        if ($AuditMode) { Emit-Audit 'IMPROVE' $msg } else { Write-Fail $msg }
+    foreach ($phrase in $knownStalePhrases) {
+        if ($activeBody -match [regex]::Escape($phrase)) {
+            $msg = "WORK_QUEUE Active queue contains stale shipped task phrase: $phrase"
+            if ($AuditMode) { Emit-Audit 'IMPROVE' $msg } else { Write-Fail $msg }
+        }
     }
 }
 

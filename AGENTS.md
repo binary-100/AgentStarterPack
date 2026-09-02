@@ -4,7 +4,7 @@ Instructions for AI coding agents working in **Agent Starter Pack** (this repo).
 
 **Read first:** `pack/docs/START_HERE.md`
 
-**Continuing from a prior session?** Read **`HANDOFF_NEXT_AGENT.md`** at the repo root first, then **`docs/WORK_QUEUE.md`** (canonical task radar). Rules vs verify inventory: **`pack/docs/RULES_AND_VERIFY_MAP.md`**. Post-ship checklist: **`pack/docs/WORK_COMPLETION.md`**.
+**Continuing from a prior session?** Read **`docs/WORK_QUEUE.md`** - the canonical radar and the only status claim (a separate session doc was retired in 2.22.65). Per-release reasoning: **`pack/docs/AUDIT_SYSTEM_CHANGELOG.md`**. Rules vs verify inventory: **`pack/docs/RULES_AND_VERIFY_MAP.md`**. Post-ship checklist: **`pack/docs/WORK_COMPLETION.md`**.
 
 **Phase 6a is shipped.** Its spec and the implementer notes were deleted once implemented — `pack/docs/AUDIT_SYSTEM_CHANGELOG.md` and the `docs/WORK_QUEUE.md` Done log are the record. Do not re-build it.
 

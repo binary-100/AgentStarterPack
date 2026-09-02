@@ -22,6 +22,13 @@ Before new agent docs anywhere: **`pack/rules/generic-agent-doc-hygiene.mdc`**.
 
 **Read first:** `pack/docs/START_HERE.md` — install paths, agent pre-flight, bootstrap, audit maintenance, pitfalls.
 
+**No per-machine files in this checkout.** The folder is meant to be copied, cloned and downloaded, so
+the agent-context artifacts (`AGENT_CONTEXT.json`, `AGENT_REFRESH.md`, `AGENT_PASTE.txt`,
+`AGENT_SESSION_START.md`) are written to a machine-local state directory **outside** it —
+`%LOCALAPPDATA%\AgentStarterPack\state\<checkout>`. There is no `docs/AGENT_SESSION_START.md` here and
+that is correct; run `Refresh-AgentContext.cmd` and read the paths it prints. Do not "fix" their
+absence by writing them into `docs/`.
+
 - Do not mix other application code here.
 - Do not run sync/bootstrap scripts that write into other projects unless the user explicitly opens that project for editing.
 - User-global install copies to `%USERPROFILE%\.cursor\AgentStarterPack\`.

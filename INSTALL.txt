@@ -1,6 +1,6 @@
 AGENT STARTER PACK - QUICK INSTALL (v1.8.0)
 ============================================
-Human read-first. Agents: HANDOFF_NEXT_AGENT.md + docs\WORK_QUEUE.md (status).
+Human read-first. Agents: docs\WORK_QUEUE.md (canonical status + radar).
 
 NEW PC OR FLASH DRIVE (WQ-011)
 --------------------------------
@@ -33,8 +33,7 @@ VERSIONS (canonical)
 
 MORE
   INSTALL.md              full install + upgrade
-  HANDOFF_NEXT_AGENT.md  agent handoff (architecture, commands)
-  pack\docs\START_HERE.md maintainer onboarding
+    pack\docs\START_HERE.md maintainer onboarding
 
 CURSOR CHAT
   "Run agent_hygiene_full_check"

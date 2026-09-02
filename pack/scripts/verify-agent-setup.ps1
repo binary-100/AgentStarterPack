@@ -23,6 +23,16 @@ if (-not $PackRoot) {
 
 Write-Host "`n=== Agent Starter Pack setup verification ===`n"
 Write-Host "PackRoot: $PackRoot"
+
+# Sections 2 and 4 check what the manifest declares rather than lists kept in this file, so a missing
+# manifest has to stop the run: with $manifest empty every foreach below would iterate nothing and the
+# script would report a verified setup after checking zero files.
+$setupManifestPath = Get-PackManifestPath -Root $PackRoot
+if (-not (Test-Path -LiteralPath $setupManifestPath)) {
+    Write-Host "[FAIL] No pack manifest at $setupManifestPath - cannot verify anything." -ForegroundColor Red
+    exit 1
+}
+$manifest = Get-Content -LiteralPath $setupManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if (-not (Test-AgentStarterPackInstalled)) {
     Info 'This pack is not installed for the current user profile yet - the failures below are the install step, not pack damage. Run install.ps1 from the pack root.'
 }
@@ -41,12 +51,28 @@ if (-not (Test-Path -LiteralPath $sync)) {
     Pass 'Generic rules sync verify skipped (no -ReferenceProjectRoot)'
 }
 
-# 2. User-global rules present
-$userRules = Join-Path $env:USERPROFILE '.cursor\rules'
-foreach ($name in @('full-paths-in-chat.mdc', 'agent-defaults-always.mdc', 'generic-agent-doc-hygiene.mdc', 'generic-work-queue-discipline.mdc', 'generic-agent-handoff-discipline.mdc')) {
-    $p = Join-Path $userRules $name
-    if (Test-Path -LiteralPath $p) { Pass "User global rule: $p" }
-    else { Fail "User global rule missing: $p (run install.ps1 from pack root)" }
+# 2. User-global rules and skills present
+# Read from packToUser rather than a list kept here. This used to name five rules out of the twelve
+# the manifest declares, so seven could fail to install and this script would still say the setup was
+# verified - the same "guard narrower than the thing it guards" that let a broken export ship
+# (2.22.60). Anything added to packToUser is now checked without touching this file.
+$userRoot = Get-AgentStarterPackUserRoot
+if (-not $userRoot) { $userRoot = Join-Path $env:USERPROFILE '.cursor' }
+$toUser = @($manifest.packToUser | Where-Object { $_.to })
+if ($toUser.Count -eq 0) {
+    Fail 'manifest has no packToUser entries - cannot verify what install should have placed in the profile'
+} else {
+    $missingUser = @()
+    foreach ($entry in $toUser) {
+        $p = Join-Path $userRoot ($entry.to -replace '/', '\')
+        if (-not (Test-Path -LiteralPath $p)) { $missingUser += $entry.to }
+    }
+    if ($missingUser.Count -gt 0) {
+        Fail ("User-global files missing under ${userRoot}: $($missingUser -join ', ') " +
+            '(run install.ps1 from pack root)')
+    } else {
+        Pass "User-global rules and skills present ($($toUser.Count) from packToUser): $userRoot"
+    }
 }
 
 # 3. Canonical pack installed
@@ -54,22 +80,27 @@ $installed = Join-Path $env:USERPROFILE '.cursor\AgentStarterPack\pack\audit\man
 if (Test-Path -LiteralPath $installed) { Pass "Installed pack manifest: $installed" }
 else { Fail "Installed pack missing: $installed" }
 
-# 4. Key pack docs and rules
-foreach ($rel in @(
-        'pack\docs\PACK_MAINTENANCE.md',
-        'pack\docs\AGENT_COORDINATION_BACKLOG.md',
-        'pack\docs\WORK_COMPLETION.md',
-        'pack\docs\AGENT_HANDOFFS.md',
-        'pack\rules\full-paths-in-chat.mdc',
-        'pack\rules\generic-agent-doc-hygiene.mdc',
-        'pack\scripts\archive-completed-handoff.ps1',
-        'pack\scripts\verify-complete-picture.ps1',
-        'pack\scripts\ensure-work-completion.ps1',
-        'Update-AgentRules.cmd'
-    )) {
-    $p = Join-Path $PackRoot $rel
-    if (Test-Path -LiteralPath $p) { Pass "Pack file: $rel" }
-    else { Fail "Pack file missing: $p" }
+# 4. Pack files the manifest declares
+# Was ten hand-picked paths, which answered "are these ten here?" rather than "is this pack complete?".
+# packMirror is the list that already means the latter, so it is the one to check; machine-local paths
+# are excluded because they are supposed to be absent from a checkout.
+$mirrorExpected = @($manifest.packMirror | Where-Object { $_ })
+$machineLocalExpected = @($manifest.machineLocalPaths)
+if ($mirrorExpected.Count -eq 0) {
+    Fail 'manifest has no packMirror entries - cannot verify the pack is complete'
+} else {
+    $missingPack = @()
+    foreach ($rel in $mirrorExpected) {
+        if ($machineLocalExpected -contains $rel) { continue }
+        if (-not (Test-Path -LiteralPath (Join-Path $PackRoot ($rel -replace '/', '\')))) {
+            $missingPack += $rel
+        }
+    }
+    if ($missingPack.Count -gt 0) {
+        Fail "Pack files missing (declared in packMirror): $($missingPack -join ', ')"
+    } else {
+        Pass "All $($mirrorExpected.Count) packMirror files present: $PackRoot"
+    }
 }
 
 # 5. Work queue (pack repo + optional reference project)
@@ -141,7 +172,9 @@ if ($ReferenceProjectRoot) {
         else { Fail "Hub doc repair verify failed: $ReferenceProjectRoot" }
     }
 
-    $sessionStart = Join-Path $ReferenceProjectRoot 'docs\AGENT_SESSION_START.md'
+    # Resolved rather than assumed: a pack checkout keeps its context artifacts in a machine-local
+    # state directory, so checking docs\ there would warn about a file that is correctly absent.
+    $sessionStart = Join-Path (Get-AgentStateRoot -ProjectRoot $ReferenceProjectRoot) 'AGENT_SESSION_START.md'
     if (Test-Path -LiteralPath $sessionStart) { Pass "AGENT_SESSION_START.md present: $ReferenceProjectRoot" }
     else { Warn "AGENT_SESSION_START.md missing - run Refresh-AgentContext.cmd for $ReferenceProjectRoot" }
 }

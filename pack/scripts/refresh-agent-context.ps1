@@ -6,10 +6,17 @@
   No chat reloads its instructions when files on disk change, so updating the pack silently leaves
   every open session acting on the old rules. This writes two artifacts the agent can be pointed at:
 
-    docs/AGENT_CONTEXT.json  machine-readable stamp (versions, per-layer state, changed layers)
-    docs/AGENT_REFRESH.md    short brief ending in a line to paste into a stale chat
+    AGENT_CONTEXT.json  machine-readable stamp (versions, per-layer state, changed layers)
+    AGENT_REFRESH.md    short brief ending in a line to paste into a stale chat
+    AGENT_PASTE.txt     the paste line alone, so copying cannot pick up stray whitespace
+    AGENT_SESSION_START.md  what an agent should read first in a new session
 
-  Both live under the project's docs/ so any agent can read them - the contract is files, not an API.
+  The contract is files, not an API - any agent can read them. Where they land depends on the project
+  (Get-AgentStateRoot): an ordinary project gets them in its own docs/, since it lives at one path on
+  one machine. A **pack root** gets them in a machine-local state directory outside the checkout,
+  because the pack folder is portable - a generated file naming this machine's drive and user profile
+  is wrong the moment the folder is copied, cloned or downloaded, and it discloses the sender's layout.
+  The command prints every path it writes.
 .PARAMETER ProjectRoot
   Project to refresh. Defaults to the pack checkout this script belongs to (maintainer mode).
 .PARAMETER RulesRelativePath
@@ -21,7 +28,7 @@
 .PARAMETER PackRoot
   Override the pack to read. Default resolves via pack-paths.ps1.
 .PARAMETER NoClipboard
-  Do not put the paste line on the clipboard (it is still written to docs/AGENT_PASTE.txt).
+  Do not put the paste line on the clipboard (it is still written to AGENT_PASTE.txt).
 #>
 param(
     [string]$ProjectRoot = '',
@@ -90,6 +97,17 @@ if (-not (Test-Path -LiteralPath $docsDir)) {
     New-Item -ItemType Directory -Path $docsDir -Force | Out-Null
 }
 
+# Two destinations, deliberately different. Project docs (WORK_QUEUE, WORK_COMPLETION) belong to the
+# repository and are committed. The four generated context artifacts are this machine's answer about
+# this checkout - absolute paths, installed engine version, sync state - and for a pack root they go to
+# a machine-local state directory instead of docs\, because the pack folder travels. Ordinary projects
+# are unaffected: Get-AgentStateRoot returns their own docs\.
+$stateDir = Get-AgentStateRoot -ProjectRoot $ProjectRoot
+if (-not (Test-Path -LiteralPath $stateDir)) {
+    New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
+}
+$stateIsOutsideProject = ($stateDir.TrimEnd('\', '/') -ne $docsDir.TrimEnd('\', '/'))
+
 $workQueueLayer = 'skipped'
 $ensureWq = Join-Path $PSScriptRoot 'ensure-work-queue.ps1'
 if (Test-Path -LiteralPath $ensureWq) {
@@ -105,11 +123,19 @@ if (Test-Path -LiteralPath $ensureWc) {
     $hadWc = Test-Path -LiteralPath (Join-Path $docsDir 'WORK_COMPLETION.md')
     Invoke-PackScript -PassOutput -NoProfile -ScriptPath $ensureWc -ProjectRoot $ProjectRoot -PackRoot $PackRoot | Out-Host
     if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: ensure-work-completion failed (exit $LASTEXITCODE)"; exit 1 }
-    $workCompletionLayer = if (-not $hadWc -and (Test-Path -LiteralPath (Join-Path $docsDir 'WORK_COMPLETION.md'))) { 'created' } else { 'ok' }
+    $workCompletionLayer = if (-not $hadWc -and (Test-Path -LiteralPath (Join-Path $docsDir 'WORK_COMPLETION.md'))) {
+        'created'
+    } elseif ($isPackRepo) {
+        # Deliberately absent here: the pack's canonical checklist is pack/docs/WORK_COMPLETION.md.
+        # Reporting 'ok' for a file that does not exist is the kind of quiet lie that costs an hour later.
+        'n/a (pack root - see pack/docs/WORK_COMPLETION.md)'
+    } else {
+        'ok'
+    }
 }
 
-$contextPath = Join-Path $docsDir 'AGENT_CONTEXT.json'
-$refreshPath = Join-Path $docsDir 'AGENT_REFRESH.md'
+$contextPath = Join-Path $stateDir 'AGENT_CONTEXT.json'
+$refreshPath = Join-Path $stateDir 'AGENT_REFRESH.md'
 $previous = Get-JsonOrNull $contextPath
 
 $layers = [ordered]@{
@@ -212,12 +238,14 @@ $requiredReads = New-Object System.Collections.ArrayList
 if (Test-Path -LiteralPath (Join-Path $canonicalProjectRoot 'AI_INSTRUCTIONS.md')) {
     [void]$requiredReads.Add((Join-Path $canonicalProjectRoot 'AI_INSTRUCTIONS.md'))
 }
-[void]$requiredReads.Add((Join-Path $canonicalProjectRoot 'docs\AGENT_REFRESH.md'))
+[void]$requiredReads.Add($refreshPath)
 if (Test-Path -LiteralPath (Join-Path $canonicalProjectRoot 'docs\WORK_QUEUE.md')) {
     [void]$requiredReads.Add((Join-Path $canonicalProjectRoot 'docs\WORK_QUEUE.md'))
 }
 if ($isPackRepo) {
-    [void]$requiredReads.Add((Join-Path $canonicalProjectRoot 'HANDOFF_NEXT_AGENT.md'))
+    # The pack repo has no session document since 2.22.65; its queue is the status claim, and the
+    # maintainer-only reading is how the audit system is put together.
+    [void]$requiredReads.Add((Join-Path $canonicalProjectRoot 'pack\docs\START_HERE.md'))
 }
 
 $syncedAt = (Get-Date).ToUniversalTime().ToString('o')
@@ -261,7 +289,7 @@ $changeLines = if ($changed.Count -eq 0) {
 $readList = New-Object System.Collections.ArrayList
 $idx = 1
 foreach ($abs in @($requiredReads)) {
-    if ($abs -match 'HANDOFF_NEXT_AGENT\.md$') {
+    if ($abs -match 'START_HERE\.md$') {
         [void]$readList.Add("$idx. ``$abs`` - pack maintainers only")
     } else {
         [void]$readList.Add("$idx. ``$abs``")
@@ -278,12 +306,12 @@ if ($canonicalProjectRoot -ne $ProjectRoot) {
 # microseconds, absolute paths, and a closing request that makes the agent prove it read the files.
 # A silent "ok" is indistinguishable from an agent that ignored the paste.
 $stampShort = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm') + ' UTC'
-$refreshDocPath = Join-Path $ProjectRoot 'docs\AGENT_REFRESH.md'
+$refreshDocPath = $refreshPath
 $agentsPath = Join-Path $ProjectRoot 'AGENTS.md'
 $pasteLine = if ($isPackRepo) {
     "PACK CONTEXT REFRESHED $stampShort (pack $packVersion, audit engine $auditEngineVersion). " +
     "Before your next action: read $refreshDocPath, then re-read $agentsPath and " +
-    "$(Join-Path $ProjectRoot 'HANDOFF_NEXT_AGENT.md'). Treat conclusions from earlier in this chat " +
+    "$(Join-Path $ProjectRoot 'docs\WORK_QUEUE.md'). Treat conclusions from earlier in this chat " +
     "as possibly stale. Confirm by replying with the pack version and audit engine version you just read."
 } else {
     "PACK CONTEXT REFRESHED $stampShort (pack $packVersion, audit engine $auditEngineVersion). " +
@@ -317,14 +345,14 @@ $($changeLines -join "`n")
 
 - Version and doc cites are a build step (``docs/VERSION_SYNC.json`` / ``apply_version.py sync``), not an audit step.
 - Audits report Fix and Improve; they do not delete or restructure anything on their own.
-$(if (-not $isPackRepo) { "- ``HANDOFF_NEXT_AGENT.md`` belongs to the Agent Starter Pack repo - do not read it for this project.`n" })
+$(if (-not $isPackRepo) { "- ``pack/docs/START_HERE.md`` belongs to the Agent Starter Pack repo - do not read it for this project.`n" })
 ## Paste into an open chat
 
 Three ways to do this, easiest first:
 
 1. **Cursor:** type **refresh pack context** in the chat - no copying at all.
 2. **Clipboard:** the refresh command already copied the line below; just paste (Ctrl+V).
-3. **File:** open ``docs/AGENT_PASTE.txt`` (one line, nothing else) and copy all of it.
+3. **File:** open ``$pastePath`` (one line, nothing else) and copy all of it.
 
 ``````text
 $pasteLine
@@ -333,16 +361,20 @@ $pasteLine
 The agent should answer with the two version numbers. If it replies without them, it did not read the
 files - paste again rather than continuing.
 
-Machine-readable stamp: ``docs/AGENT_CONTEXT.json``
+Machine-readable stamp: ``$contextPath``$(if ($stateIsOutsideProject) { "
+
+**This file is not in the repository.** The pack folder is portable - it travels on a stick, in a
+clone, in a download - so nothing describing *this* machine is written into it. Per-machine context
+lives under the state directory above and is regenerated by ``Refresh-AgentContext.cmd``." })
 "@
 Write-Utf8NoBom $refreshPath $md
 
 # A dedicated single-line file: selecting text out of a wrapped console window is where copies pick up
 # stray spaces and line breaks. Nothing else goes in this file.
-$pastePath = Join-Path $docsDir 'AGENT_PASTE.txt'
+$pastePath = Join-Path $stateDir 'AGENT_PASTE.txt'
 Write-Utf8NoBom $pastePath $pasteLine
 
-$sessionStartPath = Join-Path $docsDir 'AGENT_SESSION_START.md'
+$sessionStartPath = Join-Path $stateDir 'AGENT_SESSION_START.md'
 & py -3 (Join-Path $PSScriptRoot 'agent_context_freshness.py') --write-session-start --project-root $ProjectRoot 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "WARN: --write-session-start failed (exit $LASTEXITCODE)"
@@ -364,6 +396,11 @@ Write-Host "Wrote $contextPath"
 Write-Host "Wrote $refreshPath"
 Write-Host "Wrote $pastePath"
 if (Test-Path -LiteralPath $sessionStartPath) { Write-Host "Wrote $sessionStartPath" }
+if ($stateIsOutsideProject) {
+    Write-Host ''
+    Write-Host 'These four files live outside the pack folder on purpose: the folder is portable, so' -ForegroundColor DarkGray
+    Write-Host 'nothing describing this machine is written into it. Re-run this command to regenerate.' -ForegroundColor DarkGray
+}
 Write-Host ''
 if ($changed.Count -gt 0) {
     Write-Host 'Changed since last refresh:'

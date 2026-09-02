@@ -322,19 +322,27 @@ the refresh for you* — so the normal path is that your agent proposes the comm
 with nothing to copy or type. The rest of this section is what sits under that, and what to do when you
 want to drive it yourself or update a chat in another window.
 
-`Refresh-AgentContext.cmd <project>` writes three files under the project's `docs/`:
+`Refresh-AgentContext.cmd <project>` writes these files and prints the full path of each:
 
 | File | For |
 |------|-----|
 | `AGENT_CONTEXT.json` | Machines — pack version, audit engine version, rules hash, per-layer state, `changedLayers` |
 | `AGENT_REFRESH.md` | Humans and agents — what changed, what to re-read, and the paste line |
 | `AGENT_PASTE.txt` | Copying — the paste line by itself, one ASCII line, no BOM |
+| `AGENT_SESSION_START.md` | The first-turn read: stale/fresh verdict and the paths you should have read |
+
+**Where they land depends on the project.** A project you bootstrapped gets them in its own `docs/` —
+it lives at one path on one machine, so a brief naming that path is right there. **The pack checkout
+itself gets them outside the folder**, in `%LOCALAPPDATA%\AgentStarterPack\state\<checkout>` (POSIX:
+`$XDG_STATE_HOME`), because that folder is meant to travel on a stick or arrive as a download, and a
+file recording one machine's drive letters and user profile is both wrong elsewhere and nobody else's
+business. Use the paths the command prints rather than assuming `docs/`.
 
 Getting it into the chat, easiest first:
 
 1. **Cursor:** type **refresh pack context** — the global rule sends the agent to the brief, nothing to copy.
 2. **Clipboard:** the command already copied the line; press Ctrl+V.
-3. **File:** open `docs/AGENT_PASTE.txt` and copy the whole line.
+3. **File:** open the `AGENT_PASTE.txt` path the command printed and copy the whole line.
 
 Avoid selecting it from the console window — wrapped output is where a copy picks up line breaks. The
 line asks the agent to reply with the pack and audit engine versions; if it answers without them, it

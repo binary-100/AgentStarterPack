@@ -9,6 +9,8 @@ alwaysApply: true
 
 On the **first turn** in a project, read **`docs/AGENT_SESSION_START.md`** when it exists, before substantial work. It carries the stale/fresh verdict for this project's agent context and the absolute paths you are expected to have read. If it reports **stale**, follow **Context refresh** below rather than working from whatever this chat already believes.
 
+Some repositories are meant to be copied or downloaded and therefore keep **no** per-machine files inside themselves. There the context artifacts live in a machine-local directory outside the checkout instead, and `docs/AGENT_SESSION_START.md` will simply be absent — run the context refresh and read the paths it prints rather than concluding the project has no context.
+
 The project's `AGENTS.md` and `AI_INSTRUCTIONS.md` say the same thing — this rule covers projects whose entry files predate that line or were customized.
 
 ## Loop-back (all projects)
@@ -46,16 +48,16 @@ After audit-system changes: **`sync-audit-system.ps1`** + changelog entry.
 
 On **refresh pack context**, **sync agent context**, **context refresh**, or **pack update**:
 
-1. Read `docs/AGENT_REFRESH.md` in the **current workspace** if present, then every path in `requiredReads` from `docs/AGENT_CONTEXT.json` (absolute paths — use them if workspace root differs).
+1. Read `docs/AGENT_REFRESH.md` in the **current workspace** if present, then every path in `requiredReads` from `docs/AGENT_CONTEXT.json` (absolute paths — use them if workspace root differs). If neither file is there, the project keeps its context outside the checkout: run the refresh (step 3) and read the paths it prints.
 2. Treat anything you learned earlier in this chat as possibly stale where it conflicts.
 3. Missing or unclear? Read `docs/AGENT_CONTEXT.json`, call MCP **`check_pack_freshness`** / **`get_agent_refresh_brief`** when agent-hygiene is available, or run the refresh yourself as below.
 4. **Handshake:** reply with the pack version and audit engine version you just read when the refresh brief or paste line asks for it.
 
 When an audit reports **Agent context stale / never refreshed / unreadable**, do not hand the user a
 command to type: **offer to run `Refresh-AgentContext.cmd` for this project yourself** and let them
-approve the run. On approval, run it, then read the regenerated `docs/AGENT_REFRESH.md` in the same
-turn. It writes `docs/` artifacts and syncs this project's rules and audit files from the installed
-pack; it does not touch the user profile unless asked with `-Install`.
+approve the run. On approval, run it, then read the regenerated brief in the same turn — the command
+prints every path it wrote. It syncs this project's rules and audit files from the installed pack; it
+does not change the user profile unless asked with `-Install`.
 
 ## Fixes the agent runs (do not offload)
 

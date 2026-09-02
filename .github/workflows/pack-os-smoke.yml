@@ -33,3 +33,43 @@ jobs:
 
       - name: OS portability probe (native Linux)
         run: pwsh -NoProfile -File pack/scripts/test-os-portability-probe.ps1 -PackRoot "$GITHUB_WORKSPACE"
+
+      # Everything above runs the .ps1 files directly, which is what this job did for four releases
+      # while triggering on changes to *.sh - so no CI step ever ran a wrapper. The first real run of
+      # one found a hook that hung forever on an open stdin (2.22.63). The steps below run the
+      # wrappers themselves, on the only OS where they are the documented entry point.
+      - name: Wrappers are executable and delegate (bash)
+        run: |
+          set -euo pipefail
+          chmod +x ./*.sh pack/scripts/pwsh-wrap.sh
+          ./Check-Requirements.sh -Json > /tmp/req.json
+          python3 -c "import json,sys; d=json.load(open('/tmp/req.json')); print('packRoot', d['packRoot'])"
+          if ./Bootstrap-Project.sh; then
+            echo "Bootstrap-Project.sh with no arguments must exit non-zero" >&2
+            exit 1
+          fi
+
+      - name: Bootstrap and refresh through the wrappers (bash)
+        run: |
+          set -euo pipefail
+          ./Bootstrap-Project.sh /tmp/ShApp ShApp
+          test -f /tmp/ShApp/AGENTS.md
+          ./Refresh-AgentContext.sh /tmp/ShApp -NoClipboard
+          test -f /tmp/ShApp/docs/AGENT_CONTEXT.json
+
+      # The two the Windows suite cannot cover: install.sh writes the user profile, and run_audit.sh
+      # would re-enter the behavior suite there. On a throwaway runner both are safe and are the real
+      # first-run path for a Linux user. Scope is explicit - the wrapper defaults to Both, and project
+      # scope would copy global rules into the checkout.
+      - name: install.sh (user scope) on a throwaway profile
+        run: |
+          set -euo pipefail
+          ./install.sh User
+          test -d "$HOME/.cursor/AgentStarterPack"
+          test -f "$HOME/.cursor/rules/agent-defaults-always.mdc"
+
+      - name: run_audit.sh reaches a report without hanging
+        timeout-minutes: 12
+        env:
+          BUILD_NOPAUSE: '1'
+        run: ./run_audit.sh

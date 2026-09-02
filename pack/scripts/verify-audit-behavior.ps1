@@ -151,21 +151,37 @@ try {
     # creation. packToUser is not asserted here: these are maintainer docs, not profile rules.
     # Generated per machine, gitignored, and dropped from the export - mirroring it would push one
     # machine's absolute paths into the install.
-    $generatedDocs = @('AGENT_REFRESH.md', 'AGENT_SESSION_START.md', 'AGENT_PASTE.txt')
+    # A maintainer-only doc is exempt because it is never installed at all, so it cannot be the stale
+    # copy this check exists to prevent. Without this the two mechanisms contradict each other: any
+    # docs/ file added to maintainerOnlyPaths fails here, which is what happened when the handoff
+    # design reference moved into the repo.
+    # Read from the manifest, not listed here: this array was the fourth copy of "what is generated per
+    # machine", and while it agreed with the export it disagreed with .gitignore, so two of these files
+    # were committed with one maintainer's profile path in them. Step 50 owns that list now.
+    $generatedDocs = @($mf.machineLocalPaths | Where-Object { $_ })
+    $maintainerOnly = @($mf.maintainerOnlyPaths | Where-Object { $_ })
     $trackedDocs = @()
     foreach ($docDir in @('pack\docs', 'docs')) {
         $full = Join-Path $PackRoot $docDir
         if (-not (Test-Path -LiteralPath $full)) { continue }
         $prefix = $docDir -replace '\\', '/'
         foreach ($f in (Get-ChildItem -LiteralPath $full -Filter *.md -File)) {
-            if ($generatedDocs -contains $f.Name) { continue }
-            $trackedDocs += "$prefix/$($f.Name)"
+            $rel = "$prefix/$($f.Name)"
+            if ($generatedDocs -contains $rel) { continue }
+            if ($maintainerOnly -contains $rel) { continue }
+            # A folder entry excludes everything under it, same rule install.ps1 applies.
+            if (@($maintainerOnly | Where-Object { $rel -like "$_/*" }).Count -gt 0) { continue }
+            $trackedDocs += $rel
         }
     }
     $docsUnmirrored = @($trackedDocs | Where-Object { $mirror -notcontains $_ })
+    $docsBothWays = @($mirror | Where-Object { $maintainerOnly -contains $_ })
     if ($docsUnmirrored.Count -gt 0) {
         Fail "docs missing from manifest packMirror (installed once, then stale forever): $($docsUnmirrored -join ', ')"
-    } else { Ok "all $($trackedDocs.Count) pack/docs + docs files are tracked for sync" }
+    } elseif ($docsBothWays.Count -gt 0) {
+        # Contradictory: install would skip the file while sync would try to refresh it.
+        Fail "paths listed as both mirrored and maintainer-only: $($docsBothWays -join ', ')"
+    } else { Ok "all $($trackedDocs.Count) pack/docs + docs files are tracked for sync ($($maintainerOnly.Count) maintainer-only paths exempt)" }
 
     # The machinery itself had the same hole, and it bites harder than docs: bootstrap-project.ps1 and
     # every template it writes were unmirrored, and bootstrapping *from the installed pack* is the
@@ -203,7 +219,6 @@ try {
     # should never leave the repo. Every root file now has to be one or the other, so a new document
     # forces the question at test time rather than showing up in someone's profile months later.
     $generatedAtRoot = @('install-manifest.json')
-    $maintainerOnly = @($mf.maintainerOnlyPaths | Where-Object { $_ })
     $rootDocs = @()
     foreach ($f in (Get-ChildItem -LiteralPath $PackRoot -File)) {
         if ($f.Extension -in @('.cmd', '.bat', '.ps1', '.sh', '.zip')) { continue }
@@ -1116,7 +1131,7 @@ try {
             # A maintainer-only entry may name a folder. SkipRelPaths matched exact files only, so
             # docs\handoffs would have shipped every work slice into the profile - and listing the
             # files one by one guarantees the next one is missed.
-            'HANDOFF_NEXT_AGENT.md', 'docs\handoffs\active\HANDOFF_WQ001_x.md',
+            '.cursor\rules\no-publish-from-this-machine.mdc', 'docs\handoffs\active\HANDOFF_WQ001_x.md',
             'docs\handoffs\README.md', 'docs\handoffs-notes.md')) {
         $full = Join-Path $ctSrc $rel
         $dir = Split-Path $full -Parent
@@ -1127,10 +1142,10 @@ try {
     Copy-Tree $ctSrc $ctDst `
         -SkipDirNames @('.git\', '.tmp\', '__pycache__\', '.pytest_cache\') `
         -SkipExtensions @('.pyc', '.pyo') -SkipNamePatterns @('.audit_*') `
-        -SkipRelPaths @('HANDOFF_NEXT_AGENT.md', 'docs\handoffs')
+        -SkipRelPaths @('.cursor\rules\no-publish-from-this-machine.mdc', 'docs\handoffs')
     $leaked = @('pack\scripts\__pycache__\x.cpython-314.pyc', '.git\config', '.tmp\scratch.txt',
         '.pytest_cache\c.json', 'docs\.audit_semantic_report.json',
-        'HANDOFF_NEXT_AGENT.md', 'docs\handoffs\active\HANDOFF_WQ001_x.md', 'docs\handoffs\README.md') |
+        '.cursor\rules\no-publish-from-this-machine.mdc', 'docs\handoffs\active\HANDOFF_WQ001_x.md', 'docs\handoffs\README.md') |
         Where-Object { Test-Path -LiteralPath (Join-Path $ctDst $_) }
     # A skipped folder must not take a same-prefixed neighbour with it.
     $dropped = @('install.ps1', 'pack\scripts\x.py', 'docs\AUDIT.md', '.gitignore', 'docs\handoffs-notes.md') |
@@ -1268,6 +1283,11 @@ try {
     Write-Utf8NoBom (Join-Path $packProj 'pack\audit\manifest.json') '{ "version": "9.9.9-audit" }'
     # No installed pack in scope: keeps the layer state deterministic on any machine.
     $env:AGENT_STARTER_PACK_INSTALL_ROOT = (Join-Path $ctxProbe 'no-install')
+    # pack-proj is a pack root, so its artifacts now resolve to a machine-local state directory.
+    # Without this the probe would write its stamp into the real %LOCALAPPDATA% and leave it there -
+    # a test that mutates the machine it runs on. app-proj is unaffected: not a pack root, own docs\.
+    $ctxStateDir = Join-Path $ctxProbe 'state'
+    $env:AGENT_STARTER_PACK_STATE_ROOT = $ctxStateDir
 
     function Invoke-Refresh([string]$Proj) {
         # -NoClipboard: a test must not reach into the user's clipboard.
@@ -1275,8 +1295,11 @@ try {
             -ProjectRoot $Proj -PackRoot $fakePack -SkipProjectSync -NoClipboard 2>&1 | Out-Null
         return $LASTEXITCODE
     }
+    function Get-CtxDir([string]$Proj) {
+        return (Get-AgentStateRoot -ProjectRoot $Proj)
+    }
     function Get-Ctx([string]$Proj) {
-        Get-Content (Join-Path $Proj 'docs\AGENT_CONTEXT.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        Get-Content (Join-Path (Get-CtxDir $Proj) 'AGENT_CONTEXT.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     }
 
     $rc = Invoke-Refresh $appProj
@@ -1383,13 +1406,26 @@ try {
     }
 
     [void](Invoke-Refresh $packProj)
-    $packMd = Get-Content (Join-Path $packProj 'docs\AGENT_REFRESH.md') -Raw
+    # The split this asserts: a pack root writes nothing into its own docs\ (it travels), an ordinary
+    # project keeps its brief there (it does not).
+    $packStateMd = Join-Path $ctxStateDir 'AGENT_REFRESH.md'
+    $packInFolder = Join-Path $packProj 'docs\AGENT_REFRESH.md'
+    if (-not (Test-Path -LiteralPath $packStateMd)) {
+        Fail "pack-root refresh did not write the brief to the state root ($packStateMd)"
+    } elseif (Test-Path -LiteralPath $packInFolder) {
+        Fail 'pack-root refresh wrote machine state into the portable checkout'
+    } else {
+        Ok 'pack root writes context outside itself; project keeps it in docs\'
+    }
+    $packMd = Get-Content $packStateMd -Raw
     $appMd = Get-Content $mdFile -Raw
-    # Sending an app agent into the pack's handoff is the failure this split exists to prevent.
-    if ($packMd -notmatch '(?m)^\d+\. .*HANDOFF_NEXT_AGENT\.md') {
-        Fail 'pack-repo brief does not list HANDOFF_NEXT_AGENT.md as required reading'
-    } elseif ($appMd -match '(?m)^\d+\. .*HANDOFF_NEXT_AGENT\.md') {
-        Fail 'app brief sends the agent to the pack handoff'
+    # Sending an app agent into the pack's own maintainer reading is the failure this split exists to
+    # prevent. The discriminator was HANDOFF_NEXT_AGENT.md until 2.22.65 retired it; pack\docs\START_HERE.md
+    # is the replacement because it is pack-only, whereas docs\WORK_QUEUE.md exists in both.
+    if ($packMd -notmatch '(?m)^\d+\. .*START_HERE\.md') {
+        Fail 'pack-repo brief does not list pack\docs\START_HERE.md as required reading'
+    } elseif ($appMd -match '(?m)^\d+\. .*pack.docs.START_HERE\.md') {
+        Fail "app brief sends the agent into the pack repo's maintainer reading"
     } elseif ((Get-Ctx $packProj).isPackRepo -ne $true) {
         Fail 'pack repo was not detected as a pack repo'
     } else { Ok 'pack and app briefs point at different required reading' }
@@ -1410,6 +1446,9 @@ try {
     if ($null -eq $savedInstallRoot) {
         Remove-Item Env:\AGENT_STARTER_PACK_INSTALL_ROOT -ErrorAction SilentlyContinue
     } else { $env:AGENT_STARTER_PACK_INSTALL_ROOT = $savedInstallRoot }
+    # Leaving this set would redirect every later step's state resolution at a directory this block
+    # just deleted, which is how one step's scaffolding becomes another step's mystery failure.
+    Remove-Item Env:\AGENT_STARTER_PACK_STATE_ROOT -ErrorAction SilentlyContinue
     Remove-Item $ctxProbe -Recurse -Force -ErrorAction SilentlyContinue
 }
 
@@ -1908,15 +1947,78 @@ try {
 |----|------|-----------|----------|
 | WQ-999 | old | 2026-01-01 | done |
 "@
-        Rename-Item (Join-Path $probeRoot 'HANDOFF_PROBE.md') 'HANDOFF_NEXT_AGENT.md'
+        # 2.22.65: the stale-claim scan reads the queue's own Active section instead of a session
+        # document's section 11. Same defect class, one fewer document to disagree with.
+        Write-Utf8NoBom (Join-Path $probeRoot 'docs\WORK_QUEUE.md') @"
+# Work queue probe
+
+## Active queue
+
+| ID | Task | Status | Notes |
+|----|------|--------|-------|
+| WQ-001 | live | **Next** | WQ-308 (parked) |
+
+## Done log
+
+| ID | Task | Completed | Evidence |
+|----|------|-----------|----------|
+| WQ-999 | old | 2026-01-01 | done |
+"@
         $auditOut = Invoke-PackScript -PassOutput -NoProfile -ScriptPath $cpScript -ProjectRoot $probeRoot -AuditMode 2>&1 | Out-String
-        if ($auditOut -notmatch '\[IMPROVE\]') { Fail 'AuditMode did not report stale HANDOFF Improve' }
-        else { Ok 'AuditMode flags stale section 11 phrases' }
+        if ($auditOut -notmatch '\[IMPROVE\]') { Fail 'AuditMode did not report a stale shipped-task phrase in the Active queue' }
+        else { Ok 'AuditMode flags stale shipped-task phrases in the queue' }
+
+        # An id in Active and Done at once is the self-contradiction a single status claim can still
+        # produce, and it is a FIX rather than an Improve: one of the two rows is simply wrong.
+        Write-Utf8NoBom (Join-Path $probeRoot 'docs\WORK_QUEUE.md') @"
+# Work queue probe
+
+## Active queue
+
+| ID | Task | Status | Notes |
+|----|------|--------|-------|
+| WQ-001 | live | **Next** | |
+
+## Done log
+
+| ID | Task | Completed | Evidence |
+|----|------|-----------|----------|
+| WQ-001 | same id | 2026-01-01 | done |
+"@
+        $dupOut = Invoke-PackScript -PassOutput -NoProfile -ScriptPath $cpScript -ProjectRoot $probeRoot -AuditMode 2>&1 | Out-String
+        if ($dupOut -notmatch '\[FIX\].*both Active and Done') { Fail 'an id in both Active and Done was not reported as FIX' }
+        else { Ok 'AuditMode reports an id listed in both Active and Done' }
+
+        $roadmapProbe = Join-Path $PackRoot ".tmp\roadmap-probe-$PID"
+        if (Test-Path -LiteralPath $roadmapProbe) { Remove-Item -LiteralPath $roadmapProbe -Recurse -Force -ErrorAction SilentlyContinue }
+        New-Item -ItemType Directory -Path (Join-Path $roadmapProbe 'docs') -Force | Out-Null
+        Write-Utf8NoBom (Join-Path $roadmapProbe 'docs\WORK_QUEUE.md') @"
+# Work queue probe
+
+## Done log
+
+| ID | Task | Completed | Evidence |
+|----|------|-----------|----------|
+| WQ-042 | shipped slice | 2026-01-01 | done |
+"@
+        Write-Utf8NoBom (Join-Path $roadmapProbe 'docs\ROADMAP.md') @"
+# Roadmap probe
+
+## Work queue (current)
+
+| Name | PLAN | Phase | Status |
+|------|------|-------|--------|
+| Old slice | plan.md | 1 | **Next** - WQ-042 handoff [handoffs/active/HANDOFF_WQ042_feature.md](handoffs/active/HANDOFF_WQ042_feature.md) |
+"@
+        Invoke-PackScript -PassOutput -NoProfile -ScriptPath $cpScript -ProjectRoot $roadmapProbe 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) { Fail 'ROADMAP probe should FAIL when Done WQ still reads Next' }
+        else { Ok 'complete-picture FAILs ROADMAP Next/active handoff for Done WQ' }
     }
 } catch {
     Fail "complete-picture checks error: $_"
 } finally {
     Remove-Item (Join-Path $PackRoot ".tmp\complete-picture-probe-$PID") -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $PackRoot ".tmp\roadmap-probe-$PID") -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host "`n38. Agent session-start freshness (WQ-308 Phase D1)"
@@ -2027,6 +2129,42 @@ try {
                 }
             } finally {
                 Pop-Location
+            }
+
+            # The same hook, started the way anything other than Cursor starts it: stdin redirected and
+            # never written to. Cursor closes the handle after its payload, so the hook's
+            # [Console]::In.ReadToEnd() returned instantly and this step passed for four releases -
+            # while bash holds the pipe open, and `./run_audit.sh` therefore hung the entire audit for
+            # eleven minutes with no output. A read that never returns throws nothing, so the script's
+            # fail-open guarantee could not catch it (2.22.63). Assert the hook always returns.
+            $hookHost = Get-PackPowerShellPath
+            $hookArgList = if (Test-PackIsWindows) {
+                "-NoProfile -ExecutionPolicy Bypass -File `"$hookPs1`""
+            } else {
+                "-NoProfile -File `"$hookPs1`""
+            }
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = $hookHost
+            $psi.Arguments = $hookArgList
+            $psi.WorkingDirectory = $hookProj
+            $psi.RedirectStandardInput = $true
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+            $psi.UseShellExecute = $false
+            $hookProc = [System.Diagnostics.Process]::Start($psi)
+            try {
+                if (-not $hookProc.WaitForExit(20000)) {
+                    Fail ('sessionStart hook blocked for 20s with stdin held open - an unbounded ' +
+                        'stdin read hangs every session start that is not Cursor')
+                } else {
+                    $blockOut = $hookProc.StandardOutput.ReadToEnd().Trim()
+                    if ($blockOut -notmatch 'additional_context') {
+                        Fail "hook returned without Cursor JSON when stdin stayed open: $blockOut"
+                    } else { Ok 'sessionStart hook returns with stdin held open (no unbounded read)' }
+                }
+            } finally {
+                if (-not $hookProc.HasExited) { $hookProc.Kill() }
+                $hookProc.Dispose()
             }
         }
 
@@ -2296,7 +2434,7 @@ try {
         'WQ-\d+'                     = "a work-queue id from this repo's queue"
         # The full name, not bare HANDOFF: `docs/handoffs/` and `HANDOFF_WQnnn` are the shipped
         # convention every project uses, and rules are supposed to name them.
-        'HANDOFF_NEXT_AGENT'         = "this repo's session handoff doc"
+        'HANDOFF_NEXT_AGENT'         = "this repo's retired session doc - do not resurrect the name"
         'WEEKEND_HANDOFF'            = 'a maintainer-only transfer note'
         'MULTI_TOOL_GAP_PLAN'        = 'a pack-only plan doc'
         'PACK_IMPLEMENTER'           = 'a pack-only spec'
@@ -2420,11 +2558,14 @@ try {
     $strays = @()
     foreach ($f in (Get-ChildItem -LiteralPath $PackRoot -Recurse -File -Force -ErrorAction SilentlyContinue |
             Where-Object {
-                $_.FullName -notmatch '\\\.git\\|\\__pycache__\\|\\\.tmp\\' -and
                 $_.Name -ne 'AUDIT_SYSTEM_CHANGELOG.md' -and
-                # A linter has to spell the word it bans, so it cannot lint itself.
-                $_.FullName -ne $PSCommandPath -and
-                $vocabExts -contains $_.Extension
+                # A linter has to spell the word it bans, so it cannot lint itself. Name, not full
+                # path: a probe copy of this script under a scratch root is the same file.
+                $_.Name -ne (Split-Path $PSCommandPath -Leaf) -and
+                $vocabExts -contains $_.Extension -and
+                # Relative, so a scratch pack root under .tmp does not exclude its own contents.
+                ($_.FullName.Substring($PackRoot.Length).TrimStart('\')) -notmatch
+                    '^\.git\\|\\\.git\\|^__pycache__\\|\\__pycache__\\|^\.tmp\\|\\\.tmp\\'
             })) {
         $lineNo = 0
         foreach ($line in (Get-Content -LiteralPath $f.FullName -Encoding UTF8 -ErrorAction SilentlyContinue)) {
@@ -2443,6 +2584,410 @@ try {
     }
 } catch {
     Fail "vocabulary check error: $_"
+}
+
+# 50. No machine identity leaves this checkout
+# The pack folder travels - USB, robocopy, a zip - and it had been carrying the sending machine's
+# identity: docs/WORK_COMPLETION.md (generated with {{PROJECT_ROOT}} replaced by an absolute path) and
+# docs/AGENT_SESSION_START.md were both committed with one maintainer's user profile path, and a stale
+# install-manifest.json was tracked despite being gitignored. Four lists disagreed about what counts as
+# machine-local - .gitignore, export.ps1, install.ps1 and a hardcoded array in this file - which is how
+# a file could be dropped from the export and committed anyway. machineLocalPaths in the manifest is now
+# the only list; this step fails when a consumer drifts from it or when a real user name appears.
+Write-Host "`n50. No machine identity leaves this checkout"
+try {
+    $mlManifest = Get-Content -LiteralPath (Join-Path $PackRoot 'pack\audit\manifest.json') -Raw -Encoding UTF8 |
+        ConvertFrom-Json
+    $machineLocal = @($mlManifest.machineLocalPaths | Where-Object { $_ })
+    if ($machineLocal.Count -eq 0) {
+        Fail 'manifest has no machineLocalPaths - nothing declares which files carry this machine''s paths'
+    }
+
+    # Illustration names are the point of the convention: docs need *a* concrete path to show, and
+    # placeholder tokens ($env:, %USERPROFILE%, <you>) are substituted before anyone runs them.
+    $allowedUsers = @('alice', 'bob', 'dev', 'you', 'user', 'username', 'yourname', 'name')
+    $textExts = @('.md', '.mdc', '.ps1', '.py', '.cmd', '.bat', '.sh', '.json', '.txt', '.template', '.yml', '.yaml')
+    $identityHits = @()
+    # Where this checkout happens to live is machine state too, one level below a user name: it is
+    # wrong on every other machine, it survives a clone and a download rather than only a folder copy,
+    # and the pack's own standing rule is never to hard-code a drive letter in scripts or docs. Match
+    # the three forms a path can take in a text file: native, JSON-escaped, and forward-slash.
+    $rootForms = @($PackRoot, ($PackRoot -replace '\\', '\\'), ($PackRoot -replace '\\', '/')) |
+        Select-Object -Unique
+    $rootHits = @()
+    # Excluded on the path *relative to the pack root*, not the absolute path: a probe pack root lives
+    # under .tmp, so an absolute match excluded every file in it and the scan passed on a tree with a
+    # planted user path. A check that cannot fail is worse than no check.
+    foreach ($f in (Get-ChildItem -LiteralPath $PackRoot -Recurse -File -Force -ErrorAction SilentlyContinue |
+            Where-Object {
+                $_.Name -notlike '.audit_*' -and
+                $textExts -contains $_.Extension -and
+                ($_.FullName.Substring($PackRoot.Length).TrimStart('\')) -notmatch
+                    '^\.git\\|\\\.git\\|^__pycache__\\|\\__pycache__\\|^\.tmp\\|\\\.tmp\\|^\.pytest_cache\\|\\\.pytest_cache\\'
+            })) {
+        $rel = $f.FullName.Substring($PackRoot.Length).TrimStart('\')
+        # A machine-local file is *supposed* to name this machine; that is why it never travels.
+        if ($machineLocal -contains ($rel -replace '\\', '/')) { continue }
+        $body = Get-Content -LiteralPath $f.FullName -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+        if (-not $body) { continue }
+        foreach ($m in [regex]::Matches($body, '(?i)(?:Users[\\/]|/home/)([A-Za-z0-9_.$%<{-]+)')) {
+            $who = $m.Groups[1].Value
+            # Anything holding a substitution marker is a placeholder, not a person.
+            if ($who -match '[$%<{.]') { continue }
+            if ($allowedUsers -contains $who.ToLower()) { continue }
+            $identityHits += "$rel ($who)"
+        }
+        foreach ($form in $rootForms) {
+            if ($body.Contains($form)) { $rootHits += $rel; break }
+        }
+    }
+    $identityHits = @($identityHits | Select-Object -Unique)
+    $rootHits = @($rootHits | Select-Object -Unique)
+    if ($identityHits.Count -gt 0) {
+        Fail ("a real user profile path is recorded in files that travel with the pack - " +
+            "use an illustration name or a placeholder: $($identityHits -join ', ')")
+    } elseif ($rootHits.Count -gt 0) {
+        Fail ("this checkout's own absolute path is recorded in files that travel - use a " +
+            "repo-relative path or a placeholder root: $($rootHits -join ', ')")
+    } else {
+        Ok "no machine identity or checkout path in any file that travels"
+    }
+
+    # The strongest form of the rule, and the one that makes the rest belt-and-braces: since 2.22.59
+    # nothing writes these into a pack checkout, so any of them existing here means a writer regressed
+    # or a copy was trusted without sanitizing. Policing content was always second best - a file that
+    # is never created cannot leak.
+    $present = @($machineLocal | Where-Object { Test-Path -LiteralPath (Join-Path $PackRoot ($_ -replace '/', '\')) })
+    if ($present.Count -gt 0) {
+        Fail ("machine-local files exist in the pack checkout - nothing should write them here; " +
+            "run sanitize-machine-state.ps1 -Apply: $($present -join ', ')")
+    } else {
+        Ok 'no machine-local file exists in the checkout'
+    }
+
+    # The state directory has to be somewhere the pack folder does not travel to.
+    $stateRoot = Get-AgentStateRoot -ProjectRoot $PackRoot
+    if ($stateRoot.TrimEnd('\', '/').StartsWith($PackRoot.TrimEnd('\', '/'), [StringComparison]::OrdinalIgnoreCase)) {
+        Fail "agent state root is inside the pack checkout ($stateRoot) - it would travel with the folder"
+    } else {
+        Ok 'agent state root resolves outside the checkout'
+    }
+
+    # Every consumer reads the same list, or the list is decoration.
+    $gitignoreText = Get-Content -LiteralPath (Join-Path $PackRoot '.gitignore') -Raw -Encoding UTF8
+    $notIgnored = @($machineLocal | Where-Object { $gitignoreText -notmatch ('(?m)^\s*' + [regex]::Escape($_) + '\s*$') })
+    $alsoMirrored = @($machineLocal | Where-Object { @($mlManifest.packMirror) -contains $_ })
+    $exportText = Get-Content -LiteralPath (Join-Path $PackRoot 'export.ps1') -Raw -Encoding UTF8
+    $sanitizePath = Join-Path $PackRoot 'pack\scripts\sanitize-machine-state.ps1'
+    if ($notIgnored.Count -gt 0) {
+        Fail "machineLocalPaths not covered by .gitignore (they would be committed): $($notIgnored -join ', ')"
+    } elseif ($alsoMirrored.Count -gt 0) {
+        # Mirroring a per-machine file pushes one machine's absolute paths into the install.
+        Fail "machineLocalPaths also listed in packMirror: $($alsoMirrored -join ', ')"
+    } elseif ($exportText -notmatch 'machineLocalPaths') {
+        Fail 'export.ps1 does not read machineLocalPaths - its own copy of the list will drift again'
+    } elseif (-not (Test-Path -LiteralPath $sanitizePath)) {
+        Fail 'sanitize-machine-state.ps1 missing - a folder copy has no way to clean machine state'
+    } elseif ((Get-Content -LiteralPath $sanitizePath -Raw -Encoding UTF8) -notmatch 'machineLocalPaths') {
+        Fail 'sanitize-machine-state.ps1 does not read machineLocalPaths'
+    } elseif ((Get-Content -LiteralPath (Join-Path $PackRoot 'pack\scripts\sync-audit-system.ps1') `
+                -Raw -Encoding UTF8) -notmatch 'machineLocalPaths') {
+        # Unmirrored means nothing refreshes them, so an install made before this classification keeps
+        # whichever machine's paths it copied. Sync has to remove them, not ignore them.
+        Fail 'sync-audit-system.ps1 does not clear machine-local files from an existing install'
+    } else {
+        Ok "all $($machineLocal.Count) machine-local paths are gitignored, unmirrored, and known to export + sanitize"
+    }
+
+    # Listing a file in .gitignore does nothing once git has it in the index - that is exactly how a
+    # foreign install-manifest.json stayed tracked while being "ignored", and how the two generated docs
+    # were committed. It also closes the round trip: a machine-local file is exempt from the identity
+    # scan above (it is supposed to name this machine), so if a transfer brings the tracked copies back,
+    # this is the only arm that notices. git is an optional requirement, so absence is not a failure.
+    if ((Test-Path -LiteralPath (Join-Path $PackRoot '.git')) -and (Get-Command git -ErrorAction SilentlyContinue)) {
+        $prevEapGit = $ErrorActionPreference
+        try {
+            # Same reason as the git probe further up: removable media records no ownership, so git
+            # refuses the repo as dubious. Trust it through the environment, never the user's config.
+            # Without this the check would report "not tracked" for every file on a USB checkout.
+            $ErrorActionPreference = 'Continue'
+            $gitOkProbe = (& git -c safe.directory=* -C $PackRoot rev-parse --is-inside-work-tree 2>&1 |
+                Select-Object -First 1)
+            if ("$gitOkProbe".Trim() -ne 'true') {
+                Write-Host "[INFO] git cannot read this checkout ($gitOkProbe) - index check skipped"
+            } else {
+                $trackedLocal = @()
+                foreach ($rel in $machineLocal) {
+                    # Output, not exit code: ls-files exits 0 whether or not the path is tracked, so a
+                    # git failure cannot be misread as "clean". Prints the path only when tracked.
+                    $lsOut = (& git -c safe.directory=* -C $PackRoot ls-files -- $rel 2>$null |
+                        Select-Object -First 1)
+                    if ("$lsOut".Trim()) { $trackedLocal += $rel }
+                }
+                if ($trackedLocal.Count -gt 0) {
+                    Fail ("machine-local files are tracked in git - .gitignore cannot undo that, " +
+                        "run git rm --cached and stage the deletion: $($trackedLocal -join ', ')")
+                } else {
+                    Ok 'no machine-local file is tracked in git'
+                }
+            }
+        } finally {
+            $ErrorActionPreference = $prevEapGit
+        }
+    } else {
+        Write-Host '[INFO] not a git checkout (or git absent) - index check skipped'
+    }
+
+    # Preview must not delete: the receiving machine runs this before it trusts the folder.
+    $mlProbe = Join-Path $PackRoot ".tmp\machine-local-probe-$PID"
+    try {
+        New-Item -ItemType Directory -Path (Join-Path $mlProbe 'pack\audit') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $mlProbe 'docs') -Force | Out-Null
+        Copy-Item -LiteralPath (Join-Path $PackRoot 'pack\audit\manifest.json') `
+            -Destination (Join-Path $mlProbe 'pack\audit\manifest.json') -Force
+        Write-Utf8NoBom (Join-Path $mlProbe 'docs\AGENT_CONTEXT.json') '{"projectRoot":"somewhere else"}'
+        Invoke-PackScript -NoProfile -ScriptPath $sanitizePath -ProjectRoot $mlProbe 2>&1 | Out-Null
+        $survived = Test-Path -LiteralPath (Join-Path $mlProbe 'docs\AGENT_CONTEXT.json')
+        Invoke-PackScript -NoProfile -ScriptPath $sanitizePath -ProjectRoot $mlProbe -Apply 2>&1 | Out-Null
+        $removed = -not (Test-Path -LiteralPath (Join-Path $mlProbe 'docs\AGENT_CONTEXT.json'))
+        if (-not $survived) { Fail 'sanitize preview deleted a file without -Apply' }
+        elseif (-not $removed) { Fail 'sanitize -Apply left a machine-local file in place' }
+        else { Ok 'sanitize previews by default and removes only with -Apply' }
+    } finally {
+        Remove-Item -LiteralPath $mlProbe -Recurse -Force -ErrorAction SilentlyContinue
+    }
+} catch {
+    Fail "machine identity check error: $_"
+}
+
+# 51. One state root, two implementations
+# PowerShell writes the agent-context artifacts and Python reads them, so they have to agree on where
+# those artifacts are. Two hand-written copies of a hash rule is exactly the shape that drifted four
+# ways for machineLocalPaths, and a disagreement here is silent: the refresh reports success, the
+# freshness check reports "missing AGENT_CONTEXT.json", and nothing points at the cause. The Python
+# side is exposed as --print-state-root purely so this comparison can exist.
+Write-Host "`n51. One state root, two implementations"
+try {
+    $srProbe = Join-Path $PackRoot ".tmp\state-root-probe-$PID"
+    try {
+        # A pack root (redirects outside the folder) and a plain project (keeps its own docs\), so
+        # both branches of the rule are compared, not just the one this repo happens to be.
+        New-Item -ItemType Directory -Path (Join-Path $srProbe 'packish\pack\audit') -Force | Out-Null
+        Copy-Item -LiteralPath (Join-Path $PackRoot 'pack\audit\manifest.json') `
+            -Destination (Join-Path $srProbe 'packish\pack\audit\manifest.json') -Force
+        New-Item -ItemType Directory -Path (Join-Path $srProbe 'plainproj\docs') -Force | Out-Null
+
+        $freshPy = Join-Path $PackRoot 'pack\scripts\agent_context_freshness.py'
+        $mismatch = @()
+        foreach ($case in @($PackRoot, (Join-Path $srProbe 'packish'), (Join-Path $srProbe 'plainproj'))) {
+            $psSide = (Get-AgentStateRoot -ProjectRoot $case).TrimEnd('\', '/')
+            $pySide = (& py -3 $freshPy --print-state-root --project-root $case 2>&1 |
+                Select-Object -Last 1).ToString().Trim().TrimEnd('\', '/')
+            if ($psSide -ne $pySide) { $mismatch += "$case -> ps '$psSide' vs py '$pySide'" }
+        }
+        # Two checkouts on one machine must not share a state directory, or refreshing one reports the
+        # other's stamp as "changed" and each overwrites the other.
+        $keyA = Get-AgentStateRoot -ProjectRoot $PackRoot
+        $keyB = Get-AgentStateRoot -ProjectRoot (Join-Path $srProbe 'packish')
+        if ($mismatch.Count -gt 0) {
+            Fail "state root differs between PowerShell and Python: $($mismatch -join ' | ')"
+        } elseif ($keyA -eq $keyB) {
+            Fail 'two different pack checkouts resolve to the same state directory'
+        } else {
+            Ok 'PowerShell and Python agree on the state root; distinct checkouts stay distinct'
+        }
+    } finally {
+        Remove-Item -LiteralPath $srProbe -Recurse -Force -ErrorAction SilentlyContinue
+    }
+} catch {
+    Fail "state root parity error: $_"
+}
+
+# 52. An exported pack is a working pack
+# The export copies a hand-written $items list, and that list drifted from packMirror: an archive
+# shipped without Update-AgentStack.cmd, Bootstrap-Portable-Project.cmd, Register-Tool-Adapters.cmd and
+# the four .sh launchers, so a downloaded pack failed its own suite with "missing at pack root". Nothing
+# noticed for as long as it took someone to unzip one and run it - the export exits 0, and this checkout
+# stays green because the files are right here. The export now unions packMirror into $items and
+# verifies the result, and this step runs the real thing rather than trusting that it still does.
+Write-Host "`n52. An exported pack is a working pack"
+$expProbe = Join-Path $PackRoot ".tmp\export-probe-$PID"
+try {
+    New-Item -ItemType Directory -Path $expProbe -Force | Out-Null
+    $exportPs1 = Join-Path $PackRoot 'export.ps1'
+    if (-not (Test-Path -LiteralPath $exportPs1)) {
+        Fail 'export.ps1 missing - the documented transfer path does not exist'
+    } else {
+        Invoke-PackScript -NoProfile -ScriptPath $exportPs1 -OutDir $expProbe 2>&1 | Out-Null
+        $zip = Get-ChildItem -LiteralPath $expProbe -Filter '*.zip' -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if ($LASTEXITCODE -ne 0 -or -not $zip) {
+            Fail "export.ps1 produced no archive (exit $LASTEXITCODE)"
+        } else {
+            $unzip = Join-Path $expProbe 'unzipped'
+            Expand-Archive -Path $zip.FullName -DestinationPath $unzip -Force
+            $manifestExp = Get-Content -LiteralPath (Join-Path $PackRoot 'pack\audit\manifest.json') `
+                -Raw -Encoding UTF8 | ConvertFrom-Json
+            $mlExp = @($manifestExp.machineLocalPaths)
+            $absent = @()
+            foreach ($rel in @($manifestExp.packMirror | Where-Object { $_ })) {
+                if ($mlExp -contains $rel) { continue }
+                if (-not (Test-Path -LiteralPath (Join-Path $unzip ($rel -replace '/', '\')))) {
+                    $absent += $rel
+                }
+            }
+            # The other half: the archive is how the pack reaches a machine that never had it, so it
+            # must not carry the sending machine's state either.
+            $carried = @($mlExp | Where-Object {
+                Test-Path -LiteralPath (Join-Path $unzip ($_ -replace '/', '\'))
+            })
+            if ($absent.Count -gt 0) {
+                Fail ("exported archive is missing files the pack needs to work: " +
+                    "$($absent -join ', ')")
+            } elseif ($carried.Count -gt 0) {
+                Fail "exported archive carries machine-local files: $($carried -join ', ')"
+            } else {
+                Ok 'export ships every mirrored file and no machine-local state'
+            }
+        }
+    }
+} catch {
+    Fail "export check error: $_"
+} finally {
+    Remove-Item -LiteralPath $expProbe -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# 53. Manifest-declared lists have no rival copies
+# Three releases in a row were spent on one bug: a script keeping its own copy of a list the manifest
+# already declares, then drifting from it. machineLocalPaths across four consumers (2.22.56), the
+# export's $items (2.22.60), and the verifiers below - verify-agent-setup checked 5 of 12 profile rules
+# and 10 of 174 pack files, verify-portable-bootstrap checked 5 of 9 required project files. None of
+# them was *wrong*; each was narrower than the thing it guarded, which is the failure that reports
+# success on a broken artifact. This asserts each consumer still reads its manifest key. It cannot
+# prove the reading is correct - only that the coupling was not quietly removed.
+Write-Host "`n53. Manifest-declared lists have no rival copies"
+try {
+    $consumers = @(
+        @{ File = 'pack\scripts\verify-agent-setup.ps1'; Keys = @('packToUser', 'packMirror') },
+        @{ File = 'pack\scripts\verify-portable-bootstrap.ps1'; Keys = @('projectRequired') },
+        @{ File = 'pack\scripts\run_audit_core.ps1'; Keys = @('forbiddenArtifacts') },
+        @{ File = 'export.ps1'; Keys = @('packMirror', 'machineLocalPaths') },
+        @{ File = 'pack\scripts\sanitize-machine-state.ps1'; Keys = @('machineLocalPaths') }
+    )
+    $unlinked = @()
+    foreach ($c in $consumers) {
+        $path = Join-Path $PackRoot $c.File
+        if (-not (Test-Path -LiteralPath $path)) { $unlinked += "$($c.File) (missing)"; continue }
+        $body = Get-Content -LiteralPath $path -Raw -Encoding UTF8
+        foreach ($key in $c.Keys) {
+            if ($body -notmatch [regex]::Escape($key)) { $unlinked += "$($c.File) -> $key" }
+        }
+    }
+    if ($unlinked.Count -gt 0) {
+        Fail ("consumer no longer reads the manifest list it depends on - a private copy will drift: " +
+            "$($unlinked -join ', ')")
+    } else {
+        Ok "all $($consumers.Count) list consumers still read the manifest"
+    }
+} catch {
+    Fail "manifest list consumer check error: $_"
+}
+
+# 54. The .sh wrappers are run, not read
+# Steps 40-43 assert each wrapper's *text* delegates through pwsh-wrap.sh, and pack-os-smoke.yml
+# triggers on changes to *.sh and then executes the .ps1 files directly - so for four releases nothing
+# anywhere ran `bash ./install.sh`. The first real run found a defect no marker grep could see: the
+# generated Cursor hook read stdin with an unbounded ReadToEnd, which returns instantly under Cursor
+# (it closes the handle) and never returns under bash, hanging the audit with no output. Hence this
+# step. install.sh and run_audit.sh are deliberately not run here - one writes the user profile, and
+# the other would re-enter this suite (see the pitfall about product audits) - CI covers both.
+Write-Host "`n54. The .sh wrappers are run, not read"
+$shProbe = Join-Path $PackRoot ".tmp\sh-wrappers-$PID"
+try {
+    $bashExe = $null
+    $bashCandidates = @('bash')
+    if (Test-PackIsWindows) {
+        $bashCandidates += @(
+            (Join-Path $env:ProgramFiles 'Git\bin\bash.exe'),
+            (Join-Path ${env:ProgramFiles(x86)} 'Git\bin\bash.exe'),
+            (Join-Path $env:LOCALAPPDATA 'Programs\Git\bin\bash.exe')
+        )
+    }
+    foreach ($cand in $bashCandidates) {
+        if (-not $cand) { continue }
+        if (Test-Path -LiteralPath $cand) { $bashExe = $cand; break }
+        $resolved = Get-Command $cand -ErrorAction SilentlyContinue
+        if ($resolved) { $bashExe = $resolved.Source; break }
+    }
+
+    if (-not $bashExe) {
+        # A stated skip, not a silent pass: on a machine with no bash this proves nothing, and saying so
+        # is the difference between "not covered here" and "covered".
+        Write-Host '[SKIP] no bash on this machine - wrapper execution is covered by pack-os-smoke.yml'
+    } elseif (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) {
+        Write-Host '[SKIP] no pwsh - the wrappers require PowerShell 7 by design'
+    } else {
+        New-Item -ItemType Directory -Path $shProbe -Force | Out-Null
+        # bash needs a POSIX form of the pack root; on Windows Git bash maps D:\x to /d/x.
+        $packPosix = $PackRoot -replace '\\', '/'
+        if ((Test-PackIsWindows) -and ($packPosix -match '^([A-Za-z]):(.*)$')) {
+            $packPosix = '/' + $Matches[1].ToLowerInvariant() + $Matches[2]
+        }
+        $probePosix = "$packPosix/.tmp/sh-wrappers-$PID"
+
+        function Invoke-ShWrapper([string]$Command) {
+            # stderr is merged inside bash, not by PowerShell. This script runs with
+            # ErrorActionPreference = 'Stop', which turns a native command's stderr into a terminating
+            # error - so the usage-guard case, which is *supposed* to print usage to stderr and exit 1,
+            # aborted the whole step instead of being asserted. Same trap as the py-launcher probe above.
+            $output = & $bashExe -lc "cd '$packPosix' && { $Command ; } 2>&1"
+            return [pscustomobject]@{ Code = $LASTEXITCODE; Text = (($output | Out-String).Trim()) }
+        }
+
+        $shFails = @()
+
+        # Argument pass-through: -Json reaches check-requirements.ps1 and comes back parseable.
+        $req = Invoke-ShWrapper './Check-Requirements.sh -Json'
+        if ($req.Code -ne 0) { $shFails += "Check-Requirements.sh exit $($req.Code)" }
+        else {
+            try { $null = $req.Text | ConvertFrom-Json }
+            catch { $shFails += 'Check-Requirements.sh -Json did not return JSON' }
+        }
+
+        # The usage guard must fail, or the wrapper would hand an empty project root to bootstrap.
+        $usage = Invoke-ShWrapper './Bootstrap-Project.sh'
+        if ($usage.Code -eq 0) { $shFails += 'Bootstrap-Project.sh with no args should exit non-zero' }
+        elseif ($usage.Text -notmatch 'Usage:') { $shFails += 'Bootstrap-Project.sh gives no usage line' }
+
+        $boot = Invoke-ShWrapper "./Bootstrap-Project.sh '$probePosix/ShApp' ShApp"
+        if ($boot.Code -ne 0) { $shFails += "Bootstrap-Project.sh exit $($boot.Code)" }
+        elseif (-not (Test-Path -LiteralPath (Join-Path $shProbe 'ShApp\AGENTS.md'))) {
+            $shFails += 'Bootstrap-Project.sh produced no AGENTS.md'
+        }
+
+        # Both branches of the refresh wrapper's argument parsing: a project root, and a leading switch.
+        # The second one targets the pack itself, so keep its state write inside the probe folder.
+        $refresh = Invoke-ShWrapper "./Refresh-AgentContext.sh '$probePosix/ShApp' -NoClipboard"
+        if ($refresh.Code -ne 0) { $shFails += "Refresh-AgentContext.sh exit $($refresh.Code)" }
+        elseif (-not (Test-Path -LiteralPath (Join-Path $shProbe 'ShApp\docs\AGENT_CONTEXT.json'))) {
+            $shFails += 'Refresh-AgentContext.sh wrote no AGENT_CONTEXT.json'
+        }
+        $switchFirst = Invoke-ShWrapper (
+            "AGENT_STARTER_PACK_STATE_ROOT='$probePosix/state' ./Refresh-AgentContext.sh -NoClipboard")
+        if ($switchFirst.Code -ne 0) {
+            $shFails += "Refresh-AgentContext.sh with a leading switch exit $($switchFirst.Code)"
+        }
+
+        if ($shFails.Count -gt 0) {
+            Fail "shell wrapper execution failed: $($shFails -join '; ')"
+        } else {
+            Ok "four .sh wrappers executed under $(Split-Path -Leaf $bashExe) (install.sh and run_audit.sh: CI)"
+        }
+    }
+} catch {
+    Fail "shell wrapper execution error: $_"
+} finally {
+    Remove-Item -LiteralPath $shProbe -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host "`nSummary: $fail fail(s)"

@@ -10,7 +10,6 @@
       "README.md",
       "INSTALL.md",
       "pack/docs/START_HERE.md",
-      "HANDOFF_NEXT_AGENT.md",
       "docs/WORK_QUEUE.md"
     ],
     "auditManifestPath": "pack/audit/manifest.json",
@@ -21,7 +20,6 @@
       "pack/docs/AUDIT_SYSTEM.md",
       "pack/docs/README.md",
       "pack/docs/AGENT_WORKFLOW.md",
-      "HANDOFF_NEXT_AGENT.md",
       "docs/WORK_QUEUE.md"
     ],
     "auditContextKeywords": ["manifest.json", "audit engine", "starter pack"],

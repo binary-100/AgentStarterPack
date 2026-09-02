@@ -6,7 +6,433 @@ Bump **`pack/audit/manifest.json`** `"version"` when you change synced audit fil
 
 ---
 
+## 2.22.65 - The session document is gone, and so are the checks that reconciled it
+
+**One status claim.** `HANDOFF_NEXT_AGENT.md` is deleted; `docs/WORK_QUEUE.md` is canonical. Two
+documents claiming what was next produced a contradiction three times (2.22.55, and twice on
+2026-09-01), each caught by hand or by a check written specifically to compare them. Removing the
+second claim removes the class.
+
+**What this cost, and why it was not just a delete.** 21 files referenced that document, including
+`verify-audit-behavior.ps1` (10), `verify-complete-picture.ps1`, `refresh-agent-context.ps1`,
+`export.ps1`, `pack/audit/manifest.json` and `docs/VERSION_SYNC.json`.
+
+| Consumer | Was | Now |
+|---|---|---|
+| `verify-complete-picture.ps1` | Read `## 11.` and compared Next, Done ids and a canonical pointer against the queue | Those three checks deleted - nothing left to disagree with. Reads the queue's own Active section for stale shipped-task phrases, and **fails FIX when an id sits in Active and Done at once** |
+| `refresh-agent-context.ps1` | Pack-repo brief required the session doc; the paste line named it | Requires `pack/docs/START_HERE.md`; the paste line names the queue |
+| `verify-audit-behavior.ps1` step 27 | Asserted the pack brief lists the session doc and the app brief does not | Same split on `pack/docs/START_HERE.md`, which is pack-only - `docs/WORK_QUEUE.md` could not be the discriminator because projects have one too |
+| `verify-audit-behavior.ps1` install-filter probe | Used the session doc as its maintainer-only *file* fixture | Uses `.cursor/rules/no-publish-from-this-machine.mdc`, a real entry, with `docs/handoffs` still covering the folder case |
+| `export.ps1`, `manifest.maintainerOnlyPaths`, `VERSION_SYNC.json` (x2) | Listed it for exclusion and version scanning | Entries removed |
+| Step 46's banned-token table | Banned the name in shipped rules as a pack-only doc | Kept, reason changed to *retired - do not resurrect the name* |
+
+**A latent bug came out with it.** `verify-complete-picture.ps1` exited early when no session document
+was found, which skipped the Done-contradiction scan entirely - so a bootstrapped app, the case least
+likely to have such a file, got the least checking. That scan now always runs.
+
+**WQ-431 is closed by construction.** The gap was a header status line unreconciled with section 11;
+both are gone, and there is one status claim left to be wrong.
+
+**The distilled lessons were absorbed, not discarded** - fifteen findings that outlive their release now
+open `docs/WORK_QUEUE.md`. Everything else in the retired document already existed elsewhere: deferred
+items are backlog rows, the last-session summary is this changelog, and the transfer procedure is the
+drive-root document from earlier today.
+
+**Verified:** two new probe arms (a stale phrase in the Active queue, an id in both Active and Done),
+suite green, `finalize_audit.cmd` exit 0.
+
 ---
+
+## 2.22.64 (2026-09-01)
+
+**The active slice was telling the other machine to expect the wrong number.**
+`docs/handoffs/active/HANDOFF_WQ426_publish_machine_local_fix.md` read *"Behavior steps are now 53; a
+suite reporting 52 on that machine means the sync did not land"* — written as a tripwire for a stale
+sync, and made wrong by step 54 an hour later. **A tripwire calibrated to the wrong value is worse than
+none**, because it fires on the healthy state and stays quiet on the broken one. The slice now also
+carries what 2.22.63 changes for that machine: the hook fix travels as source, but projects
+bootstrapped there keep the blocking copy (**WQ-435**), and the four new CI steps get their **first real
+execution** on that publish — validated here structurally only, since this machine has no PyYAML and
+does not push.
+
+**Three tracked gaps were invisible where a next agent looks for unfinished work.** **WQ-431**,
+**WQ-432** and **WQ-433** were filed into `docs/WORK_QUEUE.md` in 2.22.62 and were absent from § *Still
+deferred* in the session handoff — the inverse of the fault 2.22.62 fixed, and the same root cause:
+**the queue is canonical, but nobody reads it first.** §7 now points to them by id without copying the
+rows.
+
+- **`pack/docs/WORK_COMPLETION.md` now states its own known tension.** Step 3 says product-truth drift
+  blocks the close while the audit that detects it is step 6, *after* the WQ row moves to Done in step
+  5. That is **WQ-432**, recommended twice before it had an id — and the document carrying the flaw said
+  nothing about it, so anyone following the order in good faith would reproduce it
+- **`docs/OS_PORTABILITY_PLAN.md`** verification table: added step 54 and the CI wrapper runs, which
+  **supersede** its manual Linux gate; the manual gate is now scoped to macOS and marked open
+- **WQ-436 filed** — the wrappers run on Windows-with-bash and on `ubuntu-latest`, and have **never run
+  on macOS**. `pack-paths.ps1` treats all non-Windows alike, so what is untested is `pwsh` discovery and
+  BSD shell tooling rather than the delegation itself. Stating it beats implying the matrix is covered
+
+**WQ-437 filed against this release's own mistake.** Bumping the cites rewrote five *historical*
+references — the WQ-434 Done row and three handoff cites became 2.22.64, claiming work shipped in a
+release that postdates it — exactly as the WQ-430 row did in 2.22.62. **Three hand-fixes in one day, and
+the repo's own standard is that a repeated correction becomes a check.** A Done row's `Engine 2.22.N`
+must match a changelog section that names that WQ id, which is mechanical and would have caught all
+three.
+
+**Handoff documents consolidated to one transfer file (same release, later the same day).** At the
+user's request the pack's *status* documents were reduced to one: a single transfer document written to
+the **root of the transfer drive**, deliberately outside the checkout so it cannot reach a commit, an
+export or an install. Deleted after their content moved there:
+
+| Deleted | Why it was safe |
+|---|---|
+| `docs/handoffs/active/HANDOFF_WQ426_publish_machine_local_fix.md` | Its full slice is section 2 of the transfer document |
+| `docs/handoff_archive/HANDOFF_WQ414_product_truth_step3.md` | `status: completed`; open items are WQ-415–422, all still queued |
+| `docs/handoff_archive/HANDOFF_WQ011_primary_system_update.md` | `status: completed` 2026-08-31; its live warning is now a policy note |
+| `docs/HANDOFF_DESIGN_REFERENCE.md` | Unbuilt items already tracked as **WQ-431** and **WQ-433** |
+
+**`HANDOFF_NEXT_AGENT.md` was kept, and that is a finding rather than a preference.** A grep for what
+references it returned **21 files** — `verify-audit-behavior.ps1` (10 references),
+`verify-complete-picture.ps1`, `refresh-agent-context.ps1`, `export.ps1`, `pack/audit/manifest.json`,
+`docs/VERSION_SYNC.json`. It is not a status document; it is wired into the engine, so removing it is a
+rewiring release, not a cleanup.
+
+- **Every live citation to the four was repaired** — the WQ-426 queue row, `docs/handoffs/README.md`,
+  three rows in the verify map and queue backlog, the docs tree and four §11/§14 pointers here. The
+  paths are replaced with *unpathed* references on purpose: a tracked file must not record where the
+  transfer drive happened to be mounted, which is the same rule 2.22.58 enforces for the checkout path
+- **Done-log and changelog evidence keeps its narrative** but no longer cites a path that cannot
+  resolve. Historical entries above are left alone — they record what was true then
+- **`docs/handoffs/active/` and `docs/handoff_archive/` stay** (now empty): they are destinations for
+  `archive-completed-handoff.ps1` and `ensure-handoffs-scaffold.ps1`, and the behavior probe for
+  archiving builds its own fixture, so an empty folder breaks nothing
+- **`docs/HANDOFF_DESIGN_REFERENCE.md` stays in `maintainerOnlyPaths`** even though the file is gone.
+  The entry means *if this exists, do not ship it*, which is still true and costs nothing
+
+**A rule the docs claimed to rely on did not exist.** This file, `HANDOFF_NEXT_AGENT.md` and the
+manifest all cite `.cursor/rules/no-publish-from-this-machine.mdc` as what stops an agent committing
+from the transfer machine — and it was **absent from disk**. The policy was surviving on prose in the
+handoff. Restored, with the reason it must not travel to the publishing machine written into it. The
+suite stayed green throughout, which is the honest read: `maintainerOnlyPaths` is an exclusion list, so
+nothing checks that its entries exist.
+
+**No code changed** — the documents did, which is what this bump records.
+
+---
+
+## 2.22.63 (2026-09-01)
+
+**Running a wrapper for the first time hung the audit for sixteen minutes.** WQ-434 was filed an hour
+earlier as documentation debt: steps 40–43 assert each `.sh` wrapper's *text* delegates through
+`pwsh-wrap.sh`, and `pack-os-smoke.yml` triggers on changes to `*.sh` and then runs the `.ps1` files
+directly — so nothing had ever run `bash ./install.sh`. Executing one produced a defect immediately.
+
+`./run_audit.sh` sat for 16 minutes. The diagnosis was in the process table rather than the output:
+**`pwsh` had consumed 3 seconds of CPU** and its three PowerShell children were idle at 0.2–2.7s. Not
+slow — blocked. The probe folders left behind dated the stall to step 39, the Cursor session hook.
+
+**Cause:** `pack/templates/cursor/hooks/session-freshness.ps1` opened with an unbounded
+`[Console]::In.ReadToEnd()`. Cursor writes its sessionStart payload and closes the handle, so the read
+returned instantly and the step passed for four releases. bash holds the pipe open, and the read then
+waits for an EOF that never arrives.
+
+> The script's docstring promises *"fail-open: any error yields empty context so sessions are never
+> blocked."* **A read that never returns raises nothing**, so the one failure mode that defeats
+> fail-open was the one it could not catch.
+
+- **Fix:** drain only when `[Console]::IsInputRedirected`, and then only through a task with a 250 ms
+  wait — the payload is still consumed so a writer never sees a broken pipe, but nothing waits on it.
+  A blocked threadpool read cannot hold up process exit
+- **Proven both ways:** the old code, started with stdin held open, was killed at 20s; the fix returns
+  in **440 ms** with valid hook JSON
+- **Step 54** runs four wrappers under bash — argument pass-through (`-Json` returns parseable JSON),
+  the usage guard (no args must exit non-zero), a real bootstrap, and both branches of the refresh
+  wrapper's argument parsing. `install.sh` and `run_audit.sh` are deliberately excluded: one writes the
+  user profile, the other would re-enter this suite. When bash is absent it prints **`[SKIP]` with the
+  reason**, because a skip that reads as a pass is how this gap survived
+- **New arm in step 39** starts the hook with stdin redirected and never written — the bash case, in the
+  suite that already had the hook fixture
+- **CI** now executes the wrappers on `ubuntu-latest`, including `install.sh User` against a throwaway
+  profile and `run_audit.sh` under a 12-minute timeout
+
+**Two method notes, both worth more than the fix.** Step 54's first run aborted rather than asserting:
+`$ErrorActionPreference = 'Stop'` turns a native command's stderr into a terminating error, and the
+usage-guard case writes to stderr *by design*. stderr is now merged inside bash. And the first negative
+test was invalid — a regex planted a **syntax** error instead of the old semantics, so the step failed
+for the wrong reason and the guard looked proven when it was not. Redone by replacing the exact span and
+**parse-checking the planted defect before trusting the result.**
+
+**Known limit (WQ-435):** only `bootstrap-project.ps1 -Force` writes that hook, and
+`repair-agent-docs.ps1` does not cover `.cursor/hooks/`. Projects bootstrapped before this release keep
+the blocking hook until re-bootstrapped.
+
+---
+
+## 2.22.62 (2026-09-01)
+
+**The onboarding document was deferring two items that had already shipped.** A read of the whole
+handoff set — session doc, both archived slices, the active slice, the design reference, the verify map,
+four plan docs — found that §7 *Still deferred* listed:
+
+- **Import smoke beyond root `*.py`** — shipped as **WQ-305** on 2026-08-30 (2.22.28). `import_smoke()`
+  honours `useModuleSearchDirs` and iterates those directories; the Done log said so while §7 did not
+- **`install.sh` does not mirror the installer's project-scope skill exclusion** — it is nine lines
+  that delegate to `install.ps1` through `pwsh-wrap.sh`, so it cannot diverge
+
+`AGENTS.md` tells the next agent not to rebuild finished work, and §7 is where they would look for what
+is unfinished. **A stale deferred list is not a harmless leftover; it is an instruction to redo
+something.** Both entries deleted, with the reason recorded beside the existing removals.
+`docs/MULTI_TOOL_GAP_PLAN.md` had the same disease in reverse: its overview table marked phases 1–6
+Done with evidence while three section headings below still read *(planned)*.
+
+**Four gaps existed in prose and in no queue.** Each was written down — twice or three times — and
+tracked nowhere, so none was on the radar the queue exists to be:
+
+| ID | Gap | Where it was hiding |
+|---|---|---|
+| **WQ-431** | Session doc **header** status unchecked | Design reference pain point 7 + verify map. **Hand-fixed twice** |
+| **WQ-432** | Audit runs *after* WQ Done while Step 3d says drift blocks the close | WQ-414 archive § Recommended next work #2, session handoff §14 |
+| **WQ-433** | Cited paths under `docs/`, `scripts/`, `tests/` unchecked here | Verify map known gaps |
+| **WQ-434** | The six `.sh` wrappers are **never executed** | Session handoff §7, OS plan's unticked manual gate |
+
+**WQ-434 is the one worth reading twice.** Steps 40–43 grep each wrapper's text for markers like
+`pwsh-wrap.sh`; `pack-os-smoke.yml` triggers on changes to `*.sh`, runs on `ubuntu-latest` where `pwsh`
+is present — and then executes the `.ps1` files directly. Nothing anywhere runs `bash ./install.sh`. A
+workflow that watches a file while exercising a different entry point is the same shape as the export
+guard that passed a broken archive (2.22.60) and the 47 behavior steps that missed four bare `pause`
+statements (2.22.51). It also contradicts a standing decision in the handoff itself: *prefer executing a
+path over reading it.*
+
+**No code changed in this release** — three mirrored pack docs did, which is what the bump records.
+
+---
+
+## 2.22.61 (2026-09-01)
+
+**The same bug three times in four releases, so this release went looking for the rest of it.** The
+shape: a script keeps its own copy of a list the manifest already declares, the two drift, and the
+narrower copy reports success. `machineLocalPaths` across four consumers (2.22.56), `export.ps1`'s
+`$items` (2.22.60). A scan of every literal file-name array in the pack's scripts found two more — both
+green, both narrower than the thing they guard:
+
+| Consumer | Was checking | Now |
+|---|---|---|
+| `verify-agent-setup.ps1` §2 | 5 named rules | all **15** `packToUser` entries (12 rules + 3 skills) |
+| `verify-agent-setup.ps1` §4 | 10 hand-picked pack files | all **174** `packMirror` entries |
+| `verify-portable-bootstrap.ps1` | 5 named files | **13** — portable extras ∪ `projectRequired.flatLayout` |
+| `run_audit_core.ps1` | manifest, falling back to a stale literal | manifest only; an unreadable one is a **reported gap** |
+| `verify-complete-picture.ps1` | 8 curated docs | unchanged — **curated on purpose**, now says so and why |
+
+**Neither was wrong; both answered a smaller question than the one they appeared to answer.**
+"Is the setup verified?" meant "are these five of twelve rules present?" — seven could fail to install
+and the script still passed. "Is this project portable?" meant "are these five of nine audit entry
+points present?" — the other four would fail on the recipient's machine instead.
+
+`run_audit_core.ps1` is the interesting one: its literal fallback matched the manifest exactly, so it
+had never *caused* a wrong answer. It also turned out to be unreachable while any pack manifest
+resolves — hiding this checkout's manifest falls through to the installed copy's. **Dead code holding a
+duplicate of live data is a bug waiting for its first reader**, and the honest failure mode is a
+reported gap, not a silent snapshot.
+
+- **Step 53** asserts each consumer still reads its manifest key. It cannot prove the read is
+  *correct* — only that the coupling was not quietly removed and replaced with a private array
+- Negative-tested all three: a hidden `packMirror` file the old list ignored now fails; a deleted
+  `finalize_audit.cmd` now fails a generated project; renaming `projectRequired` in one consumer fails
+  step 53
+- `verify-agent-setup.ps1` now **stops** on an unreadable manifest instead of iterating empty lists —
+  with the lists manifest-derived, a missing manifest would otherwise mean "verified after checking
+  nothing"
+
+**Lesson, stated once so it stops recurring:** when a list has an owner, consumers read it. A second
+copy is not defence in depth — it is two answers with no rule about which wins.
+
+---
+
+## 2.22.60 (2026-09-01)
+
+**A downloaded pack could not run its own test suite.** Everything 2.22.56–2.22.59 verified was
+verified *here* — in a checkout with git history, a synced install and a populated state directory. So
+this cycle unzipped an export into a scratch folder and ran it as a first-time recipient. The identity
+result held (180 files, no user name, no reference to the sending checkout), but the copy failed with
+**seven `missing at pack root`** errors: `Update-AgentStack.cmd`, `Bootstrap-Portable-Project.cmd`,
+`Register-Tool-Adapters.cmd`, and the four `.sh` launchers.
+
+**Cause: `export.ps1` kept its own hand-written `$items` list** while `packMirror` declared what a
+working copy needs, and the two drifted — the third time this shape of bug has surfaced in four
+releases. The export's completeness guard did exist, but it checked `projectRequired.flatLayout` plus
+three named files: **narrower than the thing it protects, so it reported success on a broken archive.**
+
+- **`$items` now unions the root-level `packMirror` entries**, so adding a launcher to the manifest
+  ships it automatically
+- **The guard checks every `packMirror` entry**, not a curated subset, and still excludes
+  `machineLocalPaths` (removed by design). Proven by hiding a launcher: export exits 1 with
+  *Export incomplete*
+- **Step 52 runs the real export** into a scratch folder, unzips it, and asserts both halves — every
+  mirrored file present, no machine-local file carried. A guard that only reads the script's text
+  would pass the day someone rewrites the copy loop
+
+**The lesson is about where verification runs, not about the export.** A pack that is meant to travel
+has to be tested somewhere other than the machine that built it; on the build machine, the missing
+files are sitting right there and every check passes.
+
+---
+
+## 2.22.59 (2026-09-01)
+
+**The pack folder no longer generates anything that describes the machine it is on.** Three releases
+had policed this file class — gitignore it, list it in one place, guard the git index, reject
+hard-coded checkout paths — while the files kept being written. The cause was never a copy method: the
+pack **audits and refreshes itself through the same code path a bootstrapped app uses**, and that path
+writes a per-machine brief into `docs/`, which is correct for an app pinned to one location and wrong
+for a folder designed to travel on a stick, arrive as a download, or be cloned by anyone.
+
+- **`Get-AgentStateRoot`** (`pack-paths.ps1`) and **`agent_state_root()`** (`agent_context_freshness.py`)
+  decide where the four context artifacts live: a project's own `docs/`, or - when the project **is** a
+  pack root - `%LOCALAPPDATA%\AgentStarterPack\state\<leaf>-<hash of checkout path>` (POSIX:
+  `$XDG_STATE_HOME`). Keyed by path so a stick and a Desktop clone on one machine keep separate stamps
+  instead of overwriting each other's
+- **`ensure-work-completion.ps1` generates no overlay for a pack root.** The pack already ships the
+  canonical `pack/docs/WORK_COMPLETION.md`; the generated copy existed only to hold this machine's
+  absolute paths, and it held seven of them
+- **`AGENT_STARTER_PACK_STATE_ROOT`** override, same shape as the install-root override, so behavior
+  probes do not write their stamps into the real `%LOCALAPPDATA%` and leave them there
+- **Step 50 gained the strongest arm:** any `machineLocalPaths` entry *existing* in the checkout is a
+  failure, not just one that is tracked or content-checked. Plus an assertion that the state root
+  resolves outside the checkout, since an override pointing inward would reintroduce the whole problem
+- **Step 51 compares the two implementations.** Two hand-written copies of a hash rule is exactly the
+  shape that drifted four ways for `machineLocalPaths`, and disagreement here would be silent: the
+  refresh reports success, the freshness check reports *missing AGENT_CONTEXT.json*, and nothing names
+  the cause. `--print-state-root` exists only so this comparison can be made
+- **Consumers now resolve instead of assuming `docs\`:** `update-agent-stack.ps1` and
+  `verify-agent-setup.ps1` would otherwise print or warn about paths that are correctly absent, and the
+  session-start opener now names the brief's real path
+
+**Ordinary projects are untouched** - `agent_state_root` returns their own `docs/`, bootstrap still
+stamps `docs/AGENT_CONTEXT.json`, and the placeholder-substitution path for `WORK_COMPLETION.md` still
+runs for them. The generic rule now says the session-start file may be absent in a repository that
+keeps no per-machine files, so an agent runs the refresh and reads the printed paths rather than
+concluding the project has no context.
+
+---
+
+## 2.22.58 (2026-09-01)
+
+**A user name was never the whole disclosure — where the checkout lives is machine state too.** Step 50
+allowed any drive-letter path that did not name a real person, on the reasoning that docs need concrete
+examples. But a path like the sending machine's own pack folder is wrong on every other machine, it
+reveals the layout of whoever wrote it, and unlike a generated stamp it **survives a clone and a
+download** rather than only a folder copy. The pack's own standing rule already said never hard-code a
+drive letter in scripts or docs; nothing enforced it.
+
+- **Step 50 now fails when a travelling file contains this checkout's own absolute path**, in any of
+  the three forms a path takes in text (native, JSON-escaped, forward-slash). Machine-local files stay
+  exempt — naming this machine is their purpose. Illustration paths (`C:\Users\alice\...`,
+  `D:\your-project`) are unaffected: they are not this checkout
+- **Found two real cases** on the first run, both in archived handoffs that a download would carry: a
+  session opener and a copy-notes block naming the transfer drive's checkout. Also genericised three
+  historical evidence rows in the changelog and `WORK_QUEUE.md`
+- **Handoff openers may now use a placeholder root** (`<pack folder>\docs\...`, `%PACK_ROOT%\...`,
+  `$env:X\...`) instead of an absolute path. The convention existed so an opener could not be a bare
+  relative path that opens the wrong file in whichever workspace is current — a placeholder root
+  satisfies that, and a handoff written *for another machine* cannot name a path that exists there
+  anyway. `verify-agent-handoffs.ps1` accepts both; bare relative paths stay rejected
+
+**Method note, since it nearly cost the finding:** the first run of the new arm reported clean because
+it was invoked by dot-sourcing the script into an existing session rather than with `-File`, so its
+`$PackRoot` was not the value the arm compares against. The same class of mistake as the `.tmp`
+exclusion bug in 2.22.56 — a check that cannot fail looks exactly like a check that passes. Invoke
+verify scripts as scripts.
+
+---
+
+## 2.22.57 (2026-09-01)
+
+**2.22.56 fixed the leak but could not detect its return.** Classifying the three files as
+machine-local exempted them from step 50's identity scan — correctly, since a machine-local file is
+*supposed* to name the machine it was written on. The consequence was a blind spot on the round trip:
+the other machine's git index still holds all three from its own history, and if those tracked copies
+come back, the identity arm skips them and every other arm passes. **`.gitignore` does nothing once a
+file is in the index** — that is precisely how a foreign `install-manifest.json` stayed tracked while
+appearing to be ignored.
+
+- **Step 50, index arm** — fails when any `machineLocalPaths` entry is tracked, naming the remedy
+  (`git rm --cached` plus staging the deletion). Proven by force-adding a generated overlay in a
+  throwaway repo
+- **Reads output, not exit code.** `ls-files --error-unmatch` exits non-zero both when a path is
+  untracked *and* when git itself fails, so on removable media — where git refuses the repo as
+  dubious ownership, which is the pack's normal habitat — every file would have read as clean. The
+  arm probes `rev-parse --is-inside-work-tree` first, passes `safe.directory=*` per invocation rather
+  than touching the user's config, and treats printed output as the tracked signal. Skips with an
+  `[INFO]` when there is no repo, since git is an optional requirement
+
+**What a guard cannot do:** untrack files in a repository it is not running in. The fix travels as
+source; the primary system's index does not fix itself. **WQ-426** carries the one-time steps.
+
+---
+
+## 2.22.56 (2026-09-01)
+
+**The pack folder was carrying one maintainer's user profile path, and had committed it.** A robocopy
+transfer surfaced it — the receiving machine found an agent-context stamp describing a drive it does not
+have — but the copy method was not the cause. Three files held another machine's identity and two of
+them were **tracked in git**, so a clone or a zip carried them just as well:
+
+- **`docs/WORK_COMPLETION.md`** — generated by `ensure-work-completion.ps1` with `{{PROJECT_ROOT}}`
+ replaced by an absolute path, committed with a user profile path in seven places, and **listed in
+ `packMirror`**, so it was also copied into installs
+- **`docs/AGENT_SESSION_START.md`** — written per machine by the context refresh, five absolute paths in
+ the committed copy, and in **no** exclusion list: not `.gitignore`, not the export
+- **`install-manifest.json`** — the *other* machine's install record (profile path, `.cursor` root, pack
+ 1.7.0), tracked despite being gitignored, which `.gitignore` cannot undo once a file is in the index
+
+**Root cause: four lists disagreed about what is machine-local** — `.gitignore`, `export.ps1`,
+`install.ps1`, and a hardcoded array in `verify-audit-behavior.ps1`. The export dropped files that git
+tracked anyway, and nothing compared the lists. **`machineLocalPaths`** in `pack/audit/manifest.json` is
+now the only list; `export.ps1` and the behavior guard read it instead of restating it, and the three
+files above are untracked, gitignored, and regenerated locally.
+
+- **`sanitize-machine-state.ps1`** — the missing piece for transfers that are not `export.ps1`. Robocopy, drag-and-drop and sync clients read no exclusion list, so this removes the manifest's machine-local set plus the wildcard classes (`docs/.audit_*`, `__pycache__`, `*.pyc`, scratch roots). Previews by default; deletes only with `-Apply`
+- **Behavior step 50** — fails when a real user profile path appears in any file that travels (illustration names like `alice` and substitution markers are allowed), when a `machineLocalPaths` entry is missing from `.gitignore` or also present in `packMirror`, when `export.ps1` or the sanitizer stops reading the manifest list, and when the sanitizer's preview deletes anything
+- **The freshness check now names the cause.** It trusted `canonicalProjectRoot` out of a copied stamp, resolved every path against a root that does not exist here, and reported **"missing AGENT_CONTEXT.json"** while the file sat in `docs/`. A recorded root that does not exist is ignored, and the reason reads *written on another machine for `<root>`*. Its version arm also reset `stale` to `False`, so a foreign stamp whose engine version happened to match would have read as fresh — reasons now accumulate
+- **`sync-audit-system.ps1` now clears copied machine-local files from an existing install.** Dropping the overlay from `packMirror` fixed the source but stranded the copy: the profile still held `docs/WORK_COMPLETION.md` with the other machine's paths, and nothing mirrored it any more, so nothing would ever refresh it. Removed on sync, the same way maintainer-only paths are — except `install-manifest.json`, which `install.ps1` writes into its target as that install's own record
+- **One prose leak, not a mechanism:** a `WORK_QUEUE.md` Done row recorded an external app path on the other machine. Reworded — that file is mirrored into installs and pushed
+- **A guard that could not fail.** Steps 49 and 50 excluded `.git`, `__pycache__` and `.tmp` by matching the *absolute* path, and a probe pack root lives under `.tmp` — so every file in a scratch copy was excluded and the scan passed on a tree with a planted user path. Caught by trying to make the new check fail, which is the only reason it was found. Both now match on the path relative to the pack root
+
+**Not shipped to bootstrapped projects.** A generated overlay naming its own absolute paths is correct in
+an app that lives at one location; the pack folder is portable by policy, which is what makes it wrong
+here. Step 50 scans this checkout only.
+
+## 2.22.55 (2026-09-01)
+
+**The reference that documented the handoff layout was not in the layout.** `HANDOFF_NEXT_AGENT.md` §11 cited
+`docs/HANDOFF_DESIGN_REFERENCE.md` as "(in repo)", and the reference itself said its maintainer copy "remains" at that
+path — while the only copy sat at the root of the transfer drive, outside the checkout. Nothing outside the pack folder
+survives a clone, an `export.ps1` archive, or a folder copy, which are the three ways this pack moves. Now written
+into `docs/` and added to **`maintainerOnlyPaths`**: it describes this repo's internal layout and means nothing in a
+user's profile.
+
+- **Two factual errors corrected while copying it in.** `docs/WORK_QUEUE.md` is listed in `packMirror`, so it **does**
+ install to the profile — the reference claimed the opposite. And pain point 7 (a session doc header that lags the
+ queue) now records the instance that proved it: the header read "Active queue empty" while §11 and the queue both
+ said **WQ-415**. Header corrected; `verify-complete-picture.ps1` reads `## 11.` and never the header, so that guard
+ is unbuilt and is now a listed redesign topic rather than an unremarked hole
+- **Step 47 resolves `pack/`-rooted cites only**, which is why a missing `docs/` file went unnoticed. A one-off sweep
+ of every `docs/`, `scripts/` and `tests/` path cited in this repo's markdown returned 16 candidates and exactly one
+ defect; the remainder are project-relative paths that generic rules legitimately name for *other* repos, so the
+ sweep is not worth automating here as-is (WQ-421 tracks running that class of check inside a bootstrapped project)
+- **The two ownership mechanisms contradicted each other, and adding the file proved it.** The mirror-coverage
+ guard requires every `docs/*.md` to appear in `packMirror`, and knew nothing about `maintainerOnlyPaths` — so
+ marking any `docs/` file maintainer-only failed the suite. Only root files had been classified that way before, and
+ root is not enumerated by that guard. A maintainer-only file is exempt now because it is never installed, so it
+ cannot become the stale profile copy the guard exists to catch; a path listed in **both** lists is a new failure,
+ since install would skip it while sync tried to refresh it
+
+## 2.22.54 (2026-09-01)
+
+**WORK_COMPLETION Step 3 — close product-truth propagation gaps.** Step 3 was one table cell; agents could pass tests and archive handoffs while ROADMAP/limitation docs stayed stale (version sync does not rewrite prose).
+
+- **`pack/docs/WORK_COMPLETION.md`** — Step 3 expanded: **3a** decide gate, **3b** channel checklist, **3c** self-verify before WQ Done, **3d** audit Improve as blocker (not backlog)
+- **`pack/templates/docs/WORK_COMPLETION.md.template`** — product-truth path table for bootstrapped projects
+- **`verify-complete-picture.ps1`** — **FAIL** when `docs/ROADMAP.md` links `handoffs/active/HANDOFF_WQ…` or marks **Next** / **In progress** for a WQ id already in WORK_QUEUE Done log
 
 ## 2.22.53 (2026-08-31)
 
@@ -455,7 +881,7 @@ signs as garbage — that is the console codepage, not the files. Check bytes be
 
 - **`pack/rules/generic-deep-task-execution.mdc`** — mandatory depth contracts for deep compare, full scan, and exhaustive requests; forbids deflecting to user phrasing
 - **`agent-defaults-always.mdc`**, **`loop-back-protocol.mdc`** — pointers and pushback triggers
-- Merged **`D:\AgentStarterPack`** (2.22.10) with Desktop-only docs (`PHASE_6_IMPLEMENTATION_SPEC.md`, `AGENT_CHAT_SYNC.md`)
+- Merged the **transfer-drive checkout** (2.22.10) with Desktop-only docs (`PHASE_6_IMPLEMENTATION_SPEC.md`, `AGENT_CHAT_SYNC.md`)
 
 ## 2.22.10 (2026-08-28)
 

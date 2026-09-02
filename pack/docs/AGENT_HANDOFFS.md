@@ -16,7 +16,7 @@ before this was settled.
 | Scale | Artifact |
 |-------|----------|
 | One work slice, one agent | `docs/handoffs/active/HANDOFF_WQnnn_<slug>.md` + registry table |
-| One session to the next | The repo's session doc — in this pack, `HANDOFF_NEXT_AGENT.md` |
+| One session to the next | The work queue — in this pack, `docs/WORK_QUEUE.md` (Active queue + Done log). A separate session document was retired in 2.22.65: two places claiming what was next contradicted each other three times, and every check that existed to reconcile them went away with it |
 
 Behavior **step 49** fails when the retired synonym reappears in any `.md`, `.mdc`, `.ps1`, `.py`,
 `.cmd`, `.bat`, `.json`, `.txt` or `.template`. Three things stay legal, each for a reason:

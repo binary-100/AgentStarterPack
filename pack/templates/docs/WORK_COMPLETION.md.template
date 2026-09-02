@@ -16,6 +16,18 @@ This file is the **project overlay** — paths and test entry only. Do not dupli
 | Handoff archive | `{{PROJECT_ROOT}}\docs\handoff_archive\` |
 | Audit | `{{PROJECT_ROOT}}\run_audit.cmd` |
 
+### Product-truth docs (update in Step 3b when behavior changes)
+
+| Role | Path (edit if your project uses different names) |
+|------|--------------------------------------------------|
+| Doc owners index | `{{PROJECT_ROOT}}\docs\DOC_MAP.md` |
+| Capabilities / agent obligations | `{{PROJECT_ROOT}}\docs\PRODUCT_REFERENCE.md` |
+| Tradeoffs / install modes | `{{PROJECT_ROOT}}\docs\KNOWN_LIMITATIONS.md` |
+| Product roadmap / work-queue row | `{{PROJECT_ROOT}}\docs\ROADMAP.md` |
+| Layout / runtime paths | `{{PROJECT_ROOT}}\PROJECT_LAYOUT.md` or README install section |
+
+Canonical procedure: `%USERPROFILE%\.cursor\AgentStarterPack\pack\docs\WORK_COMPLETION.md` § Step 3.
+
 Replace `{{PROJECT_ROOT}}` with your machine path if this template was not customized at bootstrap.
 
 ---

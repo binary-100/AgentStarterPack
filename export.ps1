@@ -23,7 +23,6 @@ $items = @(
     "INSTALL.txt",
     "CHANGELOG.md",
     "AGENTS.md",
-    "HANDOFF_NEXT_AGENT.md",
     "install.ps1",
     "install.sh",
     "export.ps1",
@@ -52,6 +51,21 @@ $temp = Join-Path $env:TEMP "cursor-starter-export-$stamp"
 if (Test-Path $temp) { Remove-Item $temp -Recurse -Force }
 New-Item -ItemType Directory -Path $temp | Out-Null
 
+# Root entry points are taken from the manifest rather than restated here. packMirror already declares
+# every file a working copy of the pack must have, and keeping a second hand-maintained list of the
+# same thing drifted exactly the way the machine-local lists did: the export shipped without
+# Update-AgentStack.cmd, Bootstrap-Portable-Project.cmd, Register-Tool-Adapters.cmd and the four .sh
+# launchers, so a downloaded pack failed its own test suite with "missing at pack root". Found by
+# unzipping an export into a scratch folder and running it as a first-time recipient, which is the only
+# thing that would have caught it - the export succeeded and this checkout stayed green throughout.
+# The literals above remain for what packMirror does not cover: dotfiles, installers, INSTALL.txt.
+$itemsManifestPath = Join-Path $PSScriptRoot 'pack\audit\manifest.json'
+if (Test-Path -LiteralPath $itemsManifestPath) {
+    $itemsManifest = Get-Content -LiteralPath $itemsManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $items += @($itemsManifest.packMirror | Where-Object { $_ -and ($_ -notmatch '[\\/]') })
+    $items = @($items | Select-Object -Unique)
+}
+
 foreach ($item in $items) {
     $src = Join-Path $PSScriptRoot $item
     if (Test-Path $src) {
@@ -68,13 +82,20 @@ Get-ChildItem -Path $temp -Recurse -File -Force -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -like '.audit_*' -or $_.Extension -eq '.pyc' } |
     ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue }
 
-# The agent-context stamp is per-machine: it records absolute paths (this drive letter, this user
-# profile) and the versions at the moment it was generated. Shipping it tells the receiving machine's
-# agents to read files at paths that do not exist there, and gives refresh-agent-context.ps1 a foreign
-# "previous" state to diff against. Regenerated on the target by Refresh-AgentContext.cmd.
-# The template under pack\templates stays - that is what bootstrap copies.
-foreach ($generated in @('docs\AGENT_CONTEXT.json', 'docs\AGENT_REFRESH.md', 'docs\AGENT_PASTE.txt')) {
-    Remove-Item (Join-Path $temp $generated) -Force -ErrorAction SilentlyContinue
+# Machine-local files record absolute paths (this drive letter, this user profile), this machine's
+# install record, and the versions at the moment they were generated. Shipping them tells the receiving
+# machine's agents to read files at paths that do not exist there, and gives refresh-agent-context.ps1 a
+# foreign "previous" state to diff against. Each is regenerated on the target.
+#
+# The list is read from the manifest, not written here: this file used to carry its own copy of it, and
+# it disagreed with .gitignore for long enough that two generated files were committed. Behavior step 50
+# fails when the lists drift. The templates under pack\templates stay - that is what bootstrap copies.
+$exportManifestPath = Join-Path $temp 'pack\audit\manifest.json'
+if (Test-Path -LiteralPath $exportManifestPath) {
+    $exportManifest = Get-Content -LiteralPath $exportManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    foreach ($generated in @($exportManifest.machineLocalPaths | Where-Object { $_ })) {
+        Remove-Item (Join-Path $temp ($generated -replace '/', '\')) -Force -ErrorAction SilentlyContinue
+    }
 }
 
 # The audit refuses to run without these, so a missing one has to fail the export, not the user.
@@ -97,6 +118,19 @@ if (-not (Test-Path -LiteralPath $manifestPath)) {
 }
 foreach ($rel in @('run_audit_tests.bat', 'tests\test_pack_audit.py', 'AGENTS.md')) {
     if (-not (Test-Path -LiteralPath (Join-Path $temp $rel))) { $missing += $rel }
+}
+# Everything packMirror declares, not a curated subset. The previous guard checked flatLayout plus
+# three named files and passed an export that was missing seven launchers - a check narrower than the
+# thing it protects is a check that reports success while the product is broken. Machine-local paths
+# are removed above by design, so they are not expected here.
+if (Test-Path -LiteralPath $manifestPath) {
+    $mirrorGuard = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $machineLocalGuard = @($mirrorGuard.machineLocalPaths)
+    foreach ($rel in @($mirrorGuard.packMirror | Where-Object { $_ })) {
+        if ($machineLocalGuard -contains $rel) { continue }
+        $relWin = $rel -replace '/', '\'
+        if (-not (Test-Path -LiteralPath (Join-Path $temp $relWin))) { $missing += $relWin }
+    }
 }
 if ($missing.Count -gt 0) {
     Remove-Item $temp -Recurse -Force -ErrorAction SilentlyContinue

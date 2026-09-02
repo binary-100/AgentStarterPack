@@ -672,13 +672,25 @@ if ($cfg.obsoletePaths) {
 
 # --- Forbidden audit artifacts ---
 $packRoot = Get-PackRoot -PreferAppRoot $AppRoot
-$forbidden = @('code-audit-checklist.mdc', 'generic-code-audit-checklist.mdc', 'product-audit-overlay.mdc', 'run_tests_with_timeout.bat')
+# The manifest owns this list. There used to be a copy of it here as a fallback, which meant a pack
+# whose manifest could not be read went on checking a snapshot of the list from whenever that literal
+# was last edited - and reported a clean audit either way. A stale answer presented as a current one is
+# worse than a stated gap, so an unreadable manifest is now visible in the report.
+$forbidden = @()
+$forbiddenSource = ''
 if ($packRoot) {
     $manifestPath = Join-Path $packRoot 'pack\audit\manifest.json'
     if (Test-Path -LiteralPath $manifestPath) {
         $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        if ($manifest.forbiddenArtifacts) { $forbidden = @($manifest.forbiddenArtifacts) }
+        if ($manifest.forbiddenArtifacts) {
+            $forbidden = @($manifest.forbiddenArtifacts)
+            $forbiddenSource = $manifestPath
+        }
     }
+}
+if (-not $forbiddenSource) {
+    Add-Fix ('Forbidden-artifact check skipped - no readable pack manifest' +
+        $(if ($packRoot) { " at $packRoot" } else { ' (pack root not resolved)' }))
 }
 foreach ($or in $forbidden) {
     if ($or -match '\.mdc$') {

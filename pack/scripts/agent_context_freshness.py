@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """Pack agent-context freshness - shared logic for MCP and tests.
 
-Reads docs/AGENT_CONTEXT.json and the installed pack manifest; does not duplicate
-refresh-agent-context.ps1 write path.
+Reads AGENT_CONTEXT.json and the installed pack manifest; does not duplicate the
+refresh-agent-context.ps1 write path. The stamp's location comes from agent_state_root():
+a project's own docs/, or - for a portable pack checkout - a machine-local state directory
+outside it.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -68,15 +72,74 @@ def canonical_project_root(project_root: Path) -> Path:
     boot = load_json(project_root / ".agent-bootstrap.json")
     if boot and boot.get("projectRoot"):
         return Path(str(boot["projectRoot"])).resolve()
-    ctx = load_json(project_root / "docs" / "AGENT_CONTEXT.json")
+    ctx = load_json(agent_state_root(project_root) / "AGENT_CONTEXT.json")
     if ctx and ctx.get("canonicalProjectRoot"):
-        return Path(str(ctx["canonicalProjectRoot"])).resolve()
+        candidate = Path(str(ctx["canonicalProjectRoot"])).resolve()
+        # A recorded root that does not exist here belongs to another machine: the folder arrived by
+        # copy (robocopy, USB, a sync client) instead of being refreshed. Following it points every
+        # context path at a stranger's drive, and the check then reports the file as missing while it
+        # is sitting in this docs/ folder.
+        if candidate.exists():
+            return candidate
     return project_root
+
+
+def is_pack_root(path: Path) -> bool:
+    return (path / "pack" / "audit" / "manifest.json").is_file()
+
+
+def pack_is_windows() -> bool:
+    """Mirror of Test-PackIsWindows, including the test-only OS mock.
+
+    Without the mock, an OS-portability probe would compare a PowerShell resolver told it is on
+    Linux against a Python resolver that still sees Windows, and the parity check would fail on a
+    difference that exists only in the test harness.
+    """
+    test_os = os.environ.get("AGENT_STARTER_PACK_TEST_OS", "").strip().lower()
+    if test_os:
+        if test_os in ("linux", "nonwindows", "non-windows", "darwin", "macos", "osx"):
+            return False
+        if test_os == "windows":
+            return True
+    return os.name == "nt"
+
+
+def agent_state_root(project_root: Path) -> Path:
+    """Where this machine's agent-context artifacts live for a given project.
+
+    Mirror of Get-AgentStateRoot in pack-paths.ps1 - same key, same layout - because both sides
+    have to look in one place. Behavior step 51 compares the two implementations rather than
+    trusting that this comment stays true.
+
+    An ordinary project keeps them in its own docs/: it lives at one path on one machine, so a
+    brief naming that path is correct there. A pack root does not - it is portable by policy, so a
+    generated file recording this machine's paths is wrong as soon as the folder moves, and it
+    hands the receiving machine the sender's user name and folder layout.
+    """
+    full = Path(str(project_root))
+    if not is_pack_root(full):
+        return full / "docs"
+
+    override = os.environ.get("AGENT_STARTER_PACK_STATE_ROOT", "").strip()
+    if override:
+        return Path(override)
+
+    key = str(full).replace("\\", "/").rstrip("/").lower()
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
+    leaf = re.sub(r"[^A-Za-z0-9._-]", "_", full.name) or "pack"
+
+    if pack_is_windows():
+        base = os.environ.get("LOCALAPPDATA") or str(
+            Path(os.environ.get("USERPROFILE", str(Path.home()))) / "AppData" / "Local"
+        )
+    else:
+        base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
+    return Path(base) / "AgentStarterPack" / "state" / f"{leaf}-{digest}"
 
 
 def context_paths(project_root: Path) -> tuple[Path, Path, Path, Path]:
     canonical = canonical_project_root(project_root)
-    docs = canonical / "docs"
+    docs = agent_state_root(canonical)
     return (
         docs / "AGENT_CONTEXT.json",
         docs / "AGENT_REFRESH.md",
@@ -110,6 +173,27 @@ def check_freshness(project_root: str | None = None) -> dict[str, Any]:
         reasons.append("missing AGENT_CONTEXT.json - run Refresh-AgentContext.cmd")
         stale = True
     else:
+        # Starts clean and is set by each reason below, rather than a trailing else deciding it: the
+        # version arm used to reset this to False, which would have hidden a foreign stamp whose engine
+        # version happened to match.
+        stale = False
+
+        # Name the actual problem when the stamp came from somewhere else. Every path in it - required
+        # reads, pack root, install root - describes a machine this one is not, so an agent trusting it
+        # reads nothing. "Stamped version differs" would be true but would hide the cause.
+        recorded = ctx.get("projectRoot") or ctx.get("canonicalProjectRoot")
+        if recorded:
+            try:
+                recorded_path = Path(str(recorded)).resolve()
+            except (OSError, ValueError):
+                recorded_path = None
+            if recorded_path is not None and recorded_path != proj and not recorded_path.exists():
+                reasons.append(
+                    f"AGENT_CONTEXT.json was written on another machine for {recorded} - "
+                    "run Refresh-AgentContext.cmd (sanitize-machine-state.ps1 clears copied state)"
+                )
+                stale = True
+
         stamped = ctx.get("auditEngineVersion")
         if not stamped:
             reasons.append("bootstrap stub - never refreshed")
@@ -117,8 +201,6 @@ def check_freshness(project_root: str | None = None) -> dict[str, Any]:
         elif current_engine and str(stamped) != str(current_engine):
             reasons.append(f"stamped {stamped}, installed engine {current_engine}")
             stale = True
-        else:
-            stale = False
 
         raw_layers = ctx.get("layers") or {}
         if isinstance(raw_layers, dict):
@@ -167,13 +249,15 @@ def _handshake_line(handshake: dict[str, Any] | None) -> str:
 def _build_opener_line(freshness: dict[str, Any]) -> str:
     pack = freshness.get("packVersion") or "unknown"
     engine = freshness.get("stampedEngineVersion") or freshness.get("installedEngineVersion") or "unknown"
-    canonical = freshness.get("canonicalProjectRoot") or freshness.get("projectRoot") or ""
     session_path = freshness.get("sessionStartPath") or ""
+    # The brief's own path, not "docs/AGENT_REFRESH.md under <root>": for a pack checkout it is not
+    # under the project at all - the folder is portable, so per-machine context lives outside it.
+    brief_path = freshness.get("refreshBriefPath") or ""
     if freshness.get("stale"):
         reasons = "; ".join(freshness.get("reasons") or []) or "context stale"
         line = (
             f"AGENT CONTEXT STALE ({reasons}). Before substantial work read {session_path} "
-            f"and docs/AGENT_REFRESH.md under {canonical}. "
+            f"and {brief_path}. "
             f"Handshake: pack {pack}, audit engine {engine}."
         )
     else:
@@ -284,8 +368,8 @@ def get_refresh_brief(project_root: str | None = None) -> dict[str, Any]:
         body = refresh_path.read_text(encoding="utf-8-sig")
     else:
         body = (
-            "No docs/AGENT_REFRESH.md yet. Run Refresh-AgentContext.cmd or Update-AgentStack.cmd "
-            f"for: {freshness['canonicalProjectRoot']}"
+            f"No refresh brief at {refresh_path} yet. Run Refresh-AgentContext.cmd or "
+            f"Update-AgentStack.cmd for: {freshness['canonicalProjectRoot']}"
         )
     return {
         "path": str(refresh_path),
@@ -377,6 +461,32 @@ def _self_test() -> int:
         if fresh_brief.get("permission") != "none":
             failures.append("fresh session brief permission should be none")
 
+        # A folder copied from another machine: the stamp's engine version matches, so only the
+        # recorded root reveals that none of its paths exist here. This has to read as stale and say
+        # why, rather than following the foreign root and reporting the file as missing.
+        foreign = "/nonexistent-machine/SomeoneElse/AgentStarterPack"
+        (docs / "AGENT_CONTEXT.json").write_text(
+            json.dumps(
+                {
+                    "schemaVersion": 2,
+                    "auditEngineVersion": "2.0.0-test",
+                    "packVersion": "1.0.0-test",
+                    "projectRoot": foreign,
+                    "canonicalProjectRoot": foreign,
+                    "requiredReads": [foreign + "/AGENTS.md"],
+                    "layers": {"installedPack": "ok"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        r_foreign = check_freshness(str(root))
+        if not r_foreign["stale"]:
+            failures.append("context from another machine should be stale")
+        if not any("another machine" in reason for reason in r_foreign["reasons"]):
+            failures.append(f"foreign context reason should name the cause: {r_foreign['reasons']}")
+        if r_foreign["contextPath"] != str(docs / "AGENT_CONTEXT.json"):
+            failures.append("foreign canonical root should not redirect the context path")
+
     if failures:
         for f in failures:
             print(f"FAIL: {f}", file=sys.stderr)
@@ -392,11 +502,17 @@ def main() -> int:
     parser.add_argument("--brief", action="store_true")
     parser.add_argument("--session-brief", action="store_true")
     parser.add_argument("--write-session-start", action="store_true")
+    parser.add_argument("--print-state-root", action="store_true")
     parser.add_argument("--project-root", default="")
     args = parser.parse_args()
     if args.self_test:
         return _self_test()
     root = args.project_root or None
+    if args.print_state_root:
+        # Exposed so the PowerShell side can be compared against this one instead of both being
+        # trusted to implement the same key.
+        print(str(agent_state_root(resolve_project_root(root))))
+        return 0
     if args.write_session_start:
         path = write_session_start(root)
         print(str(path))

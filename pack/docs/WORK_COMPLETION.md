@@ -26,7 +26,7 @@ Location after install: `%USERPROFILE%\.cursor\AgentStarterPack\pack\docs\WORK_C
 |------|--------|-----------|
 | 1 | Acceptance checklist ☑ in handoff + PLAN phase row | False "done" |
 | 2 | Project test entry (`run_tests.bat` or equivalent) exit **0** | Regressions shipped |
-| 3 | Update product docs if **user-visible** behavior changed | Drift |
+| 3 | **Product-truth propagation** — § [Step 3](#step-3--product-truth-propagation) below; required when runtime behavior changed | Drift survives version sync; next agent rebuilds from stale ROADMAP/limitations |
 | 4 | Handoff registry: **`status: completed`**, **`completed:`** date (ISO) | Archive gates fail |
 | 5 | **`docs/WORK_QUEUE.md`:** move WQ row to **Done log** with evidence | verify-agent-handoffs **Fix** |
 | 5b | **Handoff alignment:** run `verify-complete-picture.ps1`; fix **FAIL** where Done WQ IDs still read parked/not built — see **`pack/docs/RULES_AND_VERIFY_MAP.md`** | Agents rebuild shipped work from stale HANDOFF/spec |
@@ -37,7 +37,51 @@ Location after install: `%USERPROFILE%\.cursor\AgentStarterPack\pack\docs\WORK_C
 
 **Multi-agent:** do not archive while **`agents_remaining`** is non-empty (even if `multi_agent: no` but field is filled — treat as blocked).
 
+**This order has one known tension, tracked as WQ-432.** Step 3 says product-truth drift blocks the close, but the audit that would *detect* that drift is step 6 — after the WQ row is already moved to Done in step 5. When runtime behavior changed, running the audit before step 5 costs nothing and catches a stale capability claim while the row is still open. Whether to reorder the steps outright is the open question; until it is decided, prefer the earlier audit in that case.
+
 **Orientation handoffs** (`docs/handoffs/HANDOFF_*.md`, not under `active/`): archive only when **superseded**, not tied to WQ Done.
+
+---
+
+## Step 3 — Product-truth propagation
+
+**Version-string sync is not enough.** Bumping `VERSION` or running `doc_version_sync.py` does not rewrite install-mode tables, capability bullets, or ROADMAP **Next** rows. Step 3 closes that gap **before** WQ Done (step 5).
+
+### 3a — Decide (required every slice)
+
+| Question | Action |
+|----------|--------|
+| Did **runtime behavior** change (paths, install modes, capabilities, limits, user-visible defaults)? | Continue to **3b** |
+| Did **agent obligations** in capability-reference docs change? | Continue to **3b** |
+| Refactor / tests / audit-system / docs-only with **no** behavior change? | Skip **3b**; record in WQ Done evidence: `no product-truth change` |
+
+When unsure, treat as behavior changed and run **3b**.
+
+### 3b — Update (same session — do not defer to audit)
+
+Use the project **`DOC_MAP.md`** (if present) for doc owners. Update **every channel that applies**:
+
+| Channel | Typical files (names vary by project) |
+|---------|----------------------------------------|
+| Work-queue / roadmap status | `docs/ROADMAP.md` — clear **Next**, active handoff links, in-progress rows for the shipped WQ |
+| Capability reference | `docs/PRODUCT_REFERENCE.md` or equivalent |
+| Accepted tradeoffs / install modes | `docs/KNOWN_LIMITATIONS.md` or equivalent |
+| Layout / data paths | `PROJECT_LAYOUT.md`, README install tables, or equivalent |
+| Owning PLAN | Phase/status header in the plan doc that drove the slice |
+
+Project overlay (`docs/WORK_COMPLETION.md` from bootstrap) may list **this repo’s** product-truth paths — prefer that table over guessing.
+
+### 3c — Self-verify (before step 5)
+
+1. **Grep** the shipped **WQ id** in `docs/ROADMAP.md` — must not still read **Next**, **In progress**, or link `handoffs/active/HANDOFF_…` for that id.
+2. **Read** the capability/limitation/layout sections you touched — prose must match the code/config you just shipped.
+3. Run **`verify-complete-picture.ps1`** (step **5b**) — fix any **FAIL** on ROADMAP ↔ WORK_QUEUE contradictions before claiming done.
+
+### 3d — Audit interaction (step 6)
+
+`run_audit.cmd` may report product doc drift as audit **Improve**. **Forbidden:** moving WQ to Done or archiving the handoff while Improve lines describe product-truth docs that **contradict shipped behavior**. Fix in this session (return to **3b**), then re-run the audit.
+
+**Audit Improve is not a backlog** for product-truth drift on a slice you are closing — it is a **blocker** until step 3 is satisfied.
 
 ---
 

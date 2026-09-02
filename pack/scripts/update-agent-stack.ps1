@@ -84,12 +84,15 @@ if (-not $ProjectRoot) {
 }
 $ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
 
-$ctxPath = Join-Path $ProjectRoot 'docs\AGENT_CONTEXT.json'
-$pastePath = Join-Path $ProjectRoot 'docs\AGENT_PASTE.txt'
+# Resolved, not assumed: a pack checkout keeps these outside itself, so a hardcoded docs\ path here
+# would print a file that does not exist and send the reader looking in the wrong place.
+$stateDir = Get-AgentStateRoot -ProjectRoot $ProjectRoot
+$ctxPath = Join-Path $stateDir 'AGENT_CONTEXT.json'
+$pastePath = Join-Path $stateDir 'AGENT_PASTE.txt'
 Write-Host ''
 Write-Host 'Open chats do not hot-reload - pick one:'
-Write-Host '  1. Type a trigger phrase (see docs/AGENT_CONTEXT.json triggerPhrases)'
-Write-Host '  2. Paste from docs/AGENT_PASTE.txt (or clipboard if copied above)'
+Write-Host '  1. Type a trigger phrase (see triggerPhrases in the context stamp below)'
+Write-Host '  2. Paste from the paste file below (or clipboard if copied above)'
 Write-Host '  3. MCP (Cursor / Claude Desktop): check_pack_freshness, get_agent_refresh_brief'
 if (Test-Path -LiteralPath $pastePath) {
     Write-Host "  Paste file: $pastePath"

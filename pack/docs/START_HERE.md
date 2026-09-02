@@ -3,7 +3,7 @@
 **Audience:** AI coding agents, maintainers, and anyone setting up or using this pack.
 
 **Pack version:** root `VERSION` file (currently **1.8.0**).  
-**Audit engine version:** `pack/audit/manifest.json` → `"version"` (currently **2.22.53**). These numbers track different things — both are normal.
+**Audit engine version:** `pack/audit/manifest.json` → `"version"` (currently **2.22.65**). These numbers track different things — both are normal.
 
 ---
 
@@ -299,12 +299,29 @@ pack\scripts\verify-audit-behavior.ps1
 .\export.ps1
 ```
 
-The export deliberately drops everything that identifies the sending machine: `.audit_*` results,
-`install-manifest.json`, `__pycache__`, and the agent-context stamp (`docs/AGENT_CONTEXT.json`,
-`docs/AGENT_REFRESH.md`, `docs/AGENT_PASTE.txt`). Those record absolute paths and the versions current
-when they were written, so inheriting them is worse than starting without them. On the receiving
-machine, `Refresh-AgentContext.cmd` regenerates the stamp and the first `run_audit.cmd` regenerates
-the audit results.
+**Nothing in this folder describes the machine it is on.** Since 2.22.59 the pack writes its
+agent-context artifacts to a machine-local state directory *outside* the checkout —
+`%LOCALAPPDATA%\AgentStarterPack\state\<checkout>` on Windows, `$XDG_STATE_HOME` on POSIX, keyed by the
+checkout path so two copies on one machine stay separate. `Refresh-AgentContext.cmd` prints every path
+it writes. A **project** you bootstrap still keeps its brief in its own `docs/`, which is correct: it
+lives at one path on one machine, while this folder is meant to travel.
+
+That is why there is no `docs/AGENT_SESSION_START.md` or `docs/AGENT_REFRESH.md` here, and why
+`docs/WORK_COMPLETION.md` is not generated for the pack (`pack/docs/WORK_COMPLETION.md` is the
+canonical checklist). Behavior step 50 fails if any of them appear.
+
+The export still drops anything that could identify the sending machine, reading the list from
+`machineLocalPaths` in `pack/audit/manifest.json`, plus `.audit_*` results and `__pycache__` by
+pattern. On the receiving machine the first `run_audit.cmd` regenerates the audit results.
+
+**If the folder arrived by copy rather than export** — robocopy, USB drag-and-drop, a sync client —
+none of those exclusions applied, and an older copy may still carry the sending machine's files. Clean
+it there before trusting it:
+
+```powershell
+pack\scripts\sanitize-machine-state.ps1            # preview - deletes nothing
+pack\scripts\sanitize-machine-state.ps1 -Apply     # then Refresh-AgentContext.cmd
+```
 
 To exercise a full install without touching your profile, set `AGENT_STARTER_PACK_INSTALL_ROOT` to a
 scratch path before running `install.ps1`; the pack tree, `rules\`, `skills\` and `mcp.json` all

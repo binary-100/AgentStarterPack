@@ -1,4 +1,4 @@
-# Audit system (starter pack 2.22.53 — manifest-driven)
+# Audit system (starter pack 2.22.65 — manifest-driven)
 
 **One audit = closed scope.** Two report sections: Fix and Improve. **One standard:** full `run_audit.cmd` — never `-SkipTests` for an audit.
 
@@ -76,7 +76,7 @@ Section B's machine checks were delete-only (`Build cruft - dist - delete`), so 
 
 ### Telling open chats the pack changed
 
-Installing updates the disk; it reaches no chat that is already open. `refresh-agent-context.ps1` syncs a project and writes `docs/AGENT_CONTEXT.json` (versions, `rulesRevision` over `pack/rules/*.mdc`, per-layer state, `changedLayers`) plus `docs/AGENT_REFRESH.md` (what to re-read, plus a paste line). Versions are read from the pack at generation time, never templated. Step 27 asserts that: an unchanged pack reports no changes but still restamps, a rule edit moves `rulesRevision`, a version bump is re-cited in the brief, and the app brief does not send agents to the pack's `HANDOFF_NEXT_AGENT.md`.
+Installing updates the disk; it reaches no chat that is already open. `refresh-agent-context.ps1` syncs a project and writes `docs/AGENT_CONTEXT.json` (versions, `rulesRevision` over `pack/rules/*.mdc`, per-layer state, `changedLayers`) plus `docs/AGENT_REFRESH.md` (what to re-read, plus a paste line). Versions are read from the pack at generation time, never templated. Step 27 asserts that: an unchanged pack reports no changes but still restamps, a rule edit moves `rulesRevision`, a version bump is re-cited in the brief, and the app brief does not send agents into the pack's own maintainer reading (`pack/docs/START_HERE.md`).
 
 A brief nobody knows is stale is no better than no brief, and until 2.22.7 the only way to find out was
 to run the refresh — the very thing you needed telling. So the audit now reads `docs/AGENT_CONTEXT.json`

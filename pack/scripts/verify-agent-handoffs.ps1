@@ -71,10 +71,16 @@ function Test-SessionOpener([string]$raw, [string]$kind) {
     if ($raw -notmatch 'Session opener \(only') { return $false }
     $verb = if ($kind -eq 'orientation') { 'confirm' } else { 'implement' }
     if ($raw -notmatch "and $verb") { return $false }
-    # Require full absolute path inside backtick opener (may be on line after the label)
+    # Require a root-anchored path inside the backtick opener (may be on the line after the label).
+    # A real absolute path is the normal case. A placeholder root - <pack folder>\..., %PACK_ROOT%\...,
+    # $env:SOMETHING\... - counts too, because a handoff written for *another* machine cannot name a
+    # path that exists here, and hard-coding the sending machine's path into a tracked file is the
+    # disclosure that machine-local classification exists to prevent. What stays banned is a bare
+    # relative path, which opens the wrong file in whichever workspace happens to be current.
     if ($raw -match '`Read\s+([^`]+)\s+and\s+' + [regex]::Escape($verb) + '\.`') {
         $pathPart = $Matches[1].Trim()
         if ($pathPart -match '^[A-Za-z]:\\' -or $pathPart -match '^/') { return $true }
+        if ($pathPart -match '^(<[^>]+>|%[^%]+%|\$env:[A-Za-z_][A-Za-z0-9_]*)[\\/]') { return $true }
     }
     return $false
 }
@@ -150,7 +156,7 @@ foreach ($fp in $handoffFiles) {
     }
 
     if (-not (Test-SessionOpener $raw $kind)) {
-        $msg = "Handoff missing single session opener with full absolute path (and implement/confirm): $rel"
+        $msg = "Handoff missing single session opener with a root-anchored path - absolute, or a placeholder root like <pack folder>\... (and implement/confirm): $rel"
         if ($AuditMode) { Emit-Audit 'FIX' $msg } else { Write-Fail $msg }
     }
 

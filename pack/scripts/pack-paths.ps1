@@ -115,6 +115,59 @@ function Test-AgentStarterPackInstalled {
     return (Test-AgentStarterPackRoot (Get-InstalledAgentStarterPack))
 }
 
+function Get-AgentStateRoot {
+    # Where per-machine agent-context artifacts live for a given project.
+    #
+    # For an ordinary project, that is its own docs\ folder: the project sits at one path on one
+    # machine, and a brief naming that path is exactly right there.
+    #
+    # A pack root is different, and the difference is the whole reason this function exists. The pack
+    # folder is portable by policy - USB stick, any drive letter, a clone, a download - so a generated
+    # file recording this machine's paths is wrong the moment the folder moves, and it discloses the
+    # sending machine's user name and layout to whoever receives it. Until 2.22.59 the pack audited and
+    # refreshed itself through the project code path, so five such files accumulated in its own docs\
+    # and had to be gitignored, dropped from the export, and cleaned by a sanitizer after any copy.
+    # Not writing them into the folder removes the class instead of policing it.
+    #
+    # Keyed by a hash of the checkout path so two checkouts on one machine (a stick and a Desktop
+    # clone) keep separate state instead of overwriting each other's stamps. Python computes the same
+    # key from the same rule in agent_context_freshness.py; behavior step 51 compares the two.
+    param([Parameter(Mandatory = $true)][string]$ProjectRoot)
+
+    $full = [System.IO.Path]::GetFullPath($ProjectRoot).TrimEnd('\', '/')
+    if (-not (Test-AgentStarterPackRoot $full)) { return (Join-Path $full 'docs') }
+
+    # Test and unusual-setup override, same shape as AGENT_STARTER_PACK_INSTALL_ROOT. The behavior
+    # suite needs it: a probe pack root under .tmp would otherwise write its stamp into the real
+    # %LOCALAPPDATA% and leave it there, which is the same non-hermetic mistake that made step 38
+    # depend on whatever the local profile happened to hold (2.22.45).
+    $override = $env:AGENT_STARTER_PACK_STATE_ROOT
+    if ($override -and $override.Trim()) { return $override.Trim() }
+
+    $key = ($full -replace '\\', '/').ToLowerInvariant()
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hash = ($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($key)) |
+            ForEach-Object { $_.ToString('x2') }) -join ''
+    } finally {
+        $sha.Dispose()
+    }
+    $leaf = (Split-Path -Leaf $full) -replace '[^A-Za-z0-9._-]', '_'
+    if (-not $leaf) { $leaf = 'pack' }
+
+    # Machine-local by definition, so it belongs in the machine-local place: LOCALAPPDATA on Windows,
+    # XDG_STATE_HOME on POSIX. Not the pack's install root - state must resolve identically whether or
+    # not the pack was ever installed on this machine.
+    if (Test-PackIsWindows) {
+        $base = $env:LOCALAPPDATA
+        if (-not $base) { $base = Join-Path $env:USERPROFILE 'AppData\Local' }
+    } else {
+        $base = $env:XDG_STATE_HOME
+        if (-not $base) { $base = Join-Path $HOME '.local/state' }
+    }
+    return (Join-Path (Join-Path (Join-Path $base 'AgentStarterPack') 'state') "$leaf-$($hash.Substring(0, 12))")
+}
+
 function Get-AgentStarterPackUserRoot {
     # Profile folder holding the installed pack plus the rules\, skills\ and mcp.json agents read.
     # Derived from the installed root (.../.cursor/AgentStarterPack -> .../.cursor) so an install-root

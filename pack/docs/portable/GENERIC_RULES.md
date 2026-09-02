@@ -24,6 +24,8 @@ Source: `pack/rules/agent-defaults-always.mdc`
 
 On the **first turn** in a project, read **`docs/AGENT_SESSION_START.md`** when it exists, before substantial work. It carries the stale/fresh verdict for this project's agent context and the absolute paths you are expected to have read. If it reports **stale**, follow **Context refresh** below rather than working from whatever this chat already believes.
 
+Some repositories are meant to be copied or downloaded and therefore keep **no** per-machine files inside themselves. There the context artifacts live in a machine-local directory outside the checkout instead, and `docs/AGENT_SESSION_START.md` will simply be absent — run the context refresh and read the paths it prints rather than concluding the project has no context.
+
 The project's `AGENTS.md` and `AI_INSTRUCTIONS.md` say the same thing — this rule covers projects whose entry files predate that line or were customized.
 
 ## Loop-back (all projects)
@@ -61,16 +63,16 @@ After audit-system changes: **`sync-audit-system.ps1`** + changelog entry.
 
 On **refresh pack context**, **sync agent context**, **context refresh**, or **pack update**:
 
-1. Read `docs/AGENT_REFRESH.md` in the **current workspace** if present, then every path in `requiredReads` from `docs/AGENT_CONTEXT.json` (absolute paths — use them if workspace root differs).
+1. Read `docs/AGENT_REFRESH.md` in the **current workspace** if present, then every path in `requiredReads` from `docs/AGENT_CONTEXT.json` (absolute paths — use them if workspace root differs). If neither file is there, the project keeps its context outside the checkout: run the refresh (step 3) and read the paths it prints.
 2. Treat anything you learned earlier in this chat as possibly stale where it conflicts.
 3. Missing or unclear? Read `docs/AGENT_CONTEXT.json`, call MCP **`check_pack_freshness`** / **`get_agent_refresh_brief`** when agent-hygiene is available, or run the refresh yourself as below.
 4. **Handshake:** reply with the pack version and audit engine version you just read when the refresh brief or paste line asks for it.
 
 When an audit reports **Agent context stale / never refreshed / unreadable**, do not hand the user a
 command to type: **offer to run `Refresh-AgentContext.cmd` for this project yourself** and let them
-approve the run. On approval, run it, then read the regenerated `docs/AGENT_REFRESH.md` in the same
-turn. It writes `docs/` artifacts and syncs this project's rules and audit files from the installed
-pack; it does not touch the user profile unless asked with `-Install`.
+approve the run. On approval, run it, then read the regenerated brief in the same turn — the command
+prints every path it wrote. It syncs this project's rules and audit files from the installed pack; it
+does not change the user profile unless asked with `-Install`.
 
 ## Fixes the agent runs (do not offload)
 
@@ -202,7 +204,7 @@ Before **creating or substantially editing** agent-facing files — `.cursor/rul
 
 - List and skim **project** `.cursor/rules/` (and nested paths like `app/.cursor/rules/` if the project uses them)
 - Read **`AGENTS.md`** and linked agent docs (`AI_INSTRUCTIONS.md`, `CLAUDE.md`, etc.)
-- **Agent Starter Pack maintainer repo:** read **`INSTALL.txt`**, **`HANDOFF_NEXT_AGENT.md`**, and **`docs/WORK_QUEUE.md`** before adding any install/handoff/status doc
+- **Agent Starter Pack maintainer repo:** read **`INSTALL.txt`** and **`docs/WORK_QUEUE.md`** before adding any install/handoff/status doc
 - If the project **syncs generic rules from Agent Starter Pack**, treat those as read-only in the project — edit **`pack/rules/`** at the pack source, then sync; do not fork copies locally
 
 ## 2. Prefer extend over duplicate
@@ -240,8 +242,9 @@ pipeline in detail.
 When a work item moves on **`docs/WORK_QUEUE.md`** (especially to **Done** or **Parked**):
 
 1. Update **derivative docs** that still describe the old state — the handoff's status section, gap/plan rows, spec headers, coordination backlog — not only the queue file.
-2. Prefer **WQ ids** over phase-only labels in handoffs; when a slice carries more than one phase number, keep the id map in the plan doc that owns those phases.
-3. **Agent Starter Pack maintainer repo:** run **`verify-complete-picture.ps1`** before claiming done (see **`pack/docs/WORK_COMPLETION.md`** step 5b) — rules-vs-verify inventory in **`pack/docs/RULES_AND_VERIFY_MAP.md`**.
+2. When the slice **changed product behavior** (paths, install modes, capabilities, limits), update the project's **product-truth docs** in the same session — typically files named like `PRODUCT_REFERENCE`, `KNOWN_LIMITATIONS`, install/layout tables in `PROJECT_LAYOUT`, and **`ROADMAP.md` work-queue rows**. Use the project's `DOC_MAP.md` (if present) to find owners; do not wait for the next audit.
+3. Prefer **WQ ids** over phase-only labels in handoffs; when a slice carries more than one phase number, keep the id map in the plan doc that owns those phases.
+4. **Agent Starter Pack maintainer repo:** run **`verify-complete-picture.ps1`** before claiming done (see **`pack/docs/WORK_COMPLETION.md`** step 5b) — rules-vs-verify inventory in **`pack/docs/RULES_AND_VERIFY_MAP.md`**.
 
 Do **not** add a second always-on rule for this — extend the work queue row and run the verify script.
 
@@ -595,7 +598,7 @@ If `docs/WORK_QUEUE.md` is missing in a bootstrapped project, treat `docs/ROADMA
 - Move row to **Done log** with date and evidence (test exit code, path, commit — whatever applies).
 - Set the next Active row to **Next** (exactly one).
 - If a **`docs/handoffs/active/HANDOFF_*.md`** row exists for that WQ: set handoff **`status: completed`**, **`completed:`** date, clear **`agents_remaining`**. Run **`run_audit.cmd`** before archiving; audit **Improve** may suggest `handoff_archive/` — never auto-delete (see **`generic-agent-handoff-discipline.mdc`**).
-- **Canonical status propagation (required):** WORK_QUEUE is the source of truth. After editing it, align **every derivative** that mentions that WQ or slice — the handoff's status section, phase/gap plan rows, spec status headers, PARKED/backlog docs. Full channel list: **`pack/docs/RULES_AND_VERIFY_MAP.md`** § Canonical status propagation.
+- **Canonical status propagation (required):** WORK_QUEUE is the source of truth. After editing it, align **every derivative** that mentions that WQ or slice — the handoff's status section, phase/gap plan rows, spec status headers, PARKED/backlog docs, **and product-truth docs when behavior changed** (see **`generic-agent-doc-hygiene.mdc`** after-ship status alignment). Full channel list: **`pack/docs/RULES_AND_VERIFY_MAP.md`** § Canonical status propagation.
 - **Maintainer pack repo:** run **`verify-complete-picture.ps1`** (behavior step 37) — exit **0** before claiming the slice done. Same checklist: **`pack/docs/WORK_COMPLETION.md`** step 5b.
 
 ### When deferring

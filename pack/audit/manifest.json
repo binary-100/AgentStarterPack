@@ -1,5 +1,5 @@
 {
-  "version": "2.22.53",
+  "version": "2.22.65",
   "description": "Audit system manifest - every file that must stay in sync. Used by sync-audit-system.ps1 and verify-audit-system.ps1.",
 
   "packMirror": [
@@ -26,7 +26,6 @@
     "docs/MULTI_TOOL_GAP_PLAN.md",
     "docs/AGENT_UPGRADE_PATH.md",
     "docs/AGENT_FRESHNESS_ADAPTER_PLAN.md",
-    "docs/WORK_COMPLETION.md",
     "docs/WORK_QUEUE.md",
     "docs/MULTI_INSTANCE_GUIDE.md",
     "docs/VERSION_SYNC.md",
@@ -45,6 +44,7 @@
     "pack/scripts/repair-agent-docs.ps1",
     "pack/scripts/update-agents.ps1",
     "pack/scripts/refresh-agent-context.ps1",
+    "pack/scripts/sanitize-machine-state.ps1",
     "pack/scripts/agent_context_freshness.py",
     "pack/scripts/invoke-agent-freshness.ps1",
     "pack/scripts/update-agent-stack.ps1",
@@ -253,10 +253,20 @@
     "pack/templates/AUDIT.md.template"
   ],
 
+    "_machineLocalPaths": "Files that record one machine's absolute paths, versions or install state, and must never exist in this checkout. Since 2.22.59 nothing writes them here: Get-AgentStateRoot (mirrored by agent_state_root in agent_context_freshness.py) sends the four agent-context artifacts to a machine-local state directory outside the pack folder, and ensure-work-completion.ps1 generates no overlay for a pack root. This list is what enforces and cleans that - behavior step 50 fails if any entry exists in the checkout, is tracked in git, is missing from .gitignore, or appears in packMirror; sanitize-machine-state.ps1 removes them from a folder that arrived by copy, and export.ps1 drops them from an archive. Ordinary projects are unaffected: their docs/ is the right home for a brief naming their own single location. Wildcard classes (docs/.audit_*, __pycache__, *.pyc, .tmp) are handled by pattern in the sanitizer and the export.",
+  "machineLocalPaths": [
+    "install-manifest.json",
+    "docs/AGENT_CONTEXT.json",
+    "docs/AGENT_REFRESH.md",
+    "docs/AGENT_PASTE.txt",
+    "docs/AGENT_SESSION_START.md",
+    "docs/WORK_COMPLETION.md"
+  ],
+
   "_maintainerOnlyPaths": "Repo files that belong to pack development and must not land in a user's install. install.ps1 copies the whole checkout, so anything not listed here ships to %USERPROFILE%; sync-audit-system.ps1 also deletes these from an existing install. Session handoffs and implementation specs are notes between maintainers - they age badly and mean nothing to someone who just installed the pack.",
   "maintainerOnlyPaths": [
     ".cursor/rules/no-publish-from-this-machine.mdc",
-    "HANDOFF_NEXT_AGENT.md",
+    "docs/HANDOFF_DESIGN_REFERENCE.md",
     "docs/handoffs",
     "docs/handoff_archive"
   ],

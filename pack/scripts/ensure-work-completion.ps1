@@ -53,6 +53,16 @@ if (Test-Path -LiteralPath $dest) {
     exit 0
 }
 
+# A pack root gets no generated overlay. The template exists to give a *project* a post-ship checklist
+# naming its own absolute paths; the pack already ships the canonical document at
+# pack/docs/WORK_COMPLETION.md, and generating a second copy here only produced a file holding this
+# machine's user profile path in seven places - which was then committed and mirrored into installs
+# (2.22.56). The pack folder travels, so nothing generated with an absolute path belongs in it.
+if (Test-AgentStarterPackRoot $ProjectRoot) {
+    Write-Host '[skip] pack root - canonical checklist is pack/docs/WORK_COMPLETION.md (no generated overlay)'
+    exit 0
+}
+
 $template = Join-Path $PackRoot 'pack\templates\docs\WORK_COMPLETION.md.template'
 if (-not (Test-Path -LiteralPath $template)) {
     Write-Host '[warn] WORK_COMPLETION template not found - skip'

@@ -16,11 +16,38 @@ param(
 $script:fail = 0
 $ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
 
+. (Join-Path $PSScriptRoot 'pack-paths.ps1')
+
 function Write-Ok($m) { Write-Host "[OK] $m" }
 function Write-Fail($m) { Write-Host "[FAIL] $m"; $script:fail++ }
 function Write-Warn($m) { Write-Host "[WARN] $m" }
 
-foreach ($rel in @('AI_INSTRUCTIONS.md', 'AGENTS.md', 'docs\WORK_QUEUE.md', 'run_audit.cmd', 'docs\AUDIT.md')) {
+# What a generated project must contain comes from projectRequired.flatLayout in the pack manifest,
+# not from a list here. This file used to name five paths while the manifest declared nine, so a
+# project could be missing four audit entry points and still be reported portable - the audit would
+# then fail on the user's machine, not in this check. The literals below are the portable-specific
+# extras the manifest does not cover.
+$portableExtras = @('AI_INSTRUCTIONS.md', 'AGENTS.md', 'docs\WORK_QUEUE.md')
+$required = $portableExtras
+$pbPackRoot = Get-SourceAgentStarterPack
+if (-not $pbPackRoot) { $pbPackRoot = Get-AgentStarterPackRoot }
+if ($pbPackRoot) {
+    $pbManifestPath = Get-PackManifestPath -Root $pbPackRoot
+    if (Test-Path -LiteralPath $pbManifestPath) {
+        $pbManifest = Get-Content -LiteralPath $pbManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $flat = $pbManifest.projectRequired.flatLayout
+        if ($flat) {
+            foreach ($prop in $flat.PSObject.Properties) {
+                $required += ($prop.Value -replace '/', '\')
+            }
+        }
+    }
+}
+$required = @($required | Select-Object -Unique)
+if ($required.Count -le $portableExtras.Count) {
+    Write-Warn 'pack manifest not readable - checking only the portable-specific files, not the audit entry points'
+}
+foreach ($rel in $required) {
     $p = Join-Path $ProjectRoot $rel
     if (-not (Test-Path -LiteralPath $p)) { Write-Fail "missing required file: $rel" }
     else { Write-Ok "present: $rel" }

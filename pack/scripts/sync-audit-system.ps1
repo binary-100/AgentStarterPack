@@ -244,6 +244,22 @@ if (-not $VerifyOnly -and -not $SkipProfileMirror -and $manifest.maintainerOnlyP
     }
 }
 
+# Machine-local files that were copied into the install before they were classified. They are no longer
+# mirrored, so nothing would ever refresh them - they would sit in the profile holding whichever
+# machine's absolute paths were current when that install ran. install-manifest.json is the exception:
+# install.ps1 *writes* it into the target as that install's own record, so it belongs there.
+if (-not $VerifyOnly -and -not $SkipProfileMirror -and $manifest.machineLocalPaths) {
+    foreach ($rel in @($manifest.machineLocalPaths)) {
+        if ($rel -eq 'install-manifest.json') { continue }
+        $copied = Join-Path $Installed ($rel -replace '/', '\')
+        if (Test-Path -LiteralPath $copied) {
+            $recurse = (Get-Item -LiteralPath $copied) -is [System.IO.DirectoryInfo]
+            Remove-Item -LiteralPath $copied -Force -Recurse:$recurse
+            Write-Host "[CLEAN] removed copied machine-local file from install: $copied"
+        }
+    }
+}
+
 # Mirror pack -> user
 if (-not $SkipProfileMirror) {
     foreach ($item in @($manifest.packToUser)) {
