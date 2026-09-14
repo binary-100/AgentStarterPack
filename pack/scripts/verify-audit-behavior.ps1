@@ -5206,7 +5206,7 @@ Write-Host "`n69. 'Is this a git work tree' is asked of git, not of the filesyst
 # observing nothing. That is the WQ-443 failure, and it is strictly worse than the bug it replaces.
 # Probes live outside the pack folder so a maintainer checkout that still carries .git does not
 # make every subfolder answer "inside work tree" to git -C (WQ-461 / step 69 false positive).
-$gitProbeRoot = Join-Path $env:TEMP "AgentStarterPack-gitrepo-probe-$PID"
+$gitProbeRoot = Join-Path (Get-PackTempDir) "AgentStarterPack-gitrepo-probe-$PID"
 try {
     if (Test-Path -LiteralPath $gitProbeRoot) { Remove-Item -LiteralPath $gitProbeRoot -Recurse -Force -ErrorAction SilentlyContinue }
     New-Item -ItemType Directory -Path $gitProbeRoot -Force | Out-Null
