@@ -37,8 +37,8 @@ Build live Airlock **without** removing git from this checkout until publish is 
 | 2 | Confirm: **both** working copy and `StarterPack-Airlock/repo/` report git (`Test-PackGitRepo` true on both) |
 | 3 | **`Verify-AirlockPublishGate.cmd`** — Zone A (this checkout) + B09 sync + Zone B (`repo/`) |
 | 4 | Configure remote on **`repo/`** only; human `git push`; first CI run |
-| 5 | When satisfied: **`Complete-StarterPackAirlockCutover.cmd`** — removes `.git` from working copy **only** |
-| 6 | Post-cutover: working copy git-free; `repo/` still has git; refresh context; publish gate before each push |
+| 5 | When satisfied: **`Complete-StarterPackAirlockCutover.cmd`** — **mirrors full working copy (with `.git`) to `D:\AgentStarterPack`**, then removes `.git` from working copy **only** |
+| 6 | Post-cutover: working copy git-free; `repo/` still has git; **`D:\AgentStarterPack`** holds the last git-inclusive snapshot; refresh context; publish gate before each push |
 
 **Toggle mental model:** Copy = both designs at once; cutover = flip working copy to git-free Zone A without touching `repo/`.
 

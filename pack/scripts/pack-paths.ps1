@@ -326,6 +326,47 @@ function Copy-PackGitToAirlockRepo {
     return 'copied'
 }
 
+function Backup-WorkingCopyBeforeAirlockCutover {
+    <#
+    .SYNOPSIS
+      Mirror the full working copy (including .git) to a backup root before cutover removes WC .git.
+    .OUTPUTS
+      mirrored | would-mirror | mirror-failed | skip-no-dest-drive
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$WorkingCopy,
+        [Parameter(Mandatory = $true)][string]$BackupRoot,
+        [switch]$WhatIf
+    )
+    $drive = Split-Path -Qualifier $BackupRoot
+    if ($drive -and -not (Test-Path -LiteralPath $drive)) {
+        Write-Host "[FAIL] backup drive not present: $drive"
+        return 'skip-no-dest-drive'
+    }
+    if ($WhatIf) {
+        Write-Host "[WOULD MIRROR] $WorkingCopy -> $BackupRoot (includes .git; overwrites existing backup)"
+        return 'would-mirror'
+    }
+    $parent = Split-Path -Parent $BackupRoot
+    if ($parent -and -not (Test-Path -LiteralPath $parent)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
+    $robolog = robocopy $WorkingCopy $BackupRoot /MIR /XD .tmp __pycache__ .pytest_cache `
+        /R:2 /W:2 /NFL /NDL /NJH /NJS /nc /ns /np 2>&1
+    $rc = $LASTEXITCODE
+    if ($rc -ge 8) {
+        Write-Host "[FAIL] robocopy backup exit $rc"
+        if ($robolog) { $robolog | Select-Object -Last 8 | ForEach-Object { Write-Host $_ } }
+        return 'mirror-failed'
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $BackupRoot '.git'))) {
+        Write-Host '[FAIL] backup completed but .git missing at backup root - cutover aborted'
+        return 'mirror-failed'
+    }
+    Write-Host "[OK] backup mirror complete (robocopy exit $rc): $BackupRoot"
+    return 'mirrored'
+}
+
 function Remove-PackGitFromWorkingCopy {
     <#
     .SYNOPSIS

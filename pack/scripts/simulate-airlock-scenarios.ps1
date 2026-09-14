@@ -805,8 +805,9 @@ if (-not (Test-Path -LiteralPath $s29Init) -or -not (Test-Path -LiteralPath $s29
             $repo29 = Join-Path $s29Desktop 'StarterPack-Airlock/repo'
             $wcGitBefore = Test-PackGitRepo -Root $s29Wc
             $repoGitBefore = Test-PackGitRepo -Root $repo29
+            $s29Backup = Join-Path $SimRoot 'S29/backup-wc'
             $null = & powershell -NoProfile -ExecutionPolicy Bypass -File $s29Cut `
-                -WorkingCopy $s29Wc -PublishRoot $repo29 2>&1
+                -WorkingCopy $s29Wc -PublishRoot $repo29 -BackupRoot $s29Backup 2>&1
             $cutExit = $LASTEXITCODE
             $wcGitAfter = Test-PackGitRepo -Root $s29Wc
             $repoGitAfter = Test-PackGitRepo -Root $repo29

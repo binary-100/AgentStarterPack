@@ -10,6 +10,10 @@
   Pack checkout that still has .git at root. Default: script-relative checkout.
 .PARAMETER PublishRoot
   Airlock repo/ path. Default: Get-AgentStarterPackPublishRoot (host Desktop discovery).
+.PARAMETER BackupRoot
+  Full git-inclusive mirror of the working copy before .git is removed. Default: D:\AgentStarterPack.
+.PARAMETER SkipBackup
+  Skip the pre-cutover mirror (simulation only; not for live Desktop cutover).
 .PARAMETER WhatIf
   Print planned action without deleting.
 .EXAMPLE
@@ -18,6 +22,8 @@
 param(
     [string]$WorkingCopy,
     [string]$PublishRoot,
+    [string]$BackupRoot = 'D:\AgentStarterPack',
+    [switch]$SkipBackup,
     [switch]$WhatIf
 )
 
@@ -51,11 +57,17 @@ if (-not (Test-PackGitRepo -Root $publishRoot)) {
 Write-Host 'Complete StarterPack-Airlock cutover (working copy -> git-free Zone A)'
 Write-Host "  Working copy: $WorkingCopy"
 Write-Host "  Publish repo: $publishRoot"
+if (-not $SkipBackup) { Write-Host "  Backup root:  $BackupRoot" }
 if ($WhatIf) { Write-Host '  Mode: WhatIf' }
 
 if (-not (Test-PackGitRepo -Root $WorkingCopy)) {
     Write-Host '[OK] working copy already git-free - nothing to do'
     exit 0
+}
+
+if (-not $SkipBackup) {
+    $backupResult = Backup-WorkingCopyBeforeAirlockCutover -WorkingCopy $WorkingCopy -BackupRoot $BackupRoot -WhatIf:$WhatIf
+    if ($backupResult -in @('mirror-failed', 'skip-no-dest-drive')) { exit 1 }
 }
 
 $result = Remove-PackGitFromWorkingCopy -WorkingCopy $WorkingCopy -WhatIf:$WhatIf

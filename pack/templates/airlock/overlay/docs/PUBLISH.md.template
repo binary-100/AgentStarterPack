@@ -32,6 +32,8 @@ Verify-AirlockPublishGate.cmd
 Complete-StarterPackAirlockCutover.cmd
 ```
 
+Cutover mirrors the full working copy (including `.git`) to `D:\AgentStarterPack` before removing working-copy `.git`.
+
 Full checklist: `docs/AIRLOCK_MIGRATION_CHECKLIST.md` in the working copy.
 
 **Human-only:** agent hooks refuse `git push` from the working copy (H01). Push from `repo/` only.
