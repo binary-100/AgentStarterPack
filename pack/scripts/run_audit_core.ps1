@@ -983,10 +983,21 @@ Stop-AuditPhase 'code_checks'
 
 # --- Semantic report verify (required for complete audit) ---
 Start-AuditPhase 'semantic'
+$zoneBPublishTree = Test-PackPublishZoneBTree -Root $AppRoot
+$zoneBAttestation = if ($zoneBPublishTree) { Test-PackPublishAttestation -Root $AppRoot } else { $null }
+if ($zoneBPublishTree -and $zoneBAttestation.Valid) {
+    Write-Host "[OK] Zone B publish tree - semantic review attested at publish (tree fingerprint matches)"
+}
 if ($testsPassed -and -not $SkipTests -and $cfg.codeChecks) {
     $requireSemantic = $true
     if ($cfg.codeChecks.PSObject.Properties.Name -contains 'semanticReportRequiredInRunAudit') {
         $requireSemantic = [bool]$cfg.codeChecks.semanticReportRequiredInRunAudit
+    }
+    if ($zoneBPublishTree -and $zoneBAttestation.Valid) {
+        $requireSemantic = $false
+    } elseif ($zoneBPublishTree -and -not $zoneBAttestation.Valid) {
+        Add-Fix "Publish attestation - $($zoneBAttestation.Reason)"
+        $requireSemantic = $false
     }
     if ($requireSemantic -and $codeScript -and (Test-Path -LiteralPath $codeScript)) {
         $semRel = if ($cfg.codeChecks.semanticReportFile) { $cfg.codeChecks.semanticReportFile } else { 'docs/.audit_semantic_report.json' }

@@ -147,20 +147,8 @@ jobs:
           test -d "$HOME/.cursor/AgentStarterPack"
           test -f "$HOME/.cursor/rules/agent-defaults-always.mdc"
 
-      - name: run_audit.sh reaches a report without hanging
-        timeout-minutes: 12
-        env:
-          BUILD_NOPAUSE: '1'
-        run: bash run_audit.sh
-
-      # Blocking since 2.22.74 (WQ-446): the suite passes on Linux, so a regression here is a real
-      # break rather than an unported step. It ran report-only for one release to produce the
-      # authoritative failure list - the estimate had been 24 Windows-only steps and the truth was 16
-      # failures, a different set, one of which was a live regression on Windows too.
-      #
-      # Do not put this back to continue-on-error to get a green run. Linux is the only host that can
-      # see an entire class of defect here: hidden-file handling, a real execute bit, and a
-      # case-sensitive filesystem.
+      # Blocking since 2.22.74 (WQ-446). Run before run_audit so a behavior regression is not hidden
+      # behind a Zone B attestation failure.
       - name: Behavior suite on Linux
         timeout-minutes: 25
         env:
@@ -179,6 +167,13 @@ jobs:
             grep -E '\[FAIL\]' /tmp/behavior-linux.log
           fi
           exit $code
+
+      # Zone B CI contract: tests + git checks + publish attestation (semantic deferred to Zone A).
+      - name: run_audit.sh Zone B attestation mode
+        timeout-minutes: 12
+        env:
+          BUILD_NOPAUSE: '1'
+        run: bash run_audit.sh
 
   # macOS had never been executed (WQ-436). It was treated as "Linux, near enough" on the strength of
   # both being non-Windows, which is exactly the assumption Linux itself disproved in WQ-446: that run

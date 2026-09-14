@@ -168,6 +168,12 @@ if (-not $SkipSync) {
         exit 1
     }
     Write-Host '[OK] B09 sync complete'
+    $attCheck = Test-PackPublishAttestation -Root $PublishRoot
+    if (-not $attCheck.Valid) {
+        Write-Host "[FAIL] publish attestation invalid after sync: $($attCheck.Reason)"
+        exit 1
+    }
+    Write-Host '[OK] publish attestation valid on repo/'
 }
 
 if (-not $SkipZoneB) {

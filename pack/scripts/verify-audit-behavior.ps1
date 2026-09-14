@@ -7020,6 +7020,34 @@ try {
     Fail "dual-zone publish gate checks error: $_"
 }
 
+Write-Host "`n87. Zone B publish attestation (B12)"
+try {
+    $syncScript = Join-Path $PackRoot 'pack/scripts/sync-working-copy-to-airlock-repo.ps1'
+    $coreScript = Join-Path $PackRoot 'pack/scripts/run_audit_core.ps1'
+    $pathsScript = Join-Path $PackRoot 'pack/scripts/pack-paths.ps1'
+    if (-not (Test-Path -LiteralPath $syncScript)) { Fail 'sync-working-copy-to-airlock-repo.ps1 missing' }
+    elseif (-not (Test-Path -LiteralPath $coreScript)) { Fail 'run_audit_core.ps1 missing' }
+    else {
+        $syncBody = Get-Content -LiteralPath $syncScript -Raw -Encoding UTF8
+        $coreBody = Get-Content -LiteralPath $coreScript -Raw -Encoding UTF8
+        $pathsBody = Get-Content -LiteralPath $pathsScript -Raw -Encoding UTF8
+        if ($syncBody -notmatch 'Write-PackPublishAttestation') {
+            Fail 'B09 sync does not write publish attestation'
+        } elseif ($coreBody -notmatch 'Test-PackPublishAttestation') {
+            Fail 'run_audit_core does not validate publish attestation on Zone B trees'
+        } elseif ($pathsBody -notmatch 'function Write-PackPublishAttestation') {
+            Fail 'pack-paths.ps1 missing Write-PackPublishAttestation'
+        } elseif ($gateScript = Join-Path $PackRoot 'pack/scripts/verify-airlock-publish-gate.ps1';
+            -not (Test-Path -LiteralPath $gateScript)) {
+            Fail 'verify-airlock-publish-gate.ps1 missing'
+        } elseif ((Get-Content -LiteralPath $gateScript -Raw -Encoding UTF8) -notmatch 'Test-PackPublishAttestation') {
+            Fail 'publish gate does not verify attestation after B09 sync'
+        } else { Ok 'Zone B attestation wired in sync, run_audit_core, and publish gate' }
+    }
+} catch {
+    Fail "Zone B publish attestation checks error: $_"
+}
+
 Write-Host "`nSummary: $fail fail(s)"
 Write-SuiteResults
 if ($fail -gt 0) { exit 1 }

@@ -157,10 +157,10 @@ if (-not $WhatIf) {
         Write-Host "[FAIL] materialize script missing: $materialize"
         exit 1
     }
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $materialize `
+    $matExit = Invoke-PackScript -NoProfile -ScriptPath $materialize `
         -PackRoot $WorkingCopy -RepoRoot $RepoRoot
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "[FAIL] repo-only template materialize exit $LASTEXITCODE"
+    if ($matExit -ne 0) {
+        Write-Host "[FAIL] repo-only template materialize exit $matExit"
         exit 1
     }
     foreach ($rel in $repoOnly) {
@@ -171,6 +171,11 @@ if (-not $WhatIf) {
         }
     }
     Write-Host '[OK] repo-only templates materialized in repo/'
+
+    if (-not (Write-PackPublishAttestation -RepoRoot $RepoRoot)) {
+        Write-Host '[FAIL] publish attestation write failed'
+        exit 1
+    }
 }
 
 # Zone B verify arms (Done-log cite compare, git index) expect HEAD to match the synced tree.
@@ -205,5 +210,5 @@ if (-not $WhatIf -and (Test-Path -LiteralPath (Join-Path $RepoRoot '.git'))) {
     }
 }
 
-Write-Host "Next: $(Get-PackEntryPoint 'run_audit') from repo/ (Zone B), then git push from repo/ only (human)."
+Write-Host "Next: $(Get-PackEntryPoint 'run_audit') from repo/ (Zone B attestation mode), then git push from repo/ only (human)."
 exit 0

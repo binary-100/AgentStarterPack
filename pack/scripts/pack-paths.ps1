@@ -49,6 +49,127 @@ function Test-PackPublishZoneBTree {
     return -not (Test-Path -LiteralPath (Join-Path $Root 'docs/handoffs/SESSION.md'))
 }
 
+function Get-PackPublishAttestationRelPath {
+    return 'docs/.audit_publish_attestation.json'
+}
+
+function Get-PackPublishAttestationPath {
+    param([Parameter(Mandatory)][string]$Root)
+    return Join-Path $Root ((Get-PackPublishAttestationRelPath) -replace '/', '\')
+}
+
+function Get-PackTreeProofSuffix {
+    param([AllowEmptyString()][string]$Proof)
+    if ([string]::IsNullOrWhiteSpace($Proof)) { return '' }
+    if ($Proof -match '(tree:[a-f0-9]+)$') { return $Matches[1] }
+    return $Proof.Trim()
+}
+
+function Get-PackTreeProofFingerprint {
+    param([Parameter(Mandatory)][string]$Root)
+    if (-not (Test-AgentStarterPackRoot $Root)) { return $null }
+    $codePy = Join-Path $Root 'pack/scripts/audit_code_checks.py'
+    if (-not (Test-Path -LiteralPath $codePy)) { return $null }
+    $out = Invoke-PackPython $codePy $Root '--print-tests-git-head' 2>&1
+    if ($LASTEXITCODE -ne 0) { return $null }
+    $line = ($out | Select-Object -Last 1).ToString().Trim()
+    if ($line) { return $line }
+    return $null
+}
+
+function Write-PackPublishAttestation {
+    <#
+    .SYNOPSIS
+      Write Zone B publish attestation after B09 sync (tree fingerprint + VERSION at publish time).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [switch]$WhatIf
+    )
+    $RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
+    $versionPath = Join-Path $RepoRoot 'VERSION'
+    if (-not (Test-Path -LiteralPath $versionPath)) {
+        Write-Host '[FAIL] cannot write publish attestation - VERSION missing'
+        return $false
+    }
+    $treeProof = Get-PackTreeProofFingerprint -Root $RepoRoot
+    if (-not $treeProof) {
+        Write-Host '[FAIL] cannot write publish attestation - tree fingerprint unavailable'
+        return $false
+    }
+    $treeSuffix = Get-PackTreeProofSuffix $treeProof
+    $version = (Get-Content -LiteralPath $versionPath -Raw -Encoding UTF8).Trim()
+    $payload = [ordered]@{
+        schema              = 1
+        writtenAt           = (Get-Date).ToUniversalTime().ToString('o')
+        version             = $version
+        zoneTreeFingerprint = $treeSuffix
+        zoneBProofAtPublish = $treeProof
+    }
+    $attPath = Get-PackPublishAttestationPath -Root $RepoRoot
+    if ($WhatIf) {
+        Write-Host "[WOULD WRITE] $attPath ($treeSuffix, v$version)"
+        return $true
+    }
+    $dir = Split-Path -Parent $attPath
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    Write-Utf8NoBom -Path $attPath -Text (($payload | ConvertTo-Json -Depth 4) + "`n")
+    Write-Host "[OK] publish attestation written: $attPath"
+    return $true
+}
+
+function Test-PackPublishAttestation {
+    <#
+    .SYNOPSIS
+      Validate publish attestation on a Zone B repo tree (CI + run_audit Zone B mode).
+    .OUTPUTS
+      PSCustomObject Valid, Reason
+    #>
+    param([Parameter(Mandatory)][string]$Root)
+    if (-not (Test-PackPublishZoneBTree $Root)) {
+        return [pscustomobject]@{ Valid = $false; Reason = 'not a Zone B publish tree' }
+    }
+    $attPath = Get-PackPublishAttestationPath -Root $Root
+    if (-not (Test-Path -LiteralPath $attPath)) {
+        return [pscustomobject]@{
+            Valid  = $false
+            Reason = 'publish attestation missing - run Verify-AirlockPublishGate (B09 sync) before push'
+        }
+    }
+    try {
+        $att = Get-Content -LiteralPath $attPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        return [pscustomobject]@{ Valid = $false; Reason = 'publish attestation unreadable' }
+    }
+    $versionPath = Join-Path $Root 'VERSION'
+    if (-not (Test-Path -LiteralPath $versionPath)) {
+        return [pscustomobject]@{ Valid = $false; Reason = 'VERSION missing' }
+    }
+    $version = (Get-Content -LiteralPath $versionPath -Raw -Encoding UTF8).Trim()
+    if ($att.version -ne $version) {
+        return [pscustomobject]@{
+            Valid  = $false
+            Reason = "VERSION drift since attestation (attested=$($att.version) current=$version) - re-run B09 sync"
+        }
+    }
+    $expectedTree = Get-PackTreeProofSuffix ([string]$att.zoneTreeFingerprint)
+    if (-not $expectedTree) {
+        return [pscustomobject]@{ Valid = $false; Reason = 'attestation has no zoneTreeFingerprint' }
+    }
+    $currentProof = Get-PackTreeProofFingerprint -Root $Root
+    if (-not $currentProof) {
+        return [pscustomobject]@{ Valid = $false; Reason = 'current tree fingerprint unavailable' }
+    }
+    $currentTree = Get-PackTreeProofSuffix $currentProof
+    if ($currentTree -ne $expectedTree) {
+        return [pscustomobject]@{
+            Valid  = $false
+            Reason = 'tree drift since publish attestation - re-run B09 sync and publish gate'
+        }
+    }
+    return [pscustomobject]@{ Valid = $true; Reason = '' }
+}
+
 function Get-SourceAgentStarterPack {
     # pack-paths.ps1 lives at <packRoot>\pack\scripts\, so the pack root is two levels up.
     $dir = $script:AgentStarterPackToolsDir

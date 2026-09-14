@@ -72,6 +72,7 @@ Every functional git use in the audit stack, classified by zone.
 | B09 | `sync-working-copy-to-airlock-repo.ps1` | Sync tree into `repo/` before Zone B audit (**shipped** — sim S26) |
 | B10 | `Find-StarterPackAirlock` + `-PublishRoot` on `verify-audit-system.ps1` | **Shipped (WQ-488, 2026-09-13)** — optional second behavior pass on Airlock `repo/` |
 | B11 | `verify-airlock-publish-gate.ps1` | **Shipped (WQ-488, 2026-09-13)** — Zone A → B09 sync → Zone B; `[DUAL-ZONE FAIL]` when A green / B red |
+| B12 | `docs/.audit_publish_attestation.json` + Zone B `run_audit` | **Shipped (2026-09-14)** — B09 writes tree fingerprint attestation; Zone B defers semantic to Zone A; CI validates attestation |
 
 ### Known parity gap (fix in Airlock Phase 1)
 
