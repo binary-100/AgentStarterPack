@@ -17,10 +17,10 @@ $packRoot = Get-AgentStarterPackRoot
 if (-not $packRoot) {
     $packRoot = Get-InstalledAgentStarterPack
 }
-if (-not $packRoot -or -not (Test-Path (Join-Path $packRoot 'pack\audit\manifest.json'))) {
+if (-not $packRoot -or -not (Test-Path (Join-Path $packRoot 'pack/audit/manifest.json'))) {
     Write-Error 'Agent Starter Pack not found. Run install.ps1 first.'
 }
-$srcDir = Join-Path $packRoot 'pack\rules'
+$srcDir = Join-Path $packRoot 'pack/rules'
 $destDir = Join-Path $ProjectRoot $RulesRelativePath
 
 if (-not (Test-Path $srcDir)) {

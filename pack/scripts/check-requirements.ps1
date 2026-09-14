@@ -192,11 +192,11 @@ if ($py) {
 $codePy = if ($PackRoot) { Get-PackScriptPath -Root $PackRoot -Name 'audit_code_checks.py' } else { $null }
 if (-not $py) {
     Add-Result -Name 'Audit engine self-test' -Status missing -Required $true -Detail 'skipped (no Python)' `
-        -Purpose 'run_audit.cmd on any project' -Fix 'install Python (see above), then re-run this check'
+        -Purpose "$(Get-PackEntryPoint 'run_audit') on any project" -Fix 'install Python (see above), then re-run this check'
 } elseif (-not $codePy -or -not (Test-Path -LiteralPath $codePy)) {
     Add-Result -Name 'Audit engine self-test' -Status missing -Required $true `
         -Detail 'audit_code_checks.py not found - incomplete pack folder' `
-        -Purpose 'run_audit.cmd on any project' -Fix 'copy the full pack folder, or re-extract the export zip'
+        -Purpose "$(Get-PackEntryPoint 'run_audit') on any project" -Fix 'copy the full pack folder, or re-extract the export zip'
 } else {
     $selfTest = Invoke-Python $py @($codePy, '--self-test')
     if ($selfTest.ok) {
@@ -204,12 +204,12 @@ if (-not $py) {
     } else {
         $tail = (($selfTest.output -split "`n") | Select-Object -Last 1)
         Add-Result -Name 'Audit engine self-test' -Status missing -Required $true -Detail "failed: $tail" `
-            -Purpose 'run_audit.cmd on any project' -Fix "$($py.display) `"$codePy`" --self-test   (run for the full error)"
+            -Purpose "$(Get-PackEntryPoint 'run_audit') on any project" -Fix "$($py.display) `"$codePy`" --self-test   (run for the full error)"
     }
 }
 
 # --- MCP package (optional) --------------------------------------------------
-$reqTxt = if ($PackRoot) { Join-Path $PackRoot 'mcp\requirements.txt' } else { $null }
+$reqTxt = if ($PackRoot) { Join-Path $PackRoot 'mcp/requirements.txt' } else { $null }
 $pyDisplay = if ($py) { $py.display } else { 'py -3' }
 $mcpFix = if ($reqTxt -and (Test-Path -LiteralPath $reqTxt)) {
     "install.ps1 -InstallMcpDeps   (or: $pyDisplay -m pip install --user -r `"$reqTxt`")"

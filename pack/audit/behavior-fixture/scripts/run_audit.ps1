@@ -9,11 +9,11 @@ function Resolve-AuditCore {
     $candidates = @()
     if ($env:AGENT_STARTER_PACK_ROOT) { $candidates += $env:AGENT_STARTER_PACK_ROOT }
     if ($env:CURSOR_STARTER_PACK_ROOT) { $candidates += $env:CURSOR_STARTER_PACK_ROOT }
-    $candidates += Join-Path $env:USERPROFILE '.cursor\AgentStarterPack'
-    $candidates += Join-Path $env:USERPROFILE '.cursor\agent-starter-pack'
+    $candidates += Join-Path $env:USERPROFILE '.cursor/AgentStarterPack'
+    $candidates += Join-Path $env:USERPROFILE '.cursor/agent-starter-pack'
     foreach ($base in $candidates) {
         if (-not $base) { continue }
-        $core = Join-Path $base 'pack\scripts\run_audit_core.ps1'
+        $core = Join-Path $base 'pack/scripts/run_audit_core.ps1'
         if (Test-Path -LiteralPath $core) { return $core }
     }
     return $null

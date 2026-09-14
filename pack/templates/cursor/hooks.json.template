@@ -5,6 +5,19 @@
       {
         "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/session-freshness.ps1"
       }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/offload-detect.ps1",
+        "timeout": 15
+      }
+    ],
+    "stop": [
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/completion-gate.ps1",
+        "timeout": 15,
+        "loop_limit": 1
+      }
     ]
   }
 }

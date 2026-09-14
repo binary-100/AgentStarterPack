@@ -3,7 +3,7 @@
 **Audience:** AI coding agents, maintainers, and anyone setting up or using this pack.
 
 **Pack version:** root `VERSION` file (currently **1.8.0**).  
-**Audit engine version:** `pack/audit/manifest.json` → `"version"` (currently **2.22.65**). These numbers track different things — both are normal.
+**Audit engine version:** `pack/audit/manifest.json` → `"version"` (currently **2.22.123**). These numbers track different things — both are normal.
 
 ---
 
@@ -29,13 +29,17 @@ There is **no starter-pack product roadmap** (`docs/ROADMAP.md` is for bootstrap
 .\Check-Requirements.cmd          # add -Fix to install the Python packages
 ```
 
-Names every missing prerequisite and the command that installs it. **Required:** PowerShell 5.1+, Python 3.8+ with the `py -3` launcher (every `.cmd` in the pack and in generated projects calls it), and a passing `audit_code_checks.py --self-test`. **Optional:** the `mcp` package (agent-hygiene MCP tools only) and git (without it, audits use a file-tree fingerprint instead of git HEAD for test-pass proof).
+On macOS/Linux: `bash Check-Requirements.sh` (same script and flags — see the note under Install for why `bash`, not `./`).
+
+Names every missing prerequisite and the command that installs it. **Required:** PowerShell 5.1+, Python 3.8+ with the `py -3` launcher (every `.cmd` in the pack and in generated projects calls it; off Windows the `.sh` twins resolve `python3`/`python` instead), and a passing `audit_code_checks.py --self-test`. **Optional:** the `mcp` package (agent-hygiene MCP tools only) and git (without it, audits use a file-tree fingerprint instead of git HEAD for test-pass proof). On macOS/Linux **PowerShell 7 (`pwsh`) is required**, not optional — every entry point there is a thin shell over a `.ps1`.
 
 `install.ps1` and `bootstrap-project.ps1` run the same check — install stops on a missing required item, bootstrap only warns. Full table: **`INSTALL.md`**.
 
 ---
 
 ## Install (once per machine)
+
+**Windows**
 
 1. Double-click **`Install-AgentStarterPack.cmd`** (or run `install.ps1` from this folder).
 2. **Restart Cursor** so MCP loads.
@@ -46,15 +50,32 @@ Names every missing prerequisite and the command that installs it. **Required:**
 & "$env:USERPROFILE\.cursor\AgentStarterPack\pack\scripts\verify-audit-system.ps1"
 ```
 
+**macOS / Linux**
+
+```bash
+bash install.sh User
+pwsh -File "$HOME/.cursor/AgentStarterPack/pack/scripts/doctor.ps1"
+pwsh -File "$HOME/.cursor/AgentStarterPack/pack/scripts/verify-audit-system.ps1"
+```
+
 Both should exit **0**. See **`INSTALL.md`** at the pack root for flags (`-RegisterMcp`, `-InstallMcpDeps`, project scope).
+
+**`bash install.sh`, never `./install.sh`.** The Unix execute bit lives in git and nowhere else this
+folder travels: a copy, a zip and exFAT media all deliver mode 644, and a Windows checkout has no bit
+to carry. `./install.sh` on such a copy stops at `Permission denied` (exit 126) — and it is the single
+command that cannot recover, because the repair (`Set-PackExecutableBit` inside `install.ps1`) is on
+the far side of the file that will not start. Naming the interpreter runs it at any mode; everything
+after is self-healing, because install chmods every `.sh` it writes. Behavior **step 67** fails if this
+instruction regresses to the `./` form, in this file and the other install docs.
 
 ### Where files land after install
 
 | What | Path |
 |------|------|
 | Canonical pack (scripts, templates, audit engine) | `%USERPROFILE%\.cursor\AgentStarterPack\` |
-| Global skills | `%USERPROFILE%\.cursor\skills\` |
-| Global rules | `%USERPROFILE%\.cursor\rules\` |
+| Global skills | `%USERPROFILE%\.cursor\skills\` — a documented global load path; this is the real mechanism |
+| Rules, best-effort copy | `%USERPROFILE%\.cursor\rules\` — **no editor documents reading this folder** (WQ-456) |
+| Rules that actually apply | `<project>\.cursor\rules\` + `<project>\AGENTS.md` — delivered by `sync-project-rules.ps1` |
 | MCP server | `%USERPROFILE%\.cursor\AgentStarterPack\mcp\agent_hygiene_server.py` |
 | MCP config | `%USERPROFILE%\.cursor\mcp.json` |
 

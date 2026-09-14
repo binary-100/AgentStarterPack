@@ -1,0 +1,1352 @@
+{
+  "schema": 1,
+  "description": "WQ-443 control registry. Every step in pack/scripts/verify-audit-behavior.ps1 appears here exactly once. Read by the coverage guard inside that suite and by pack/scripts/verify-guard-proofs.ps1. Plan: docs/GUARD_PROOF_PLAN.md",
+  "_comment_statusVocabulary": "There is deliberately no 'proven' status. A proof is a run outcome, not a fact a file can hold - a stored 'proven' becomes a stale claim the first time nobody runs the runner, which is exactly the inert-but-authoritative artifact WQ-460 removed. This file holds the specification; verify-guard-proofs.ps1 produces the proof.",
+  "statusVocabulary": {
+    "mutation": "Carries a spec the runner can apply. Three actions: the default 'replace' (file, find, replace) edits text that must occur exactly once; 'create' (file, action, content) writes a file the tree does not have; 'delete' (file, action) removes one it does. The last two exist because a guard whose subject is a file's presence or absence cannot be broken by editing text. Every step named in expectFailIn must report [FAIL] once it is applied, and the run is what proves it.",
+    "exempt": "No executable spec. Requires a reason from reasonVocabulary."
+  },
+  "reasonVocabulary": {
+    "grandfathered-pre-wq443": "Predates the registry. CLOSED - not permitted on any step added after schema 1 shipped. Retrofit is tracked as its own queue row, not closed by this file.",
+    "not-applicable": "The step cannot meaningfully be made to fail by mutating the pack. Requires justification in note, and is the only reason available to a new step that is not proven."
+  },
+  "closedReasons": [
+    "grandfathered-pre-wq443"
+  ],
+  "_comment_exemptSteps": "WQ-467: which steps are exempt, named rather than counted. Three rows once changed from exempt to a full mutation spec inside an hour with no edit anyone could account for - the specs were sound and were later proven by execution, so what went unexplained was the transition, and nothing in the system disagreed with it. Step 71 printed the counts every run, and a printed count nobody recorded is a number, not a check. Steps are named rather than totalled because a count cannot see a swap: one row retrofitted while another regresses keeps the total intact. Keep this list in the same edit as the status it describes; that edit is the explanation the incident lacked.",
+  "exemptSteps": [
+    62
+  ],
+
+  "_comment_schemaSealedAtStep": "The highest step number that existed when this registry was seeded. A closed reason is only valid at or below the seal, which is what makes grandfathering unusable for a new step - the seal is a number, not a promise. Raising it is how the discipline would be quietly abandoned, so behavior step 71 asserts the value and the changelog records any change.",
+  "schemaSealedAtStep": 70,
+  "steps": [
+    {
+      "step": 1,
+      "title": "audit_code_checks.py --self-test",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/audit_code_checks.py",
+        "find": "            \"F\": {\"app_settings.py\", \"catalog_cache.py\", \"hardware_cache.py\"},",
+        "replace": "            \"F\": {\"app_settings.py\", \"catalog_cache.py\", \"hardware_cache.py\", \"absent_module.py\"},",
+        "why": "Adds a module to the self-test's expected domain map for section F that the fixture never contained, so the engine's own proof reports parse_domain_map returning less than it should and exits 1. That is how this breaks in practice - a fixture and the assertion over it drift apart, and the self-test is the only thing that says so. The subject of this step is whether the suite notices that the engine's proof failed, not whether the parser works.",
+        "rejected": "Breaking parse_domain_map itself was rejected: it reddens most of the suite and proves only that everything downstream depends on it. Batch eighteen ran this same spec and could not record the result - the self-test printed its finding to stderr, PowerShell made that a NativeCommandError, and the runner's own Stop preference turned it terminating (WQ-475), so the proof died at the invoke line with no results file. That is fixed in this release, which is the only reason this step is provable at all."
+      },
+      "expectFailIn": [
+        1
+      ],
+      "note": "Collateral is wide and entirely expected: steps 21, 22, 23, 43 and 54 failed alongside on a green baseline, all of them steps that run the engine's self-test as a gate rather than as their subject - run_audit_core.ps1 raises a Fix from it and check-requirements.ps1 treats it as a required preflight result. A narrower mutation is not available and would not be better: the self-test is a single pass/fail signal, so anything that reddens this step reddens every consumer of it. Attribution stays clean because the mutation is one literal in one set in one test."
+    },
+    {
+      "step": 2,
+      "title": "Fixture JSON + manifest sections F and K",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/audit_code_checks.py",
+        "find": "\"modules\": sorted(set(domain_sections.get(letter, []))),",
+        "replace": "\"modules\": sorted(set(domain_sections.get(letter.lower(), []))),",
+        "why": "Lowercases the section key on the way into the domain map, whose keys are the uppercase section letters, so every lookup misses and each section's module list arrives empty. The manifest is what tells an agent which modules a section covers, so a section reports a complete review of a scope it was never given - and the row still exists, with the right letter and the right shape, which is why this reads as working code. A case mismatch on dictionary keys is the ordinary way this happens.",
+        "rejected": "Dropping the multi-module row from requiredSections was rejected because audit_code_checks.py --self-test asserts that letter directly, and step 1 runs first: the suite would abort before reaching step 2 and the runner could only report that no results file was written."
+      },
+      "expectFailIn": [
+        2
+      ],
+      "note": "The witness is the multi-module arm, which names the missing module rather than the empty list. Collateral is plausible here rather than ruled out: steps 11 and 12 read the same manifest, and if either asserts on modules it will fail alongside - attributable either way, since the mutated lookup is one expression in one function. Confirmed on a green baseline in a lane of its own: no collateral, and steps 11 and 12 stayed green, so the empty module list is visible only where the manifest row is asserted."
+    },
+    {
+      "step": 3,
+      "title": "run_audit_core.ps1 -SkipTests must exit 1",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/audit_code_checks.py",
+        "find": "    if not full_tests_ran:",
+        "replace": "    if full_tests_ran and not full_tests_ran:",
+        "why": "Stops a tests-skipped run from raising the incomplete-audit fix. The exit code is derived from the fix count, so a -SkipTests audit would then exit 0 and read as a completed audit - the loophole the rules and the skill both spend paragraphs forbidding."
+      },
+      "expectFailIn": [
+        3
+      ],
+      "note": "Mutating the fix that a skipped-tests run raises, rather than the exit statement, because the exit code is only a consequence of the fix list. A mutation of the exit line would leave the report saying the audit was incomplete while the code said it passed, which is a different defect from the one this step guards. Expect step 14 as collateral - it asserts the same fix reaches the manifest's gate list, so the two cannot be separated by any mutation of the fix itself."
+    },
+    {
+      "step": 4,
+      "title": "Template hygiene",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/templates/AUDIT.md.template",
+        "action": "create",
+        "content": "# Orphan duplicate audit template\n\nPlanted by the guard-proof runner. This is the defect step 4 exists to catch: a second audit\ntemplate at the templates root, which drifts from the one under templates/docs until two projects\nbootstrapped a month apart disagree about what the checklist says.\n",
+        "why": "The subject of this step is an absence, so nothing the runner could edit reaches it - which is why the step stayed exempt through eighteen batches while its spec was trivially writable. The create action exists for this shape and step 7's mirror of it.",
+        "rejected": "Editing the surviving template under templates/docs was rejected: it would prove that some other guard reads that file, and say nothing about whether this one notices a duplicate."
+      },
+      "expectFailIn": [
+        4
+      ],
+      "note": "First use of the create action (2.22.113). Collateral on a green baseline: steps 5 and 23, both for the same reason the orphan is a defect - it is in no manifest list, so the sync-tracking arm and the generated-project audit report an untracked template alongside."
+    },
+    {
+      "step": 5,
+      "title": "Rules and skill one-standard text",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/skills/agent-code-audit/SKILL.md",
+        "find": "Gate-only is forbidden. Gaps = Fix or Improve only.",
+        "replace": "Gate-only is forbidden, except that a debug audit script may run machine checks only. Gaps = Fix or Improve only.",
+        "why": "Plants the loophole this step exists to keep out. The skill is what an agent reads before auditing, so a sentence permitting machine checks only is not documentation drift - it is the instruction, and an audit that skips the tests is the failure mode the whole one-standard rule was written for. The exemption is phrased the way a real one would be: narrow, reasonable, and applying to exactly the case where someone is in a hurry.",
+        "rejected": "Removing the prohibition sentence instead would fail the positive arm, and was the candidate reconnaissance preferred. Planting the loophole is better for the same reason step 61 needed a planted construct: this arm expects zero findings from a text scan, and a scan that finds nothing looks identical whether the file is clean or the check is blind. The prohibition token appears exactly once in this file, so removal was available - it just proves less."
+      },
+      "expectFailIn": [
+        5
+      ],
+      "note": "Two files are scanned in the same loop, the skill and pack/rules/audit-protocol.mdc, and the mutation lands in the skill so the message names which one. Nothing else in the suite reads this skill, so no collateral is expected. Note that the same step number also carries the manifest-coverage arms, which are the expensive part deferred through sixteen batches; those remain unproven and this proof does not claim them."
+    },
+    {
+      "step": 6,
+      "title": "Config template hygiene",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/templates/docs/AUDIT.config.json.template",
+        "find": "  \"configVersion\": 1,",
+        "replace": "  \"configVersion\": 1,\n  \"runSectionTestsWhenSkipFull\": true,",
+        "why": "Puts the retired key back into the config every generated project starts from. It was removed because it let a project run a subset of its tests and still call the audit complete - and shipping it in the template means every new project inherits the loophole in its own config, where a later fix to the pack default cannot reach it. The same shape as WQ-452: four places carried that assumption and fixing only the code default left every project pinned."
+      },
+      "expectFailIn": [
+        6
+      ],
+      "note": "The key appears nowhere functional any more - only in this step and in the changelog entry recording its removal - so the mutation cannot reach another guard."
+    },
+    {
+      "step": 7,
+      "title": "Agent workflow docs",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/docs/AGENT_WORKFLOW.md",
+        "action": "delete",
+        "why": "Three of this step's four arms assert that a file is present, and the fourth reads text out of this one, so removing it is the regression the step describes: a doc renamed or moved while every rule that cites it keeps pointing at the old path. A delete is also the only mutation that reaches an existence check at all.",
+        "rejected": "Rewording the loop-back phrase was rejected on a measurement rather than on taste: 'all projects' occurs twice in this doc, and a find that matches twice is refused by design, so the spec would have had to quote nine lines of prose and would go stale on the next edit to any of them."
+      },
+      "expectFailIn": [
+        7
+      ],
+      "note": "Collateral on a green baseline: steps 23, 47 and 52, all of them consumers rather than subjects - the manifest lists this doc, so the cited-files, export and generated-project checks report it missing alongside. Attribution stays clean because step 7 is the only one whose subject it is."
+    },
+    {
+      "step": 8,
+      "title": "Semantic report verify",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/audit_code_checks.py",
+        "find": "head = get_current_tests_proof_head(app_root, cfg) or \"\"",
+        "replace": "head = \"\"",
+        "why": "Stubs out the test-pass proof head, which is the value that ties a semantic report to the test run it describes. With no head there is nothing to compare, so a report written against an older tree can never be found stale - the freshness gate stops being a gate. A stubbed return is the shape of a debugging leftover, and it is invisible in review because the call it replaces is on the line above in every diff.",
+        "rejected": "Weakening --verify-semantic-report itself was rejected because this step's fixture is valid: the verify is expected to exit 0, so a more permissive verify keeps the step green and proves nothing. Only the arms that require a value - proof head, template written, fill succeeded - can witness a defect here."
+      },
+      "expectFailIn": [
+        8
+      ],
+      "note": "Steps 9 and 10 also ask for the proof head but do not require it to be non-empty, so they proceed with an empty value in the manifest stub and stay green. That asymmetry is the reason this target is attributable at all."
+    },
+    {
+      "step": 9,
+      "title": "Semantic cite validation",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/audit_code_checks.py",
+        "find": "require_cites = cc.get(\"semanticReportRequireCites\", True)",
+        "replace": "require_cites = cc.get(\"semanticReportRequireCites\", False)",
+        "why": "Flips the default to cites-optional, so 'problem found with no cite' is accepted as a reviewed section. That is the loophole the requirement exists to close: a report can claim a finding in prose while naming no file, and a later reader cannot tell whether the section was reviewed or narrated. The default is the target because a project that never sets the key is every project using the template unmodified.",
+        "rejected": "Mutating `summary_has_cite` to `return True` looks more direct and is useless here: audit_code_checks.py --self-test asserts that predicate directly, so step 1 fails first, the suite aborts before writing results, and the runner reports 'no results file' rather than anything about step 9. A mutation has to survive the checks upstream of the step it is aiming at."
+      },
+      "expectFailIn": [
+        9
+      ],
+      "note": "Permissive by direction: under the mutation validation accepts more, so collateral would have to come from another step that asserts a *rejection*. The pack's own report carries real cites, so its verify is unaffected.",
+      "foundDefect": "The mutation left the suite green, because the step was passing for reasons it did not name. Its fixture omitted modulesReviewed[], which is required for sections D-K, and gave section D a lone 'command' evidence item, which also trips the file/test requirement when not clean - so the verify had two other grounds to reject and would have rejected with cite checking switched off entirely. The fixture now supplies modulesReviewed and valid file evidence, leaving the missing cite as the only defect, and the step asserts the rejection message mentions the cite."
+    },
+    {
+      "step": 10,
+      "title": "Semantic evidence validation",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/audit_code_checks.py",
+        "find": "min_not_clean = int(cc.get(\"semanticReportEvidenceMinWhenNotClean\", 1))",
+        "replace": "min_not_clean = int(cc.get(\"semanticReportEvidenceMinWhenNotClean\", 0))",
+        "why": "Drops the required evidence count to zero by default, restoring the state before evidence was mandatory: a section may report a real finding with an empty evidence array, so the claim is unverifiable by anyone who did not watch the review happen. The default is the right target because a project that never sets the key - which is every project using the template unmodified - is exactly who this protects."
+      },
+      "expectFailIn": [
+        10
+      ],
+      "note": "Chosen over inverting `not clean` because that inversion would demand evidence for every 'Nothing found.' section, which the pack's own report has by the dozen - the whole verify would collapse and the proof would say nothing about this step. Lowering the default touches only the not-clean branch.",
+      "foundDefect": "The mutation left the suite green, because the step was passing for a reason it did not name: modulesReviewed[] is required for sections D-K, the fixture omitted it, and the verify was rejecting the report over that rather than over the empty evidence array. The fixture now supplies modulesReviewed and the step asserts the rejection message mentions evidence, so a disabled evidence minimum can no longer hide behind an unrelated rejection."
+    },
+    {
+      "step": 11,
+      "title": "machineCoverage completeness",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/audit_code_checks.py",
+        "find": "\"machineCheckCount\": len(machine),",
+        "replace": "\"machineCheckCount\": None,",
+        "why": "Blanks the per-section count of machine checks while leaving the coverage map populated. That is the shape of a real refactor loss: the manifest still lists sections and still looks complete, so an agent reading it cannot tell that a section has zero machine checks behind it and needs the deeper semantic pass. A null that renders as empty is worse than a missing key, which would at least raise."
+      },
+      "expectFailIn": [
+        11
+      ],
+      "note": "The count is what makes coverage actionable - the map alone says a section was considered, not how much of it a machine actually checked.",
+      "collateral": "Step 2 also fails, and that is correct rather than noise: it reads the same manifest and asserts sections F and K arrive complete, so a blanked count is a real defect from where it is standing too. A narrower mutation would have to single out one section by letter, which is not a shape any refactor produces."
+    },
+    {
+      "step": 12,
+      "title": "Semantic vs machine alignment",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/audit_code_checks.py",
+        "find": "        if is_clean_summary(summary):",
+        "replace": "        if not is_clean_summary(summary):",
+        "why": "Negates the alignment test, so a section may report 'Nothing found.' while machine checks hold open issues for it - and a section that honestly describes those issues gets reported instead. This is the check that stops a semantic review from contradicting the machine half of the same audit, which is the one contradiction a reader has no way to detect from the report alone."
+      },
+      "expectFailIn": [
+        12
+      ],
+      "note": "A negation slip rather than a disabled branch: `if False` would prove the same step and describe a defect nobody writes. The inversion also keeps the check running and reporting, which is the harder failure to notice.",
+      "foundDefect": "The mutation left the suite green. The fixture removed hardware_cache.py from section F's modulesReviewed[] as well as from disk, and the omission raises its own 'modulesReviewed missing' fix - so the verify was rejecting the report over coverage and would have kept rejecting it with the alignment test negated. Reproducing the fixture by hand showed eleven other fixes in the same output. modulesReviewed now keeps the module, which is also the truer fixture: the expanded domain map is built from config rather than disk, so a section listing a deleted module is exactly the contradiction under test - it claims to have reviewed what the machine reports missing. The step now asserts the rejection quotes \"cannot be 'Nothing found.'\"."
+    },
+    {
+      "step": 13,
+      "title": "Section L gitignore audit artifacts",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/audit_code_checks.py",
+        "find": "        if not found and norm not in combined.replace(\"\\\\\", \"/\"):",
+        "replace": "        if found and norm not in combined.replace(\"\\\\\", \"/\"):",
+        "why": "Inverts the report condition, so a .gitignore that is missing an audit artifact passes and one that lists it is reported instead. Chosen over emptying the default list because an empty list is a visibly broken config, while an inverted test looks like a working check right up to the point where a manifest full of machine paths gets committed."
+      },
+      "expectFailIn": [
+        13
+      ],
+      "note": "Low collateral by construction: under the mutation the check reports fewer real gaps, so other steps and generated-project audits lose a fix rather than gain one."
+    },
+    {
+      "step": 80,
+      "title": "The shipped POSIX surface avoids what macOS does not have (WQ-455)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/verify-lib.ps1",
+        "find": "if ($line -match $rule.Pattern) { $hits += \"line ${n}: $($rule.Name)\" }",
+        "replace": "if ($false) { $hits += \"line ${n}: $($rule.Name)\" }",
+        "why": "Makes every detector report nothing, so a shell script calling sha256sum or declare -A passes as portable. That is the state this step was added from: the macOS surface unverified, with no Mac available to find out. A silent detector is the right defect to recreate, because the check would still run, still print, and still say the surface is clean."
+      },
+      "expectFailIn": [
+        80
+      ],
+      "note": "The positive cases are the point: a detector nobody has watched fire is a detector nobody has tested, and this step exists precisely because the hardware that would otherwise catch these is unavailable. The first control guards the opposite failure - a check that flags portable code gets muted, and a muted check is worse than none."
+    },
+    {
+      "step": 14,
+      "title": "auditGateFixes manifest (Incomplete audit not in Section L)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/run_audit_core.ps1",
+        "find": "if ($f -match '^Semantic report missing|^Semantic report invalid|^Semantic report verify failed|^Incomplete audit') {",
+        "replace": "if ($f -match '^Semantic report missing|^Semantic report invalid|^Semantic report verify failed') {",
+        "why": "Stops 'Incomplete audit' from being recognised as a gate fix, so it drops out of auditGateFixes and falls through into the per-section mapping instead. Both halves are the defect this step is named for: an agent reading auditGateFixes sees a complete audit, and the gate condition reappears as though some section owned it - Section L historically, which made a whole-audit problem look like one checklist item somebody could tick off."
+      },
+      "expectFailIn": [
+        14
+      ],
+      "note": "Distinct from step 3, which asserts audit_code_checks.py *raises* the incomplete-audit fix. This step asserts run_audit_core.ps1 files it in the right channel afterwards - raising it and then misfiling it is a separate failure, and mutating the recogniser separates the two cleanly."
+    },
+    {
+      "step": 15,
+      "title": "Semantic gate fix patterns (not Section L wiring)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/run_audit_core.ps1",
+        "find": "            if ($f -match 'Audit sync|Audit wiring|Code checks|Missing audit file|Old audit|forbidden rule|Forbidden') {",
+        "replace": "            if ($f -match 'Semantic report|Audit sync|Audit wiring|Code checks|Missing audit file|Old audit|forbidden rule|Forbidden') {",
+        "why": "Widens the Section L wiring bucket until it also claims the gate messages the engine emits, which is precisely what this step's title says must not happen. Runtime output does not change - the gate branch above returns first - so the only thing that notices is the step whose subject this is.",
+        "rejected": "Rewording the engine's message was rejected because the step would then stop recognising it as a gate message at all and would report nothing; a mutation has to break the invariant, not remove one side of it from view."
+      },
+      "expectFailIn": [
+        15
+      ],
+      "note": "The step was rewritten in the same release (2.22.113) before it could be proven. It previously matched four sample strings, written out eight lines above, against two regexes also written out there - no mutation of the pack could have made it fail, and it had passed unchanged through every rewording of the messages it claimed to check. It now reads the classifier out of run_audit_core.ps1 and the messages out of audit_code_checks.py, so it fails when those two disagree."
+    },
+    {
+      "step": 16,
+      "title": "FinalizeOnly blocked without prior test pass",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/run_audit_core.ps1",
+        "find": "if (Test-ManifestFinalizeAllowed $AppRoot $RepoRoot $cfg) { $testsPassed = $true }",
+        "replace": "$testsPassed = $true",
+        "why": "Trusts the mode instead of the proof, so -FinalizeOnly certifies a project whose tests were never run - or were run against a different tree. Finalize is the step that stamps the audit as complete, so the whole gate reduces to whichever switch the caller passed."
+      },
+      "expectFailIn": [
+        16
+      ],
+      "note": "Rejected once before it was proven: the mutation left the step green because the run still exited non-zero over the incomplete semantic report, and the message assertion was 'test|proof|manifest' - three words ordinary audit output contains. WQ-466 gave this step a message check; it did not check that the message was specific. The assertion now looks for 'Audit finalize blocked', which only Test-ManifestFinalizeAllowed emits. Steps 17 and 23 go red alongside it, and that is the blast radius rather than noise: the bypassed function is also what loads testsGitHead and testsPassedAt out of the manifest, so a finalize that stops checking the proof also stops preserving it, and a generated project's own audit inherits both."
+    },
+    {
+      "step": 17,
+      "title": "FinalizeOnly preserves manifest test-pass proof",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/run_audit_core.ps1",
+        "find": "$man | Add-Member -NotePropertyName testsGitHead -NotePropertyValue $TestsGitHead -Force",
+        "replace": "$man | Add-Member -NotePropertyName testsGitHead -NotePropertyValue $TestsPassedAt -Force",
+        "why": "Writes the timestamp into the field that holds the test-pass proof - the copy-paste slip between two adjacent Add-Member lines, which is what makes it realistic. The proof is how a finalize pass knows the tests it is finalizing are the tests that ran against this tree; replaced by a timestamp, it can never match a recomputed head, so the pairing silently stops being checkable while both fields still look populated.",
+        "rejected": "Wrapping the value in a conditional on FinalizeOnly was proposed and rejected as unrealistic - nobody ships a guard clause that blanks a field only on one code path. A field typo between neighbouring lines is a mistake that survives review."
+      },
+      "expectFailIn": [
+        17
+      ],
+      "note": "The witnessing arm compares the value after finalize against the value pass 1 recorded and prints what it got, so the failure names the timestamp sitting where a head belongs. Collateral is expected in steps that read the same proof field - step 18's finalize path and step 23's git-backed arm, which asserts the proof is commit-plus-content."
+    },
+    {
+      "step": 18,
+      "title": "Auditor workflow E2E - pass 1, semantic, finalize exit 0",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/audit_code_checks.py",
+        "find": "        if not entry.get(\"reviewed\"):",
+        "replace": "        if entry.get(\"reviewed\"):",
+        "why": "Inverts the semantic gate's reviewed test, so a fully reviewed report is refused and a report nobody read is accepted. This step is the only one that walks the whole auditor path - write the template, fill every section, finalize - and a gate that can never be satisfied stops it at the last move while leaving the earlier passes intact.",
+        "rejected": "Breaking the finalize entry point itself was rejected: it fails this step by never reaching the gate, which proves the script runs rather than that the workflow completes."
+      },
+      "expectFailIn": [
+        18
+      ],
+      "note": "Collateral on a green baseline: steps 8, 9, 10 and 23, which is every other step that fills a semantic report and expects it to verify. The inversion is one token in one condition, so nothing else in the engine changes shape."
+    },
+    {
+      "step": 19,
+      "title": "Audit phase timing log",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/run_audit_core.ps1",
+        "find": "if ($Name) { $script:AuditPhases[$Name] = [math]::Round($script:PhaseWatch.Elapsed.TotalSeconds, 3) }",
+        "replace": "if ($Name -and $script:AuditPhases.Count -gt 0) { $script:AuditPhases[$Name] = [math]::Round($script:PhaseWatch.Elapsed.TotalSeconds, 3) }",
+        "why": "A guard that requires the map to be non-empty before writing the first entry can never write anything, so every run logs \"phases\": {} and the audit keeps reporting a total with no breakdown. The log still appears, still parses, and still carries totalSeconds - which is exactly why the original assertion missed it."
+      },
+      "expectFailIn": [
+        19
+      ],
+      "note": "Retrofitting this step found the assertion was unable to fail this way: `-not $tl.phases` is false for an empty JSON object, because ConvertFrom-Json returns an object with no properties rather than $null. The step now counts the properties, and the mutation above is what proves the count is load-bearing."
+    },
+    {
+      "step": 20,
+      "title": "Mirror direction - source pack wins, installed copy never writes back",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/sync-audit-system.ps1",
+        "find": "    Copy-File $Src $Dst",
+        "replace": "    Copy-File $Dst $Src",
+        "why": "Reverses the default mirror direction, so a machine-local installed copy overwrites the source pack. That is the failure the direction rule exists to prevent, and it is silent: the sync reports success while quietly moving edits the wrong way, and on a removable source pack the loss is unrecoverable because this checkout keeps no version control."
+      },
+      "expectFailIn": [
+        20
+      ],
+      "note": "The four-space indent matters: the same call appears inside a one-line if on the preceding branch, and a spec matching twice is rejected."
+    },
+    {
+      "step": 21,
+      "title": "Requirements preflight",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/check-requirements.ps1",
+        "find": "Add-Result -Name 'git' -Status ok -Required $false -Detail $gitProbe.output",
+        "replace": "Add-Result -Name 'git' -Status ok -Required $true -Detail $gitProbe.output",
+        "why": "Promotes git from optional to required, which contradicts the decision WQ-459 settled: version control is optional to this pack, and a download, a zip, a folder copy and a flash drive are all supported deliveries. A required git tells a first-time user on any of those that the audit engine cannot run, when the only thing they lose is a git-HEAD fingerprint in place of a file-tree one - and it would declare this very checkout unfit, since it keeps no repository at all. One boolean, in the branch that runs whenever git is present, so the preflight still exits 0 and still reports ok: nothing looks wrong except the column that says whether the user has to act.",
+        "rejected": "Breaking the Python probe so the preflight exits non-zero was rejected: it proves the gate rather than the required-versus-optional split, and several steps downstream depend on this preflight passing, so the failure would spread to steps that say nothing about requirements."
+      },
+      "expectFailIn": [
+        21
+      ],
+      "note": "One arm is the witness, by construction: git is on PATH on any machine running the suite, so the ok branch is the live one, the aggregate stays ok, and the exit code does not move - only 'required vs optional split (git and mcp optional)' can see it. Step 41 also reads this script and is unaffected, because it asserts the presence of the cross-platform gates by text rather than any requirement's flag."
+    },
+    {
+      "step": 22,
+      "title": "Pack tests run without pytest",
+      "status": "mutation",
+      "mutation": {
+        "file": "scripts/run_audit_tests.ps1",
+        "find": "$dual = @('-DualShell')",
+        "replace": "$dual = @()",
+        "why": "Drops the flag that runs the behavior suite on both PowerShell hosts. Half the coverage disappears and every run still reports OK, which matters more here than in most projects: 5.1-versus-7 divergence is a defect class this pack has shipped before - a BOM on one host, -Include matching 3723 files on one and 4 on the other - and it is invisible unless both hosts actually execute. Removing a flag to make the suite finish sooner is the most ordinary way this protection is lost.",
+        "rejected": "Inverting the exit code in tests/test_pack_audit.py was the other candidate and is weaker: it fails the run arm, which is an exit-code assertion, while this target fails the delegation arm on its own named message about losing both-host coverage."
+      },
+      "expectFailIn": [
+        22
+      ],
+      "note": "The static arm greps the implementation rather than running it, so the mutation costs nothing at runtime and no other step reads this file. The run arm keeps passing, correctly - the unit tests still work, which is exactly the state that makes lost host coverage hard to notice."
+    },
+    {
+      "step": 23,
+      "title": "Bootstrap smoke - a generated project audits itself",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/bootstrap-project.ps1",
+        "find": "    PROJECT_NAME   = $ProjectName",
+        "replace": "    PROJECT_NAMES  = $ProjectName",
+        "why": "Renames one key in the substitution map without touching the templates that use it, so every generated file keeps the raw placeholder. That is not a hypothetical shape - a project once shipped with a literal placeholder in the title of its handoff README because one writer plain-copied where the others substituted - and this step is what stands between that and a user's new project.",
+        "rejected": "Breaking the generated audit entry point was rejected: it reddens this step through a crash rather than through the generator handing the user a half-finished file, and the crash arm is already reachable from several other mutations."
+      },
+      "expectFailIn": [
+        23
+      ],
+      "note": "This step generates four projects and audits each of them, so it is the slowest in the suite; that is a reason to keep the mutation narrow, not a reason to leave it unproven. Nothing outside bootstrap reads this map."
+    },
+    {
+      "step": 24,
+      "title": "Executed code is ASCII and BOM-free",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/audit_code_checks.py",
+        "find": "\"\"\"Domain map lists modules - verify each concrete *.py exists on disk.\"\"\"",
+        "replace": "\"\"\"Domain map lists modules \u2014 verify each concrete *.py exists on disk.\"\"\"",
+        "why": "Puts an em dash in a docstring of a file that runs, which is the exact character behind three separate failures: PowerShell 5.1 reads a BOM-less file as ANSI and turned an em dash into a stray quote that broke parsing, and a generated project's tests died printing one to a cp1252 console. A docstring is the right site because it is the place an author is most likely to type real typography without thinking of it as code."
+      },
+      "expectFailIn": [
+        24
+      ],
+      "note": "Written as \\u2014 so this registry file stays ASCII itself. The runner unescapes on read, so the mutated copy carries the real character - a literal em dash here would make the control file an instance of what it is testing for."
+    },
+    {
+      "step": 25,
+      "title": "Fixture filler refuses outside the harness",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/audit_code_checks.py",
+        "find": "if os.environ.get(\"AUDIT_FIXTURE_TEST\") != \"1\":",
+        "replace": "if os.environ.get(\"AUDIT_FIXTURE_TEST\") == \"0\":",
+        "why": "Turns the opt-in into a test almost nothing satisfies, so --fill-semantic-fixture-test runs for any caller. That flag marks every checklist section reviewed with no findings and fills the counts the semantic gate cross-checks, which makes it a one-command way to fake an audit - and it ships in every install."
+      },
+      "expectFailIn": [
+        25
+      ],
+      "note": "The suite sets AUDIT_FIXTURE_TEST=1 for its own fixtures, so a mutation that only widens the gate leaves every other step working normally. That is the danger the step exists for: nothing breaks when this guard goes, which is why it needs a test rather than a code comment."
+    },
+    {
+      "step": 26,
+      "title": "Installer profile writes (MCP merge + copy filter)",
+      "status": "mutation",
+      "mutation": {
+        "file": "install.ps1",
+        "find": "        if (-not $root.PSObject.Properties['mcpServers'] -or $null -eq $root.mcpServers) {",
+        "replace": "        if ($root.PSObject.Properties['mcpServers'] -or $null -eq $root.mcpServers) {",
+        "why": "Drops the negation from the test that adds an empty server map only when the file lacks one, so a config that *does* have servers gets that map overwritten with an empty one and every server the user configured is gone after the install writes the file back. This is the original defect's symptom restored exactly - the installer once kept only agent-hygiene and destroyed the rest - and it is the worst class of bug this pack can ship, because it happens during an install, to a file the pack does not own, on a machine where the user's other MCP servers are the reason the config exists.",
+        "rejected": "Replacing the Add-Member registration with the dot-assignment that caused the original incident was rejected as the less precise mutation: the assignment throws on a PSCustomObject from ConvertFrom-Json, and the throw escapes to the step's own catch, so the step fails through 'installer probe error' rather than through the arm that counts surviving servers. A sign error that keeps the function running proves the arm; an exception proves the try block."
+      },
+      "expectFailIn": [
+        26
+      ],
+      "note": "The first arm names it precisely - 'MCP merge kept 1 of 3 servers - pre-existing servers destroyed' - and the BOM arm keeps passing, correctly, since the write path is untouched. No collateral is expected: install.ps1 is the one script the suite cannot run for real, so its functions reach the suite only through the AST extraction this step performs, and no other step extracts Merge-McpJson."
+    },
+    {
+      "step": 27,
+      "title": "Agent context refresh (stamp, change detection, pack vs app brief)",
+      "status": "mutation",
+      "note": "Two arms are the witnesses and both were built as a matched pair - a negative control on alwaysApply:false and a positive control on a rule arriving in the load path - which is why an inversion cannot hide here. Step 54 also runs this script through the shell wrapper but asserts only that a context file was written, so it stays green. Steps 52 and 54 also reported failures. Collateral observed in this run was measured under four concurrent prover lanes, and steps 52 and 23 fail there from file-sharing contention in the export and bootstrap probes rather than from any mutation - the same contention failed one lane's baseline outright. Their appearance below is therefore unverified as collateral, not confirmed as it. Filed as WQ-474. The claim above that step 54 stays green is what this run could not confirm; it needs one uncontended lane to settle.",
+      "mutation": {
+        "file": "pack/scripts/refresh-agent-context.ps1",
+        "find": "-match '(?m)^\\s*alwaysApply:\\s*true\\s*$'",
+        "replace": "-match '(?m)^\\s*alwaysApply:\\s*false\\s*$'",
+        "why": "Inverts the front-matter test that decides whether a rule is always-on, which is the single question WQ-456 was about: a rule can be present, correct and never loaded, and months of work went missing that way. Under the mutation an always-on rule in the load path is reported as not loaded, and a rule explicitly marked alwaysApply:false is counted as loaded - so the brief tells an agent the opposite of what its editor will do, in both directions.",
+        "rejected": "Renaming the firstRefresh marker was rejected as too cheap: it fails a labelling arm with no consequence for a reader, while the rule-load verdict is the part of this brief an agent acts on."
+      },
+      "expectFailIn": [
+        27
+      ]
+    },
+    {
+      "step": 28,
+      "title": "Layout hygiene reports Improve, not delete-only Fix",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/run_audit_core.ps1",
+        "find": "Add-LayoutImprove \"Layout - duplicate stable copy in repo",
+        "replace": "Add-LayoutFix \"Layout - duplicate stable copy in repo",
+        "why": "Routes a layout finding into Fix, which is the state Section B was in before this step existed: a delete list an agent can close by deleting, without ever judging whether the tree is comprehensible. Add-LayoutFix is a real function in the same file, so this is a one-word slip a reviewer would read straight past."
+      },
+      "expectFailIn": [
+        28
+      ],
+      "note": "Only the channel assertion moves. Add-LayoutFix still records the line in $script:LayoutImproves, so the manifest arm and the glossary/duplicate/ephemeral reporting arm both stay green - the mutation isolates the Improve-vs-Fix claim rather than knocking the whole step over."
+    },
+    {
+      "step": 29,
+      "title": "Cross-version parity (PowerShell 5.1 vs 7)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/run_audit_core.ps1",
+        "find": "#Requires -Version 5.1",
+        "replace": "# Requires PowerShell 5.1",
+        "why": "Turns the version floor into a comment. The directive is what stops Windows PowerShell from starting a script that needs 7, failing in the middle of an audit instead of at the door; as prose it enforces nothing and still reads as documented. This is a tidying edit, which is why it is the realistic one - nobody deletes a floor on purpose.",
+        "rejected": "Making the shared BOM-free writer emit a BOM was rejected on blast radius: it fails the parity probe convincingly but takes every BOM-sensitive step with it, and a mutation whose collateral is that wide cannot say which promise it broke."
+      },
+      "expectFailIn": [
+        29
+      ],
+      "note": "The floor arm names the offending script by filename. The cross-host parity probe and the single-writer arms keep passing, correctly: removing a directive changes no behaviour on either host, which is precisely why the loss would otherwise go unnoticed until a 7-only construct arrived."
+    },
+    {
+      "step": 30,
+      "title": "Stale agent context surfaces in the audit, addressed to the agent",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/run_audit_core.ps1",
+        "find": "} elseif ($stamped -ne $manifest.version) {",
+        "replace": "} elseif ($stamped -eq $manifest.version) {",
+        "why": "Inverts the staleness comparison, so the audit stays silent on exactly the project that needed telling and speaks up on the one that is current. That restores the pre-WQ-456 world with a twist that is worse than it: before, nothing reported staleness at all, and the only way to discover it was to run the refresh the warning would have told you to run; under this mutation the line still exists, so it looks like the feature is working while it reports the opposite population.",
+        "rejected": "Re-routing the line from Improve to Fix was the other candidate and was rejected on blast radius rather than realism - it is realistic, and an arm asserts against it - but an extra Fix changes the audit's exit code on a fixture several other steps run, so the failure would spread to steps that have nothing to say about agent context."
+      },
+      "expectFailIn": [
+        30
+      ],
+      "note": "Two arms fail and both belong to this step, which is the point of asserting the check in both directions: the stale-stamp arm loses the line it greps for, and the current-stamp arm - 'a current stamp clears the line', added so the warning cannot become wallpaper - now sees a nag. The no-stamp and bootstrap-stub arms keep passing, correctly, because neither reaches the mutated comparison. Channel is unchanged (still Improve, exit code unaffected), so the fixture-driven steps that share this script are undisturbed."
+    },
+    {
+      "step": 31,
+      "title": "Work queue ensure + verify (pack + behavior fixture)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/ensure-work-queue.ps1",
+        "find": "Join-Path $ProjectRoot 'docs/WORK_QUEUE.md'",
+        "replace": "Join-Path $ProjectRoot 'docs/WORK_QUEUE_UNBACKFILLED.md'",
+        "why": "Points the backfill at a name no project reads, so a project missing its work queue silently stays missing one while the script still reports success. That is the whole job of ensure-work-queue.ps1 - the queue exists so nothing falls off the radar, and a backfill that writes to the wrong path takes the radar with it."
+      },
+      "expectFailIn": [
+        31
+      ],
+      "note": "Retrofit under WQ-462. Low collateral by construction: the other callers (refresh-agent-context.ps1, verify-agent-setup.ps1) only reach the write path when docs/WORK_QUEUE.md is absent, and in the pack it is present, so they take the skip branch."
+    },
+    {
+      "step": 32,
+      "title": "Portable rule/skill exports (multi-tool Phase 2)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/sync-portable-docs.ps1",
+        "find": "if ($onDiskRules -ne $built.GenericRules) {",
+        "replace": "if ($onDiskRules -eq $built.GenericRules) {",
+        "why": "Inverts the drift comparison, so a stale export passes verification and a current one is reported stale. The export is the paste-at-session-start rules file for every tool that is not Cursor, so the population this check protects cannot notice the staleness any other way - they read what the file says, not what the pack ships. A flipped comparison operator keeps the function's shape, its output and its exit code paths intact.",
+        "rejected": "Breaking the front-matter stripper was rejected because its damage only appears the next time exports are rebuilt, so the mutation would prove the verify notices a different thing than the one under test."
+      },
+      "expectFailIn": [
+        32
+      ],
+      "note": "Fixed in 2.22.115 (WQ-471): this step used to assert only that the child exited non-zero, with its output discarded, so it could not say which drift was found and a detector that had stopped comparing anything would have satisfied it. It now requires the verify to name GENERIC_RULES.md and to have compared this repo's loaded rules - that arm skips silently where .cursor/rules is absent, and here it must run - and it carries a positive control on a disposable two-file pack where four kinds of drift are planted in turn and each must be reported by name. Collateral is now confirmed rather than suspected: step 23 fails too, because it drives a generated project through its own audit, which runs this same verify, so an inverted comparison reports the project's current export as stale. Step 52 was the contention artefact, not collateral. Collateral observed in this run was measured under four concurrent prover lanes, and steps 52 and 23 fail there from file-sharing contention in the export and bootstrap probes rather than from any mutation - the same contention failed one lane's baseline outright. Their appearance below is therefore unverified as collateral, not confirmed as it. Filed as WQ-474."
+    },
+    {
+      "step": 33,
+      "title": "Portable bootstrap (-Targets Portable)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/verify-portable-bootstrap.ps1",
+        "find": "$portableOnly = ($targets.Count -eq 1 -and $targets[0] -eq 'Portable')",
+        "replace": "$portableOnly = ($targets.Count -eq 1 -and $targets[0] -ne 'Portable')",
+        "why": "Inverts the test for a Portable-only project, so the verify recognises every target except the one it is named for. A project bootstrapped with -Targets Portable is then judged against the wrong profile, which is worse than no check: the tool-neutral layout is the whole point of that target, and this is the check that keeps editor-specific files out of it.",
+        "rejected": "Renaming the destination of the generated audit rule inside bootstrap-project.ps1 was rejected on collateral: five steps run that bootstrap, so the proof would arrive with four unrelated failures. This script is run by step 33 alone."
+      },
+      "expectFailIn": [
+        33
+      ],
+      "note": "Fixed in 2.22.115 (WQ-471): the arms asserted two zero exits and read nothing, so a bootstrap that generated nothing and a verify that judged nothing would both have passed. The step now reads the files a Portable project is bootstrapped for - the instructions hub, the rules export, the bootstrap record - and requires the verify to state the Portable-only profile it was asked to enforce, which is the one thing the switch exists for."
+    },
+    {
+      "step": 34,
+      "title": "Tool adapter register (Claude/Copilot/Windsurf)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/templates/portable/windsurfrules.template",
+        "find": "Agent runs commands; user verifies outcomes",
+        "replace": "Agents should ask before running anything",
+        "why": "Drops the execute-and-verify discipline from one shipped adapter template. The adapter still gets written and the project still bootstraps, so the step only goes red at the arm that matters: the registration script reads the generated file and finds the required reference gone. That is how this breaks in practice - a template is reworded and nobody re-reads the checker that quotes it.",
+        "rejected": "Breaking the registration script was rejected as the WQ-471 shape: this step asserts two exit codes and nothing else, so a mutation there proves it notices a non-zero exit rather than that it notices a defective adapter."
+      },
+      "expectFailIn": [
+        34
+      ],
+      "note": "The first attempt at this proof came back green and the step was the thing at fault. It asked bootstrap for Claude, Copilot and Windsurf as a PowerShell array, and Invoke-PackScript sends arguments through `-File`, whose binder keeps the first element and drops the rest silently - so the project had one adapter, the registration reported the other two as skipped, and both OK lines printed. Two thirds of the step's subject had never been checked. Fixed in 2.22.113 at the transport (Expand-PackListArgument, used by both entry points) and in the step, which now asserts the recorded targets, the three files on disk, and that nothing was skipped. The Claude and Copilot templates carry the same phrase; only the Windsurf one is mutated, so the failure names a single file. Collateral on the proving run: steps 23, 54 and 78, all of which build generated projects that now carry the reworded template."
+    },
+    {
+      "step": 35,
+      "title": "Agent context freshness MCP module (Phase 6b)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/agent_context_freshness.py",
+        "find": "        if fresh_brief.get(\"permission\") != \"none\":",
+        "replace": "        if fresh_brief.get(\"permission\") == \"none\":",
+        "why": "Inverts the self-test's own expectation about a fresh context, so the module reports a self-test failure when it is behaving correctly and passes when it is not. The subject of this step is precisely that the freshness module can check itself before an agent trusts its verdict about whether the pack context is stale.",
+        "rejected": "Inverting check_freshness itself - the production comparison - was rejected because step 38 exercises the same function against a stale install and would fail alongside, and a two-step failure cannot say which of the two promises broke."
+      },
+      "expectFailIn": [
+        35
+      ],
+      "note": "The remaining arms of this step are substring checks over the MCP server source, which assert that two tools are exposed rather than that they work; the self-test is the only arm that executes anything, which is why the mutation goes there. No collateral expected: the mutated line is inside the self-test body."
+    },
+    {
+      "step": 36,
+      "title": "Handoff archive script (preview default, Apply gated)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/archive-completed-handoff.ps1",
+        "find": "    if (-not $Apply) {",
+        "replace": "    if (-not $Apply -and $Apply) {",
+        "why": "Makes the preview branch unreachable, so a run with no -Apply falls straight through to Move-Item and archives the handoff it was only asked to describe. That is the one defect this script must never have: the docs tell agents to run it without -Apply because the default is safe, and an unsafe default would be discovered by a human missing a file rather than by a failing check. The condition is written as a plausible extra term rather than $false, since a typo in a guard is what actually happens.",
+        "rejected": "Deleting the whole preview block is the more realistic edit and was not used: it spans four lines, and a multi-line find has to match this file's line endings exactly, so the spec would break on the first checkout that stores them differently."
+      },
+      "expectFailIn": [
+        36
+      ],
+      "note": "Two arms see it, which is why the mutation is narrow: the eligible-preview arm loses the 'Would move' line it asserts on, and the same arm finds the file gone before -Apply was ever passed. The active-handoff arms still pass, correctly - the status gate stops the loop before this branch is reached, so those arms are not evidence about -Apply at all. Only step 36 exercises this script, so no collateral is expected."
+    },
+    {
+      "step": 37,
+      "title": "Complete-picture handoff verify (WQ-206)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/verify-complete-picture.ps1",
+        "find": "    if ($doneIdSet.Count -eq 0) { return }",
+        "replace": "    if ($doneIdSet.Count -ge 0) { return }",
+        "why": "Turns the no-work-to-do shortcut into an unconditional return, so a roadmap that still marks a shipped id as Next, or still links its active handoff, is never reported. This is the WQ-432 shape restored as a defect: the same function returns early and legitimately when nothing is Done, which is why the mutated line reads as working code and why the check's own output looks identical to a clean run - it prints nothing either way.",
+        "rejected": "Deleting one of the two roadmap patterns was rejected because the step's arm would still fire on the other, and a guard that half fires is not the failure this proves - the question is whether the alignment check runs at all."
+      },
+      "expectFailIn": [
+        37
+      ],
+      "note": "Permissive by direction, so the pack-repo arm and the header-alignment arm keep passing correctly - the header check is a separate function that the mutation does not reach, which is what makes the failing arm attributable. Step 56 also drives this script through Update-AgentStack -VerifyOnly and is unaffected for the same reason: under the mutation the child reports fewer findings, not more."
+    },
+    {
+      "step": 38,
+      "title": "Agent session-start freshness (WQ-308 Phase D1)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/templates/cursor/hooks/session-freshness.ps1",
+        "find": "$ErrorActionPreference = 'Stop'",
+        "replace": "$ErrorActionPreference = 'Stop'\n$null = [Console]::In.ReadToEnd()",
+        "why": "Restores the unguarded [Console]::In.ReadToEnd() that hung the audit for eleven minutes under bash in 2.22.63 - the historical defect verbatim, in the file and at the point where it originally sat. Cursor closes the handle, so there the read returns at once and nothing looks wrong; every other parent leaves the pipe open and the hook never returns. Measured before declaring: the current hook exits in 0.35-0.55s with stdin held open on both PowerShell hosts, and with this line restored it is still running at 15s on both.",
+        "rejected": "Batch seventeen raised the bounded drain's timeout from 250ms to 60s and the suite stayed green, because the drain it raised never ran - a scriptblock cast to a delegate has no runspace on a threadpool thread, so the task faulted in ~6ms (WQ-473). The drain is removed in this release rather than repaired, and the repair was tried first: a real off-thread read bounded by WaitOne(250) drains correctly in isolation and exits in about half a second, yet the same read inside this hook, which goes on to spawn a Python child that inherits the handle, hung past 15s on both hosts. Nothing here reads the payload for any purpose, so the courtesy cost more than it bought."
+      },
+      "expectFailIn": [
+        38,
+        58
+      ],
+      "note": "Step 58 is declared rather than discovered: the mutation puts an unguarded stdin read back in the template, which is exactly the shape repair-project-hooks.ps1 calls stale, so its current-hook arm must go red too. Step 23 also fails and is left undeclared on purpose - it is a consequence, not a witness: a project generated from a stale template gets a repair Fix from its own audit, which is the defect reaching a user rather than a test. The witness in step 38 is the arm that starts the hook with stdin redirected and never written to and fails if it has not exited within 20s. Proving this step twice changed the guard itself: the arm that runs the hook on fresh context had no bound, so the first attempt hung for half an hour instead of failing, and the runner had no timeout to notice."
+    },
+    {
+      "step": 39,
+      "title": "Hub doc repair + project-local portable rules (WQ-308 D3)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/repair-agent-docs.ps1",
+        "find": "    $needsCopy = $true",
+        "replace": "    $needsCopy = $false",
+        "why": "Initialises the copy decision to 'nothing to do', so the one case the flag exists for - the destination file is absent - is the case it now skips. A project whose docs/portable/GENERIC_RULES.md was deleted or never copied keeps a repair that reports success and restores nothing, which is the WQ-308 failure the step was built from: an agent on Claude, Copilot or Windsurf then has no rules export to read while every check says the project is fine. A flag defaulted the wrong way is the shape that ships, because both branches below it still look correct.",
+        "rejected": "Breaking the hub-pattern rewrite instead was rejected as the weaker target: the same function is asserted by the second arm through -VerifyOnly, so the failure would be reported twice and the missing-export case - the half with no other witness - would stay unproven."
+      },
+      "expectFailIn": [
+        39
+      ],
+      "note": "One arm is the witness, and the other arm's silence was the finding: after the mutated repair, -VerifyOnly reads the same flag, so it reported 'matches pack export' about a file that is not there and exited 0, which an arm checking only the exit code cannot see. Closed in 2.22.115 (WQ-471) - arm 2 now requires the verify to name the export it judged, and a second control deletes that export again and requires the rejection to name it, so the case the repair exists for is the case the verify is proven to see. Direction is permissive, so step 56, which drives this script through Update-AgentStack -VerifyOnly, reports fewer findings rather than more and stays green. Expect step 33 as collateral: bootstrap and repair share one copy path, so a Portable project generated under the mutation has no rules export either."
+    },
+    {
+      "step": 40,
+      "title": "OS shell helper smoke (WQ-304 Phase 1)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/pack-paths.ps1",
+        "find": "if ($env:AGENT_STARTER_PACK_USER_ROOT -and $env:AGENT_STARTER_PACK_USER_ROOT.Trim()) {",
+        "replace": "if ($env:AGENT_STARTER_PACK_USER_ROOTS -and $env:AGENT_STARTER_PACK_USER_ROOTS.Trim()) {",
+        "why": "Misses one site in a rename, so the override that points user-scope paths at a scratch directory is ignored and the real profile answers instead. That is not a hypothetical cost: an early version of a probe in this suite hardcoded the profile path, and asking it for a scratch destination silently rewrote the real %USERPROFILE%\\.cursor. Every test that redirects user scope depends on this one condition being read.",
+        "rejected": "Guarding the condition with $false was rejected as unrealistic - nobody ships that - and a trailing-s rename is what a half-finished rename actually leaves behind."
+      },
+      "expectFailIn": [
+        40
+      ],
+      "note": "The arm compares the resolved root against the probe path and prints both, so the failure names the profile it fell back to. Only this step sets the override, and it reads the resolved value rather than writing to it, so the mutated run cannot touch the real profile."
+    },
+    {
+      "step": 41,
+      "title": "OS preflight scope (WQ-304 Phase 3)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/doctor.ps1",
+        "find": "$pyProbe = Resolve-PackPythonInvoke",
+        "replace": "$pyProbe = Find-HostPython",
+        "why": "Calls a Python probe that does not exist instead of the shared one, which is both a portability regression and a runtime error: the shared helper is what finds python3 where there is no py launcher, so a doctor that hand-rolls its own probe reports the MCP server unusable on every Mac and Linux machine. A stale call left behind by a rename is how this arrives.",
+        "rejected": "Raising the minimum Python version inside the shared helper would fail this step's live arm, and was rejected because the helper is used across the suite - step 21's preflight among them - so the collateral would be wide and the message would be about Python rather than about doctor."
+      },
+      "expectFailIn": [
+        41
+      ],
+      "note": "Several of this step's arms match a pattern anywhere in the file, and two of the names they look for appear more than once, so those arms cannot be failed by a single-occurrence replacement at all. This target is one of the few that can: the probe is named once. Nothing else in the suite runs doctor.ps1, only greps it."
+    },
+    {
+      "step": 42,
+      "title": "Unix .sh entry points (WQ-304 Phase 4)",
+      "status": "mutation",
+      "mutation": {
+        "file": "run_audit.sh",
+        "find": "pack_pwsh_file \"$ROOT/scripts/run_audit.ps1\" \"$@\"",
+        "replace": "pack_pwsh_file \"$ROOT/scripts/run_auditx.ps1\" \"$@\"",
+        "why": "Points the POSIX audit entry point at a script that does not exist. This wrapper is the only way a macOS or Linux user runs the audit the documentation tells them to run, so the failure lands at the shell before any audit code executes, and it lands on the machine least able to diagnose it. A one-character drift in a delegated path is invisible on Windows, where nothing runs this file.",
+        "rejected": "Injecting a carriage return to break the LF requirement was rejected because a line ending is fragile to carry through a spec and through a checkout, and the delegation arm names the expected target script while the line-ending arm names only the file."
+      },
+      "expectFailIn": [
+        42
+      ],
+      "note": "This step reads the shipped .sh files rather than executing them, so the mutation is inert at runtime. Step 54 executes wrappers but deliberately never runs this one, because running the audit from inside the suite would re-enter the suite. Step 52 also reported a failure. Collateral observed in this run was measured under four concurrent prover lanes, and steps 52 and 23 fail there from file-sharing contention in the export and bootstrap probes rather than from any mutation - the same contention failed one lane's baseline outright. Their appearance below is therefore unverified as collateral, not confirmed as it. Filed as WQ-474."
+    },
+    {
+      "step": 43,
+      "title": "OS mock non-Windows smoke (WQ-304 Phase 5)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/check-requirements.ps1",
+        "find": "Add-Result -Name \"'py -3' launcher\" -Status ok -Required $false",
+        "replace": "Add-Result -Name \"'py -3' launcher\" -Status ok -Required $true",
+        "why": "Marks the Windows Python launcher required on the branch that only runs off Windows, where it does not exist and never will. The preflight then reports a missing requirement on every Mac and Linux machine and tells the user the audit engine cannot run there, which is the WQ-304 assumption the OS phases removed from the rest of the pack. It is one word, in a row that is correct on the other branch.",
+        "rejected": "Flipping the probe's success token was rejected as synthetic: nobody mistypes a success string into a failure string, and the mutation would prove only that the step reads output rather than that the mocked non-Windows preflight is right."
+      },
+      "expectFailIn": [
+        43
+      ],
+      "note": "The mock-OS probe is what makes this visible from Windows: it runs the preflight with the host mocked as Linux and exits non-zero when a Windows-only item is required, and the step surfaces the probe's own message. Step 21 asserts the same row is required on the Windows branch and is untouched, since that is a different Add-Result call."
+    },
+    {
+      "step": 44,
+      "title": "Verify failures explain themselves",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/verify-audit-system.ps1",
+        "find": "Invoke-PackScript -PassOutput -NoProfile -ScriptPath $sync @syncArgs 2>&1 | Out-Host",
+        "replace": "$syncExit = Invoke-PackScript -NoProfile -ScriptPath $sync @syncArgs",
+        "why": "Restores the original regression verbatim: the sync child's exit code is kept and its output thrown away, so a red run ends at 'Summary: 1 fail(s)' naming no drifted file and giving nobody anything to act on. This is the defect the step was written from, not an approximation of it - a test that cannot say why it failed costs more than it saves."
+      },
+      "expectFailIn": [
+        44
+      ],
+      "note": "Aimed at the first arm rather than the two Fail-message arms, which a rename would also trip. The suite never invokes verify-audit-system.ps1 - that is the recursion step 70 fell into - so mutating it reaches step 44's static read and nothing else."
+    },
+    {
+      "step": 45,
+      "title": "Agent manifest keeps non-ASCII intact",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/run_audit_core.ps1",
+        "find": "Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8",
+        "replace": "Get-Content -LiteralPath $ManifestPath -Raw",
+        "why": "Drops the read encoding on the manifest round-trip, which is the exact regression step 45 was written for: Windows PowerShell 5.1 reads a BOM-less UTF-8 file as ANSI, so the agent's brief got a little more double-encoded on every audit. Not a synthetic break - the comment above this line records it happening."
+      },
+      "expectFailIn": [
+        45
+      ],
+      "note": "Retrofit under WQ-462. The runner launches the suite through Get-PackPowerShellPath, which is 5.1 on Windows, so the ANSI misread this depends on does occur."
+    },
+    {
+      "step": 46,
+      "title": "Shipped rules stay generic",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/rules/handoff-first.mdc",
+        "find": "HANDOFF_WQ*.md",
+        "replace": "HANDOFF_NEXT_AGENT.md",
+        "why": "Puts this repo's retired session-doc name into a rule that installs into every project, which is what step 46 exists to stop: an agent in a bootstrapped app being told to read a file only the maintainer repo ever had. The target line carries no scope marker, so the step does not skip it."
+      },
+      "expectFailIn": [
+        46
+      ],
+      "note": "Retrofit under WQ-462. Expect collateral: step 46 only scans pack/rules, so unlike step 47 this cannot be done in a doc, and a mutated rule also differs from its synced copy in .cursor/rules - the rule-sync step fails alongside it by construction, not because the mutation is too broad."
+    },
+    {
+      "step": 47,
+      "title": "Cited pack files exist",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/docs/PACK_MAINTENANCE.md",
+        "find": "pack/audit/manifest.json",
+        "replace": "pack/audit/manifest-wq462-does-not-exist.json",
+        "why": "Turns a resolving cite into a dangling one. Chosen in a pack doc rather than in a rule, because mutating pack/rules also puts it out of sync with the synced copy in .cursor/rules and would fail the rule-sync step as well - collateral that makes the proof harder to read. The line must also not contain 'removed', 'no longer' or the other words step 47 treats as deliberate references to absent files."
+      },
+      "expectFailIn": [
+        47
+      ],
+      "note": "Retrofit under WQ-462."
+    },
+    {
+      "step": 48,
+      "title": "Root .cmd launchers gate every pause",
+      "status": "mutation",
+      "mutation": {
+        "file": "Install-AgentStarterPack.cmd",
+        "find": "REM Keeps the window open for a double-click; agents set BUILD_NOPAUSE=1 so it never blocks.",
+        "replace": "pause",
+        "why": "Replaces a comment with a bare pause, which is the defect step 48 exists to catch: a launcher that blocks an agent run on a keypress. Replacing the comment rather than an existing 'if not defined BUILD_NOPAUSE pause' line is deliberate - that string appears twice in this file, and a spec matching more than once is rejected because the runner could not say which site it broke."
+      },
+      "expectFailIn": [
+        48
+      ],
+      "note": "Retrofit under WQ-462."
+    },
+    {
+      "step": 49,
+      "title": "Vocabulary: handoff only",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/docs/AGENT_HANDOFFS.md",
+        "find": "handoff file",
+        "replace": "handover file",
+        "why": "Plants the retired synonym in a shipped doc. Not in the changelog, which step 49 exempts because that is where the retired word is explained, and not the filename HANDOVER_NEXT_AGENT, which the step deliberately tolerates so a doc can say what a file used to be called."
+      },
+      "expectFailIn": [
+        49
+      ],
+      "note": "Retrofit under WQ-462."
+    },
+    {
+      "step": 50,
+      "title": "No machine identity leaves this checkout",
+      "status": "mutation",
+      "mutation": {
+        "file": "docs/PORTABLE_SETUP.md",
+        "find": "Refresh-AgentContext.cmd \"C:\\Users\\alice\\Projects\\MyApp\"",
+        "replace": "Refresh-AgentContext.cmd \"C:\\Users\\dhaskins\\Projects\\MyApp\"",
+        "why": "Overwrites the illustration name in a doc example with something indistinguishable from a real person, which is how this leaked the first time - a maintainer pastes the path that worked on their own machine over the placeholder. The pack folder travels by USB, robocopy and zip, so a user profile path baked into a shipped doc is wrong on every machine that receives it."
+      },
+      "expectFailIn": [
+        50
+      ],
+      "note": "A doc rather than a script on purpose: the scan covers everything that travels, and docs are where illustration paths legitimately live, so this is the site where a real name is most likely to survive review. The step's allowlist comes from Get-PackIllustrationUserName, so the mutation cannot be laundered by adding a name in two places (WQ-441)."
+    },
+    {
+      "step": 51,
+      "title": "One state root, two implementations",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/agent_context_freshness.py",
+        "find": "key = str(full).replace(\"\\\\\", \"/\").rstrip(\"/\").lower()",
+        "replace": "key = str(full).replace(\"\\\\\", \"/\").rstrip(\"/\")",
+        "why": "Drops case folding from the Python side of the state-root key while PowerShell keeps it, so the two implementations hash the same checkout to different directories on the one platform where the path is case-insensitive. The refresh reports success, the freshness check reports a missing AGENT_CONTEXT.json, and nothing in either message points at the disagreement."
+      },
+      "expectFailIn": [
+        51
+      ],
+      "note": "Any step that has PowerShell write agent-context artifacts and Python read them can go red under this too - that collateral is the failure mode itself, not noise. Step 51 is the one that names the cause instead of reporting a missing file."
+    },
+    {
+      "step": 52,
+      "title": "An exported pack is a working pack",
+      "status": "mutation",
+      "mutation": {
+        "file": "export.ps1",
+        "find": "($maintainerOnly -replace '/', '\\')",
+        "replace": "($maintainerOnly -replace '/', '_')",
+        "why": "Mistypes the separator normalisation in the maintainer-only strip, so every entry resolves to a path that does not exist and nothing is removed: the archive ships this repo's session notes and the workspace-only rules again. That is the leak this arm was added for, and the failure is silent by nature - the export still exits 0 and the sending machine stays green, because the files are legitimately present here. Chosen over renaming the manifest property so the list is still *read*: this proves the strip works, not merely that the key is mentioned.",
+        "rejected": "Dropping -Recurse from the removal was rejected as unsafe in a child process: an entry may name a folder, and Remove-Item on a non-empty directory without -Recurse raises a confirmation prompt, which a non-interactive suite run can sit on rather than fail."
+      },
+      "expectFailIn": [
+        52
+      ],
+      "note": "The other two arms keep passing and that is the point of choosing this target: the export's own internal guard already throws when a packMirror file is missing, so the missing-files arm is double-covered, while the maintainer-only strip has no second check anywhere. Step 53 and step 60 stay green because the manifest property is still read by name - a mutation that renamed it would have failed all three and proved the least specific thing."
+    },
+    {
+      "step": 53,
+      "title": "Manifest-declared lists have no rival copies",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/verify-portable-bootstrap.ps1",
+        "find": "$pbManifest.projectRequired.flatLayout",
+        "replace": "$pbManifest.projectRequiredPrivateCopy.flatLayout",
+        "why": "Stops a declared consumer reading the manifest list it depends on, which is how a private copy starts drifting from the one home the list is supposed to have. The bare key name occurs twice in this file - the other is a comment - so the spec carries the surrounding expression to match exactly once."
+      },
+      "expectFailIn": [
+        53
+      ],
+      "note": "Retrofit under WQ-462. This mutation found a defect rather than a proof: the step's substring grep stayed green, because the renamed token still contains the key and the surviving comment would have satisfied it alone. Step 53 now drops comment lines and matches whole tokens. Expect collateral in the step that runs verify-portable-bootstrap.ps1: breaking the read is the point, and a consumer that no longer reads its list also stops working."
+    },
+    {
+      "step": 54,
+      "title": "The .sh wrappers are run, not read",
+      "status": "mutation",
+      "mutation": {
+        "file": "Bootstrap-Project.sh",
+        "find": "if [ \"$#\" -lt 1 ]; then",
+        "replace": "if [ \"$#\" -lt 0 ]; then",
+        "why": "Off-by-one in the usage guard, so a no-argument run is no longer refused. The guard is what stops the bootstrap from being pointed at nothing and generating a project into whatever directory the shell happened to be in - a destructive default that a user discovers by finding files they did not ask for. An argument count compared against zero instead of one is the classic version of this mistake.",
+        "rejected": "Inverting the switch-first branch in Refresh-AgentContext.sh was rejected because it can fail two arms for one cause, while the usage guard has a dedicated arm and a dedicated message about the missing usage line."
+      },
+      "expectFailIn": [
+        54
+      ],
+      "note": "This step needs bash and pwsh and takes a documented [SKIP] without them, so the proof is machine-dependent in a way most are not: it holds on a host with Git Bash, and on a host without one the step cannot be proven at all. Only this step executes the wrappers; step 42 reads them."
+    },
+    {
+      "step": 55,
+      "title": "Product-truth paths and prose vs code (WQ-415)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/verify-product-truth-paths.ps1",
+        "find": "    '(?i)\\bnot\\s+built\\b',",
+        "replace": "    '(?i)\\bnot\\s+assembled\\b',",
+        "why": "Swaps the phrase every stale doc actually uses for a synonym nobody writes, so a capability doc may say a shipped WQ id 'is not built yet' and the check reports nothing. That is the WQ-415 defect verbatim: the next agent reads the doc, believes the slice is open, and rebuilds it. The list stays well-formed and populated, so nothing about the file looks broken on inspection - which is the point, since an emptied list is visibly wrong and a near-miss pattern is not.",
+        "rejected": "Making Test-DoneWqProseContradictions return early was rejected: it returns early already when no id is Done (WQ-432), so the mutation would be indistinguishable from the documented behaviour and would prove nothing about the phrase matching that step 55 asserts."
+      },
+      "expectFailIn": [
+        55
+      ],
+      "note": "Permissive by direction, so collateral would have to come from another step asserting the same rejection. Step 37 also drives this script, but its product-truth arm plants a *missing path* rather than not-built prose, so it is untouched; the missing-path and doc/code-claim arms of step 55 pass under the mutation as well, leaving the contradiction arm as the only witness."
+    },
+    {
+      "step": 56,
+      "title": "Update-AgentStack -VerifyOnly (WQ-417)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/update-agent-stack.ps1",
+        "find": "$cpScript = Join-Path $PSScriptRoot 'verify-complete-picture.ps1'",
+        "replace": "$cpScript = Join-Path $PSScriptRoot 'verify_complete_picture.ps1'",
+        "why": "Points the completion check at a filename that does not exist - underscores where the hyphens belong, which is the slip this repo is built to produce, since its Python files use underscores and its PowerShell files use hyphens. The step's subject is that the work-completion check actually runs; a missing script means the verify reports an error and every release that trusts it stops being verified.",
+        "rejected": "Dropping -AllowMissing from the call was the first candidate and was measured to be inert: verify-complete-picture exits 0 on this repo with or without it, because the sources it would tolerate as missing are present. That measurement cost seconds and would otherwise have cost a lane."
+      },
+      "expectFailIn": [
+        56
+      ],
+      "note": "Fixed in 2.22.115 (WQ-471), and the shape of the fix is the reusable part: asserting the child's output does not work here, because this script delegates without -PassOutput, so verify-complete-picture prints to the host and never reaches a captured stream. What discriminates is the verdict, so the control is a project that must fail Step 5b - a ROADMAP still marking a shipped WQ as Next - and a delegation that has stopped happening cannot report a failure. The old arm asserted a zero exit on an aligned pack repo while its own OK line claimed Step 5b had run. Four other references to the same script name are elsewhere in the file and are untouched, so the mutation is a single broken call site rather than a rename."
+    },
+    {
+      "step": 57,
+      "title": "Session handoff verify (WQ-438)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/verify-session-handoff.ps1",
+        "find": "if ($fail -gt 0) { exit 1 }",
+        "replace": "if ($fail -gt 99) { exit 1 }",
+        "why": "Lets the script count every failure, print every one, and still exit 0 - the exact shape WQ-443 was filed over, a guard reporting success while observing a defect. Breaking one of the individual checks instead would not prove anything: the negative fixture trips three of them at once, so the exit code stays non-zero and step 57 passes on the strength of the checks that still work."
+      },
+      "expectFailIn": [
+        57
+      ],
+      "note": "Retrofit under WQ-462. verify-complete-picture.ps1 also shells out to this script, so a step exercising that path may report collateral."
+    },
+    {
+      "step": 58,
+      "title": "Cursor hook repair for pre-2.22.63 projects (WQ-435)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/repair-project-hooks.ps1",
+        "find": "    if ($Body -notmatch 'ReadToEnd\\s*\\(') { return $false }",
+        "replace": "    if ($Body -match 'ReadToEnd\\s*\\(') { return $false }",
+        "why": "Inverts the one test that decides whether a hook is even a candidate, so every hook that drains stdin - which is exactly the shape that hangs a session start - is declared current. The repair then finds nothing to do on the pre-2.22.63 hook it exists to fix, and reports success while the hang stays reachable. A sign error in a match is the defect that actually ships here, and it leaves the function enumerating, reading and answering, so nothing about it looks broken.",
+        "rejected": "Loosening the paired requirement to 'either guard is enough' proves nothing: the step's planted hook has neither the redirect guard nor a bounded wait, so it is stale under both readings and the step stays green."
+      },
+      "expectFailIn": [
+        58
+      ],
+      "note": "The current-hook arm keeps passing under this mutation, correctly: it compares the project's hook against the shipped template and checks that the template reads stdin by no route, neither of which a sign error in the staleness test touches - which is why the stale arms are the witnesses. Only step 58 runs this script, so nothing is expected to fail from here; the reverse direction is declared on step 38, whose mutation restores a stdin read to the template and reddens this step too."
+    },
+    {
+      "step": 59,
+      "title": "One home for the path vocabulary (WQ-441)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/verify-lib.ps1",
+        "find": "if ($lower -match ('[\\\\/]' + [regex]::Escape($who.ToLowerInvariant()) + '([\\\\/]|$)')) {",
+        "replace": "if ($lower.Contains($who.ToLowerInvariant())) {",
+        "why": "Drops the segment anchor from the illustration-name test, so any path containing an example name as a substring is excused. 'user' is in the allowlist and 'Users' contains it, which means C:\\Users\\<anyone>\\... becomes an example and every real machine path in a general doc passes the Illustrative policy."
+      },
+      "expectFailIn": [
+        59
+      ],
+      "note": "The damage runs toward silence - the policy returns fewer hits, not more - so no other step goes red and the identity scan in step 50 still reports clean on a repo it is no longer reading correctly. Step 59 catches it only because it probes the policy directly with a user name that is deliberately absent from the illustration list."
+    },
+    {
+      "step": 60,
+      "title": "Every manifest list has declared readers (WQ-442)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/verify-agent-setup.ps1",
+        "find": "$machineLocalExpected = @($manifest.machineLocalPaths)",
+        "replace": "$machineLocalExpected = @('docs/AGENT_SESSION_START.md', 'docs/WORK_COMPLETION.md')",
+        "why": "Inlines the list a declared reader is supposed to look up, which is the exact failure a consumer registry exists to catch: the refactor looks harmless, the manifest stays authoritative on paper, and the reader silently keeps checking whatever was true the day someone copied it. Nothing else changes shape - the script still runs, still reports, and still passes."
+      },
+      "expectFailIn": [
+        60
+      ],
+      "note": "verify-agent-setup.ps1 holds the single reference to machineLocalPaths among the seven declared readers, and the suite's only other mention of that script concerns packToUser and packMirror, so the mutation reaches one list through one reader."
+    },
+    {
+      "step": 61,
+      "title": "Constructs that behave differently on 5.1 and 7 are refused",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/cleanup-orphan-processes.ps1",
+        "find": "$protected = @(\"agent_hygiene_server\", \"mcp.server.fastmcp\")",
+        "replace": "$protected = @(\"agent_hygiene_server\", \"mcp.server.fastmcp\"); if ($false) { Set-Content -Path $null -Value '' -Encoding UTF8 }",
+        "why": "Plants one of the three banned constructs - Set-Content -Encoding UTF8, which writes a BOM on 5.1 and not on 7, and has crashed Python's json reader on generated files - in a shipped script. This step is a scanner over every .ps1 in the pack, so the defect it guards is a construct entering the tree, and planting one is the only mutation that can make it report anything: blinding the detector leaves it reporting zero hits, which is what a clean tree looks like.",
+        "rejected": "Widening the enumeration sanity check so it always fails was rejected: it would turn the step red while proving only its own tripwire, and the arm that matters is the scan. Mutating the detector proves nothing at all here, for the reason in why - a blinded scanner and a clean tree are indistinguishable in the output."
+      },
+      "expectFailIn": [
+        61
+      ],
+      "note": "The plant sits behind if ($false) on purpose: the parser sees it, the process never runs it, so no script changes behaviour and the failure is attributable to this step alone. Two consequences worth recording. It confirms this step has **no positive control** - nothing in it watches the detector fire, which is the gap step 80 closed for the POSIX scanner by shipping a fixture with the banned constructs in it; until that exists, this mutation is the only witness that the scan works. And the plant deliberately avoids the BOM-free-writer shapes step 29 scans for, so the two host-parity steps stay separable."
+    },
+    {
+      "step": 62,
+      "title": "Shipped .sh entry points are executable",
+      "status": "exempt",
+      "reason": "not-applicable",
+      "note": "Reclassified under WQ-462 rather than retrofitted, because no mutation of this pack can make this step fail. Its subject is the git index - the only place the execute bit durably lives, since a folder copy, a zip and a Windows checkout all lose it - and the runner mutates file content. On this checkout the question is moot twice over: the pack keeps no version control by decision (WQ-459), so the step takes its documented [SKIP] on every run here and a skipped step cannot be proven able to fail. Its real proof is a git-backed clone on Linux or macOS, which is what pack-os-smoke.yml is for; see WQ-455."
+    },
+    {
+      "step": 63,
+      "title": "The path-key primitives answer, and answer differently (WQ-446)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/pack-paths.ps1",
+        "find": "if ($key -and ($segs -contains $key)) { return $true }",
+        "replace": "if ($key -and ($Path -like \"*$key*\")) { return $true }",
+        "why": "Turns the segment test back into a substring test, which is the fault the primitive was written to end: a bare '__pycache__' also matches a file named __pycache__.txt, and '.git' swallows .gitignore. The damage runs the wrong way round from most defects - the filter gets broader, so scans quietly exclude files they are supposed to judge and every step downstream reports clean on a smaller tree than it claims to have read."
+      },
+      "expectFailIn": [
+        63
+      ],
+      "note": "The primitive is called by most scans in the suite, but a wider exclusion produces fewer findings rather than more, so collateral would show up as steps staying green - which is why step 63 tests the primitive directly with a file named after a directory rather than trusting its callers to notice."
+    },
+    {
+      "step": 64,
+      "title": "A bump moves current cites and never the Done log (WQ-437)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/doc_version_sync.py",
+        "find": "(vs_cfg or {}).get(\"historicalRegions\")",
+        "replace": "(vs_cfg or {}).get(\"historicalRegion\")",
+        "why": "Drops the plural from the config key, so the declared regions load as none and the sync writes the whole file - including the Done log, whose rows are claims about which engine shipped each item. This is how the protection would really disappear: the key is read in one place, the typo is invisible in review, and the tool reports 'ok' while rewriting the past. Four historical cites were lost that way before WQ-437, twice in one session.",
+        "rejected": "Iterating an empty list instead was rejected on the same reasoning as step 13: an obviously emptied loop reads as broken code, while a key that is one character off reads as working code and is what a maintainer would actually ship."
+      },
+      "expectFailIn": [
+        64
+      ],
+      "note": "Arm 4 is the witness, and it is the only arm that runs the tool: arms 1 to 3 read the config through verify-work-queue.ps1, which is PowerShell and still finds the declaration, and arm 5's backstop compares against git HEAD. So the mutation separates 'the config declares protection' from 'the tool honours it', which is the distinction the step was built for. The note this row used to carry - that a planted defect must be parse-checked - is satisfied by construction here, because the replacement is a string literal rather than a statement. Expect step 22 as collateral and read it as confirmation rather than noise: step 22 runs tests/test_pack_audit.py, whose test_version_sync_leaves_the_historical_region_alone asserts frozenRegions contains the work queue, so the same invariant is guarded twice - once as a unit test on the tool and once as a behavior arm on the config. A narrower mutation would have to break one of those and not the other, which would mean the two are no longer testing the same promise."
+    },
+    {
+      "step": 65,
+      "title": "Instructions name an entry point this host can run (WQ-449)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/bootstrap-project.ps1",
+        "find": "Write-Host \"  5. Run $(Get-PackEntryPoint 'run_audit') after first test wiring\"",
+        "replace": "Write-Host \"  5. Run run_audit.cmd after first test wiring\"",
+        "why": "Replaces a speller call with the Windows name it would have printed, in the closing instructions a reader gets after bootstrapping a project. On macOS or Linux the printed step is unrunnable as written, and nothing in the run says so - the script finished successfully and handed over a command that does not exist. Hardcoding what the speller already knows is the entire failure mode, and the site is a next-steps message because that is where it is most tempting."
+      },
+      "expectFailIn": [
+        65
+      ],
+      "note": "Proven the hard way first: writing the 2.22.99 semantic-report narrative put the host-write cmdlet's name on a line that already held two Windows entry points, and this step failed certification for it. The guard was right and the prose was changed. This spec makes the same point on purpose rather than by accident."
+    },
+    {
+      "step": 66,
+      "title": "A required POSIX twin has a delivery path (WQ-450)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/repair-project-scripts.ps1",
+        "find": "@{ Win = 'run_audit.cmd'; Sh = 'run_audit.sh'; Template = 'run_audit.sh.template' }",
+        "replace": "@{ Win = 'run_audit.cmd'; Sh = 'run_audit.bash'; Template = 'run_audit.sh.template' }",
+        "why": "Breaks the name the repair script writes while projectRequired keeps demanding run_tests.sh, producing unclearable drift: every audit of a POSIX project reports a missing required file, and the one tool that could create it writes a differently named one instead. A one-character rename is the honest shape here - the two lists are cross-checked rather than shared, precisely because a pair needs a template name that projectRequired cannot express, and cross-checked lists drift by typo."
+      },
+      "expectFailIn": [
+        66
+      ],
+      "note": "fourteen negative controls run step 66 own source against a planted copy",
+      "rejected": "First spec broke run_tests.sh and was inert - projectRequired does not demand that twin, so nothing was left undeliverable. The mistake surfaced something worth recording: arm 1's comment claims it checks both directions, but the loop only walks projectRequired asking whether each required twin is deliverable. The opposite direction it describes - a deliverable twin nobody requires - is not implemented, and run_tests.sh is a live instance of it. Harmless today, since the repair writes it either way, but the comment overstates the code."
+    },
+    {
+      "step": 67,
+      "title": "The documented POSIX start command runs at mode 644 (WQ-454)",
+      "status": "mutation",
+      "mutation": {
+        "file": "INSTALL.txt",
+        "find": "3. bash install.sh User",
+        "replace": "3. ./install.sh User",
+        "why": "Turns the numbered install step in the first file a consumer opens into the one form that cannot work. The execute bit is recorded by git and nothing else this pack travels through, so a folder copy, an unzipped archive and exFAT media all deliver mode 644 - and `./install.sh` exits 126 before printing anything a reader could act on, while `bash install.sh` runs a file at any mode. The command that repairs the missing bit is the command the missing bit stops."
+      },
+      "expectFailIn": [
+        67
+      ],
+      "note": "controls both ways: four instruction forms caught, five legal mentions spared"
+    },
+    {
+      "step": 68,
+      "title": "No shipped doc calls the profile rules folder a load path (WQ-457)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/docs/PACK_MAINTENANCE.md",
+        "find": "is best-effort reference text",
+        "replace": "is loaded by every editor",
+        "why": "Restores the false claim WQ-456 spent a release disproving: that a rule sitting in the profile folder reaches an agent. Flipping an existing disclaimer rather than adding a new sentence is the regression that actually happened - the claim came back in 2.22.80 in the one file written for users of other tools, after being corrected in about fifteen documents."
+      },
+      "expectFailIn": [
+        68
+      ],
+      "note": "five planted load claims must be caught, six correct mentions tolerated. Retrofit under WQ-462: the concern recorded in 2.22.86, that a spec cannot hold text another guard bans, does not bite here - step 68 scans .md, .mdc, .template and .txt, and this registry is .json. Two targets were rejected first. pack/docs/portable/GENERIC_RULES.md is generated, so mutating it fails the export-drift check alongside the step under test. The START_HERE.md row was worse - inert: replacing only its bolded negation leaves the cell label 'Rules, best-effort copy' on the same line, and the detector's disclaimer window tolerates it by design, so the suite stayed green and the mutation proved nothing. A load-claim mutation must remove every disclaimer word within one line either side of the claim, and that is easier to verify against the detector's own regexes than by reading."
+    },
+    {
+      "step": 69,
+      "title": "'Is this a git work tree' is asked of git, not of the filesystem (WQ-461)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/verify-work-queue.ps1",
+        "find": "} elseif (-not (Test-PackGitRepo -Root $ProjectRoot)) {",
+        "replace": "} elseif (-not (Test-Path -LiteralPath (Join-Path $ProjectRoot '.git'))) {",
+        "why": "Reverts one call site from asking git to asking the filesystem, which is the original defect exactly: deleting a repository leaves a .git directory behind whenever an editor holds its index open, so Test-Path answers yes while git answers 'not a repository'. This checkout hit that an hour after being certified git-optional, and verify-work-queue.ps1 was one of the scripts that exited 1 because of it."
+      },
+      "expectFailIn": [
+        69
+      ],
+      "note": "expectations table with want=$true/$false; two positive controls need a real repo"
+    },
+    {
+      "step": 70,
+      "title": "An inert always-on rule in the profile is reported, not trusted (WQ-460)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/pack-paths.ps1",
+        "find": "Where-Object { $ShippedRuleNames -notcontains $_.Name } |",
+        "replace": "Where-Object { $ShippedRuleNames -contains $_.Name } |",
+        "why": "Inverts the orphan test, so the detector reports only rules the pack does ship and never the ones it does not - which is the state WQ-460 was found in, where no detection existed at all. An orphan is by definition absent from the install record, so this is also why -Prune cannot reach these files: both mechanisms end up looking for the orphan in the one list that cannot contain it."
+      },
+      "expectFailIn": [
+        70
+      ],
+      "note": "orphan detector controls plus an assertion that no step invokes doctor.ps1"
+    },
+    {
+      "step": 71,
+      "title": "A step cannot be added without declaring how it is proven able to fail (WQ-443)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/audit/behavior-controls.json",
+        "find": "\"step\": 1,",
+        "replace": "\"step\": 991,",
+        "why": "Renumbers the first registered step so the registry declares a step the suite never announces, and leaves step 1 undeclared. Both are the disagreement step 71 exists to catch, so a green suite under this mutation means step 71 is not reading anything. Chosen because it mutates the artifact the step guards rather than the step's own source - a step edited into passing proves nothing."
+      },
+      "expectFailIn": [
+        71
+      ],
+      "note": "First step added under the registry, and the first that could not be grandfathered: 71 is above the seal of 70. It also carries twelve in-process planted defects plus a positive control, which run on every suite run rather than only when the runner does."
+    },
+    {
+      "step": 72,
+      "title": "A failure is attributed to the step that raised it (WQ-443 Phase 3)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/verify-lib.ps1",
+        "find": "if ($aLine -le $Line) {",
+        "replace": "if ($false) {",
+        "why": "Makes Resolve-PackBehaviorStep answer nothing for every line. An always-null resolver is the failure mode that matters, because it would leave the mutation runner unable to name any step while every step still passed - a runner reporting success having observed nothing. Step 72's controls include lines that must resolve to a step, so this cannot pass."
+      },
+      "expectFailIn": [
+        72
+      ],
+      "note": "Attribution is taken from the call site rather than from output, because a planted control's child verify prints the same [FAIL] prefix. Verified on both PowerShell hosts, including a Fail raised inside a helper defined hundreds of lines earlier, which must be credited to the calling step."
+    },
+    {
+      "step": 73,
+      "title": "A mutation that changes nothing cannot pass as a proof (WQ-443 Phase 4)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/verify-lib.ps1",
+        "find": "if ($count -ne 1) {",
+        "replace": "if ($false) {",
+        "why": "Stops Get-PackMutationSpecProblem rejecting a find that matches zero times or twice. That is the runner's own silent-success mode: a stale spec would be applied as a no-op, the suite would stay green, and the green would be recorded as a proof. Step 73's controls include an absent find and a doubled find, so it cannot survive this."
+      },
+      "expectFailIn": [
+        73
+      ],
+      "note": "Tests the runner's two judgements in-process and asserts the runner actually uses them, rather than invoking the runner - the runner runs this suite, which is the recursion that killed step 70."
+    },
+    {
+      "step": 74,
+      "title": "A failing child's reason survives into the Fix line (WQ-463)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/verify-lib.ps1",
+        "find": "if ($ExitCode -eq 0) { return '' }",
+        "replace": "if ($ExitCode -ge 0) { return '' }",
+        "why": "Makes the detail empty for every child, failing or not - which is the state WQ-463 was found in, where a parent reported that a verify failed and said nothing about why. The mutation is deliberately silent rather than noisy, because the defect it recreates was silent: the Fix line still appears, still names the right script, and simply carries no reason."
+      },
+      "expectFailIn": [
+        74
+      ],
+      "note": "Added above the seal, so grandfathering is not available to it - the reason this step arrived with a mutation rather than an exemption. Its last control asserts run_audit_core.ps1 actually calls the helper, because a tested function nobody uses reports nothing."
+    },
+    {
+      "step": 75,
+      "title": "Verification covers the pack under test and this machine's install, not backups (WQ-463)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/verify-lib.ps1",
+        "find": "if ($wanted -notcontains $k) { continue }",
+        "replace": "if ($false) { continue }",
+        "why": "Restores the behavior that caused WQ-463: verification accepting every pack copy discovery can find, so a backup on a Desktop or a removable disk is audited as though it were the pack under test. The mutation is the exact line that turns broad discovery into scoped verification."
+      },
+      "expectFailIn": [
+        75
+      ],
+      "note": "Discovery stays broad on purpose - a project outside the pack has to be able to find one. This step guards the narrower question verification asks. Its controls include path spelling, because a normalization miss would drop the real pack instead of a backup and verify nothing at all, which reads as success."
+    },
+    {
+      "step": 76,
+      "title": "Derived version cites are synced before they are checked (WQ-463)",
+      "status": "mutation",
+      "mutation": {
+        "file": "scripts/run_audit_tests.ps1",
+        "find": "Invoke-PackScript -ScriptPath $docSync -NoProfile -PassOutput",
+        "replace": "Write-Host 'doc version sync disabled'",
+        "why": "Removes the sync from the test entry point, restoring the state WQ-463 was found in: an engine bump leaves AUDIT_SYSTEM.md on the old version, verify-audit-system fails on the mismatch, and the failure surfaces two layers away inside a generated project's bootstrap check before the audit's own later sync quietly repairs it."
+      },
+      "expectFailIn": [
+        76
+      ],
+      "note": "Guards order, not merely presence. A sync that runs after the check repairs the symptom for the next run and proves nothing about this one - which is exactly why the defect read as intermittent for six audit runs."
+    },
+    {
+      "step": 77,
+      "title": "The markdown section slicer has one home (WQ-444)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/verify-lib.ps1",
+        "find": "$m0 = [regex]::Match($Content, '(?m)^\\s*' + [regex]::Escape($StartHeader))",
+        "replace": "$m0 = [regex]::Match($Content, [regex]::Escape($StartHeader))",
+        "why": "Removes the line anchor from the start-header search, restoring the 2.22.73 defect exactly: a heading quoted inside a table cell starts the section, so the Done log begins in the middle of the Active table and every Active id reads as both active and done. Mutating the behavior rather than the single-home check is deliberate - consolidating five copies of a broken function would satisfy a presence check and fix nothing."
+      },
+      "expectFailIn": [
+        77
+      ],
+      "note": "The single-home control scans every pack script for a private definition, because five byte-identical copies are how one defect cost five patches. The behavioral controls come first: one copy of the wrong thing is not an improvement."
+    },
+    {
+      "step": 78,
+      "title": "A generated project's runners delegate to one implementation (WQ-447)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/templates/run_tests.sh.template",
+        "find": "\"$ROOT/scripts/run_tests.ps1\"",
+        "replace": "\"$ROOT/scripts/run_tests_posix.ps1\"",
+        "why": "Points the generated .sh entry point at an implementation the .bat does not use, which is the WQ-447 failure exactly: two platforms running different work, with the audit's test-pass proof covering only whichever one ran it. The comment above the exec line still cites the shared implementation, so this also confirms the step reads executable lines rather than prose."
+      },
+      "expectFailIn": [
+        78
+      ],
+      "note": "Judged on generated output, not on the templates, because reading a template is evidence about the template. The last control asserts the implementation is non-empty: two wrappers agreeing on nothing is not delegation. Expect step 23 as collateral, like step 46: any mutation of a runner template also reaches the generated projects step 23 bootstraps and runs, so there is no target that isolates this step."
+    },
+    {
+      "step": 79,
+      "title": "AGENTS.md may name the entry points this OS actually uses (WQ-452)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/audit_code_checks.py",
+        "find": "            if not any(alt in text for alt in alternatives):",
+        "replace": "            if not all(alt in text for alt in alternatives):",
+        "why": "Turns any-of back into all-of, restoring WQ-452: a project's AGENTS.md would have to name every platform's spelling of an entry point, so the Linux-facing document fails and so does the Windows-facing one. Chosen over deleting the default list because it leaves the shape intact and breaks only the judgement, which is what the step reads."
+      },
+      "expectFailIn": [
+        79
+      ],
+      "note": "Two of the four controls exist to stop the fix going too far: an AGENTS.md naming no entry point at all must still be caught, and a config that pins exact strings must still pin them. A permissive check that passes everything would satisfy the first two controls alone. The find is indented to twelve spaces on purpose - Section F carries the identical line at eight, and a spec matching twice is rejected. Expect step 23 as collateral: under all-of, the generated projects it bootstraps cannot name every platform's spelling either, so their audits fail too."
+    },
+    {
+      "step": 81,
+      "title": "Cited project paths are owned, and delivered ones are still deliverable (WQ-433)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/docs/RULES_AND_VERIFY_MAP.md",
+        "find": "1. `docs/WORK_QUEUE.md` (required first)",
+        "replace": "1. `docs/WORK_QUEUE_STATUS.md` (required first)",
+        "why": "Plants the original WQ-433 incident: a doc renames the file it cites and the cite is left pointing at nothing, so an agent told to read it first reads nothing. The undeclared default is the arm this reddens, which is the one that matters - it is what makes a new cite checked without anyone listing it. Chosen over mutating a declaration in the manifest because that would prove only that the checker reads its own list.",
+        "rejected": "Deleting pack/templates/docs/ROADMAP.md.template would exercise the deliverable arm with a real defect - advice to keep a roadmap that no template writes - but bootstrap copies that template, so steps 23, 33, 34 and 78 would all go red and four failing steps prove less than one."
+      },
+      "expectFailIn": [
+        81
+      ],
+      "note": "The arms split three ways on purpose, because only one of the three owners is checkable by asking whether the file is here. Extraction is tested in memory (a backslash cite is the same path, `.md.template` must not truncate to `.md`, and a pack/-rooted cite belongs to step 47); the judgement is tested against a synthetic tree with six planted defects including a stale exemption; and the live arm requires at least 100 cites, since a scan that finds nothing passes for the same reason a blinded one does. The reader-owned exemptions print as INFO every run: an indiscriminate pass over these three roots reports 68 correct-but-irrelevant findings, which is how the first attempt got muted, and the answer is an enumerated list rather than a quieter check."
+    },
+    {
+      "step": 82,
+      "title": "A passing run must not print a [FAIL] line (WQ-472)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/verify-lib.ps1",
+        "find": "if ($ExitCode -ne 0) { return @() }",
+        "replace": "if ($ExitCode -eq 0) { return @() }",
+        "why": "Inverts the gate on Get-PackStrayFailureLine, so the helper answers about failing runs and says nothing about passing ones. That is the defect in its purest form: the leak detector goes quiet exactly where a leak can happen, and the parent audit keeps quoting fixture findings as its own. It reddens the step through two arms rather than one - the leaked line is not reported, and a real failure has its own lines reported as strays - which is the right shape for a check whose whole value is knowing which side of the exit code it is on.",
+        "rejected": "Reverting step 57's absolute-path arm to an error-only redirect would reproduce the original incident exactly, but the invariant is enforced by the parent, and no step runs verify-audit-system against this suite: step 23 passes -SkipBehavior and step 73 exists to keep that recursion out. The source-shape arm would catch it, and a mutation proven by a grep is weaker than one proven by behaviour."
+      },
+      "expectFailIn": [
+        82
+      ],
+      "note": "The invariant belongs to the parent, not to any one arm: a run that exited 0 must not have printed a marked failure line. It is tested here on fixtures because the parent that enforces it cannot be run from inside this suite. Three arms cover the sides an exit-code gate can get wrong (clean pass, passing leak, real failure), one covers a single captured string with a blank line in it, and two ask whether the parent still keeps a copy of the output and still calls the helper. The source-shape arm is the early-warning half: the invariant fires once a leak exists, the grep fires when one is written."
+    },
+    {
+      "step": 83,
+      "title": "The offload hooks decide, not merely exist (WQ-476)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/templates/cursor/hooks/offload-detect.ps1",
+        "find": "$askMatch = [regex]::Match($text, '(?ms)^##\\s*What I need from you\\s*\\r?\\n(.*?)(?:\\r?\\n##\\s|\\z)')",
+        "replace": "$askMatch = [regex]::Match($text, '(?ms)^##\\s*Nothing Matches This Heading\\s*\\r?\\n(.*?)(?:\\r?\\n##\\s|\\z)')",
+        "why": "Points the detector at a heading no message carries, so it finds no ask section and flags nothing. This is the failure mode the control exists to prevent and the one that cannot be seen by reading: the hook still parses its payload, still reads the shared list, still writes its log, still exits 0 - and silently approves every offload. It is the same shape as the BOM defect that made the first live version of shell-preapprove.ps1 a no-op while looking installed, which is why this step executes the hooks instead of grepping them.",
+        "rejected": "Deleting a hook file, or emptying the neutral policy, would also redden the step - but through the inventory and list-sharing arms, which prove only that files exist. A mutation that survives the arms it is aimed at and fails somewhere cheaper is a mutation that measures the wrong thing. Inverting the refuse-list loop in shell-preapprove.ps1 was the other candidate and reddens one arm; this one reddens the detector's whole purpose."
+      },
+      "expectFailIn": [
+        83
+      ],
+      "note": "Runs the shipped hooks rather than reading them, with every payload BOM-prefixed the way Cursor sends them - a hook that cannot read past U+FEFF is a no-op, and one shipped in that state for four commands before anyone noticed. Arms: file inventory; the template's deliberate asymmetry (the two tightening hooks registered with a loop cap, pre-approval left off because widening unattended execution is a project owner's call); the detector flagging an ask that names a pre-approved command, with reason, evidence and generation id; the two discrimination cases that decide whether anyone leaves this enabled (an ask to run install.ps1 is the human's, and prose naming commands is not an ask); the gate's silence with no verdict, its handback with one, its consumption of the flag, and its refusal of both a stale generation and a second loop; the approver allowing a verify gate while refusing a profile write and a chained command; and that every adapter decides from one host-neutral policy rather than a private copy. WQ-480 added the portability arms: that the policy is authored in globs (the direction that compiles losslessly to a regex host and a glob host both, unlike the regex it started as), that it compiles to OpenCode's permission.bash map with refuse becoming ask rather than deny, and that bootstrap both delivers the policy outside .cursor/ and compiles it into opencode.json. The hooks run from a STAGED project tree, not from where they ship, so the upward walk that finds .agent-control/policy.json is exercised rather than the fallback. All of it under a probe LOCALAPPDATA so the real flag and logs are never touched."
+    },
+    {
+      "step": 84,
+      "title": "StarterPack-Airlock discovery and refresh overlay merge (WQ-487)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/refresh-agent-context.ps1",
+        "find": "$airlockDisc = Find-StarterPackAirlock -DesktopRoots $airlockDesktopOverride",
+        "replace": "$airlockDisc = $null  # WQ-487 mutation: skip Airlock discovery",
+        "why": "Disables Desktop Airlock discovery during refresh, so overlay requiredReads never merge into AGENT_CONTEXT.json even when a valid Airlock layout is present. The step's refresh arm expects starterPackAirlockActive and overlay paths in requiredReads; without discovery both stay empty and the arm fails.",
+        "rejected": "Mutating Find-StarterPackAirlock in pack-paths.ps1 would redden every consumer and every simulate scenario, not just refresh. The defect under test is specifically whether refresh wires discovery into requiredReads."
+      },
+      "expectFailIn": [
+        84
+      ],
+      "note": "Mirrors simulate scenarios S01-S04 on Find-StarterPackAirlock (null without folder, valid layout resolves, wrong key and missing key fail closed), then runs refresh-agent-context.ps1 with -StarterPackAirlockDesktopRoots under an isolated AGENT_STARTER_PACK_STATE_ROOT. Active Airlock must set starterPackAirlockActive, record overlayRequiredReads, append overlay paths to requiredReads, and still list the working-copy docs/WORK_QUEUE.md. Inactive desktop must leave overlay fields empty."
+    },
+    {
+      "step": 85,
+      "title": "Recurring audit sync drift names a live writer (WQ-481)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/sync-audit-system.ps1",
+        "find": "if ($ev.Key -and ($prev -contains $ev.Key)) { $recurring += $ev }",
+        "replace": "if ($false -and $ev.Key -and ($prev -contains $ev.Key)) { $recurring += $ev }",
+        "why": "Blinds recurring-drift detection so a second verify-only run on the same installed path reports only the generic sync advice. Step 85 runs verify twice on unchanged drift and requires [RECURRING DRIFT] on the second pass."
+      },
+      "expectFailIn": [
+        85
+      ],
+      "note": "Static read for [RECURRING DRIFT] and guard-proofs.lock, then a miniature packMirror probe under AGENT_STARTER_PACK_INSTALL_ROOT and AGENT_STARTER_PACK_STATE_ROOT: first verify records drift, second verify on unchanged drift must print recurring guidance, sync plus clean verify must clear session state."
+    },
+    {
+      "step": 86,
+      "title": "Dual-zone Airlock publish gate (WQ-488)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/verify-airlock-publish-gate.ps1",
+        "find": "[DUAL-ZONE FAIL]",
+        "replace": "[DUAL-ZONE OK]",
+        "why": "Removes the distinct dual-zone failure banner when Zone A passed but Zone B failed. Step 86's VERSION-drift arm still fails via B09 sync, but the static read requires [DUAL-ZONE FAIL] in the gate script."
+      },
+      "expectFailIn": [
+        86
+      ],
+      "note": "Static read for B11 gate script + B10 -PublishRoot on verify-audit-system.ps1; live probe runs -WhatIf and VERSION drift through gate with -SkipZoneA -SkipZoneB (sync only)."
+    }
+  ]
+}

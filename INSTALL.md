@@ -6,13 +6,16 @@ Portable toolkit: **audits (Fix + Improve)**, **terminal hygiene MCP**, **CI bui
 **Agent / status:** [`docs/WORK_QUEUE.md`](docs/WORK_QUEUE.md).  
 **Full guide:** [pack/docs/START_HERE.md](pack/docs/START_HERE.md)
 
-**Pack version:** see root `VERSION` (**1.8.0**). Audit engine version: `pack/audit/manifest.json` (**2.22.65**).
+**Pack version:** see root `VERSION` (**1.8.0**). Audit engine version: `pack/audit/manifest.json` (**2.22.123**).
 
 ---
 
 ## Flash drive or other PC (WQ-011)
 
-Copy the pack folder to the stick (or `git clone` / `git pull` from `https://github.com/binary-100/AgentStarterPack.git`). On the other machine, open PowerShell in that folder and follow **`INSTALL.txt`**. If the stick is exFAT and you use git there, run the one-time `safe.directory` line in **`INSTALL.txt`** before other git commands.
+Copy the pack folder to the stick — plain file copy is fine and fully supported; no git, and no Unix
+permissions, need to survive the trip. On the destination host, open PowerShell in that folder and follow
+**`INSTALL.txt`**. Downloading a zip from `https://github.com/binary-100/AgentStarterPack` works the
+same way.
 
 After install, agents on that PC read the **installed** mirror at `%USERPROFILE%\.cursor\AgentStarterPack\` unless the stick folder is the open workspace.
 
@@ -25,6 +28,8 @@ Run this first on a new machine — it names what is missing and prints the comm
 ```powershell
 .\Check-Requirements.cmd          # add -Fix to install the Python packages
 ```
+
+On macOS/Linux, `bash Check-Requirements.sh` (same script, same flags).
 
 | Requirement | Needed for | If missing |
 |-------------|-----------|------------|
@@ -40,6 +45,8 @@ Run this first on a new machine — it names what is missing and prints the comm
 
 ## Install
 
+### Windows
+
 1. Double-click **`Install-AgentStarterPack.cmd`**
 2. Restart Cursor
 3. Verify:
@@ -49,11 +56,39 @@ Run this first on a new machine — it names what is missing and prints the comm
 & "$env:USERPROFILE\.cursor\AgentStarterPack\pack\scripts\verify-audit-system.ps1"
 ```
 
-Optional flags on first install:
+### macOS / Linux
+
+Requires **PowerShell 7 (`pwsh`)** — the entry points are thin shells over the same `.ps1` payloads.
+
+```bash
+bash install.sh User
+```
+
+Then restart Cursor and verify:
+
+```bash
+pwsh -File "$HOME/.cursor/AgentStarterPack/pack/scripts/doctor.ps1"
+pwsh -File "$HOME/.cursor/AgentStarterPack/pack/scripts/verify-audit-system.ps1"
+```
+
+**Why `bash install.sh` and not `./install.sh`.** Assume the pack arrived with no Unix execute bit,
+because that is the ordinary case: a folder copy, an unzipped archive, and exFAT or FAT media all
+deliver mode 644, and Windows has no bit to copy in the first place. `./install.sh` on such a copy
+answers `Permission denied` (exit 126) — and it is the one command that cannot repair the problem,
+because the repair lives inside the file you cannot start. Naming the interpreter sidesteps it
+entirely: `bash` reads a file it was handed regardless of mode. Everything afterwards is self-healing,
+since `install.ps1` runs `chmod +x` over every `.sh` it delivers. `pwsh -File install.ps1` works for
+the same reason if you prefer it. If you would rather have the bit, `chmod +x *.sh` first — but do not
+change the documented command to depend on it.
+
+### Optional flags on first install
 
 ```powershell
 .\install.ps1 -Scope User -RegisterMcp -InstallMcpDeps -NoPause
 ```
+
+The POSIX wrapper takes the scope as its first positional argument (`bash install.sh User`) and passes
+`-NoPause` itself; for the other flags call `pwsh -File install.ps1 -Scope User -RegisterMcp` directly.
 
 `-Scope User` installs the global rules, skills, and MCP wiring. Add `-Scope Both` only when the
 current folder is a project that should also get a local copy of the rules — run from the starter

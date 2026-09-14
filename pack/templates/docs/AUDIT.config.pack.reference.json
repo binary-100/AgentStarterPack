@@ -12,6 +12,7 @@
 
   "tests": {
     "script": "run_audit_tests.bat",
+    "scriptPosix": "run_audit_tests.sh",
     "env": {}
   },
 
@@ -22,6 +23,8 @@
       "Install-AgentStarterPack.cmd",
       "run_audit.cmd",
       "run_audit_tests.bat",
+      "run_audit_tests.sh",
+      "scripts/run_audit_tests.ps1",
       "docs/AUDIT.md",
       "docs/AUDIT.config.json",
       "AGENTS.md",
@@ -205,7 +208,7 @@
           "product-audit-overlay.mdc"
         ],
         "forbidDuplicateSkill": "agent-code-audit",
-        "agentsMdRequiredPhrases": ["run_audit.cmd", "run_audit_tests.bat"],
+        "agentsMdRequiredPhrases": [["run_audit.cmd", "run_audit.sh"], ["run_audit_tests.bat", "run_audit_tests.sh"]],
         "gitignoreAuditArtifacts": [
           "docs/.audit_agent_manifest.json",
           "docs/.audit_semantic_report.json",

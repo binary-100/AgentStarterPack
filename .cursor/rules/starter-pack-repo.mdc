@@ -15,8 +15,19 @@ This project **is** the Agent Starter Pack (rules, skills, MCP, install scripts)
 
 | Folder | Applies to |
 |--------|------------|
-| **`.cursor/rules/`** (repo root) | This workspace only — edit boundary, recommendation discipline |
-| **`pack/rules/`** | All projects after `install.ps1` — generic only; never workspace-specific boundaries |
+| **`.cursor/rules/`** (repo root) | **The load path.** Four workspace-only rules (edit boundary, recommendation discipline, audit, starter-pack-repo) **plus every generic rule synced from `pack/rules/`** |
+| **`pack/rules/`** | **Canonical source, not a load path** — generic only; never workspace-specific boundaries |
+
+**Never edit a synced copy in `.cursor/rules/`.** Edit `pack/rules/`, then re-run
+`pack\scripts\sync-project-rules.ps1 -ProjectRoot (Get-Location).Path`. The same script with
+`-VerifyOnly` reports drift, and it compares the files themselves — which is why no count is written
+here. A hardcoded total went stale twice, at 13 and again when the fourteenth rule landed.
+
+**Why they are here (WQ-456).** `install.ps1` also copies them to `%USERPROFILE%\.cursor\rules\`, and
+**Cursor does not load that folder.** It is not one of the four rule locations Cursor documents, and
+this workspace proved it: `full-paths-in-chat.mdc` was `alwaysApply: true`, present in the profile, and
+absent from agent context for months. A project's `.cursor/rules/` **is** loaded, so that is where an
+always-on rule has to live.
 
 Before new agent docs anywhere: **`pack/rules/generic-agent-doc-hygiene.mdc`**.
 

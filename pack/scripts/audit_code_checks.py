@@ -40,6 +40,7 @@ from audit_common import (  # noqa: E402
     read_canonical_version,
     resolve_repo_root,
 )
+from pack_entry_points import pack_entry_point  # noqa: E402
 from audit_install_wiring import (  # noqa: E402
     _installed_pack_root,
     _user_cursor_root,
@@ -396,6 +397,31 @@ def map_fixes_to_sections(fixes: list[str]) -> dict[str, list[str]]:
     return by_sec
 
 
+_RUNNER_COMMENT_RE = re.compile(r"(?im)^\s*(?:#|::|rem\s|//)")
+_RUNNER_ECHO_RE = re.compile(r"(?im)^\s*(?:echo|printf|write-host|write-output)\b")
+
+
+def strip_inert_runner_lines(text: str) -> str:
+    """Drop the lines of a test runner that cannot possibly run a test.
+
+    Coverage is a substring search for each test file's name, so any line that merely *names* a
+    test satisfies it - a comment pointing at the real suite, or an `echo` above `exit 0`. Both
+    make an instant-pass runner look covered, which is the single failure this check exists to
+    catch. A block comment is left alone: a runner's help text is not where names hide.
+
+    An output line that also runs something (`echo x && python test_x.py`) keeps its statement, so
+    the common "announce then run" shape is not mistaken for a stub.
+    """
+    kept: list[str] = []
+    for line in text.splitlines():
+        if _RUNNER_COMMENT_RE.match(line):
+            continue
+        if _RUNNER_ECHO_RE.match(line) and not re.search(r"&&|\|\||;|\|", line):
+            continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
 def check_test_runner_coverage(app_root: Path, cfg: dict) -> list[str]:
     """A runner that exits 0 without running anything used to satisfy the whole test gate.
 
@@ -406,38 +432,65 @@ def check_test_runner_coverage(app_root: Path, cfg: dict) -> list[str]:
     cc = cfg.get("codeChecks") or {}
     if not (cc.get("testRunnerCoverage") or {}).get("enabled", True):
         return []
-    script_rel = (cfg.get("tests") or {}).get("script")
-    if not script_rel:
-        return []
-    script = app_root / script_rel.replace("\\", "/")
-    if not script.is_file():
+    tests_cfg = cfg.get("tests") or {}
+    # Every declared runner, not just the Windows one: the promise is that whichever entry point
+    # this OS uses covers the test files, so a project whose .bat runs the suite and whose .sh
+    # quietly runs nothing must not pass. Both are checked on both platforms - the defect is in the
+    # file, not in today's OS.
+    script_rels = [r for r in (tests_cfg.get("script"), tests_cfg.get("scriptPosix")) if r]
+    if not script_rels:
         return []
     test_files = sorted(app_root.glob("tests/test_*.py"))
     if not test_files:
         return []
-    text = script.read_text(encoding="utf-8-sig", errors="replace")
-    # A runner is allowed to delegate, so follow one level of in-project scripts it calls.
-    nested_re = re.compile(
-        r"(?im)(?:^|\s)(?:call|cmd\s+/c|-File)\s+\"?([\w\-.$%~]*[\w\-.]+\.(?:bat|cmd|ps1))\"?"
-    )
-    for match in nested_re.finditer(text):
-        candidate = match.group(1).replace("%~dp0", "").replace("\\", "/").lstrip("/")
-        nested = app_root / candidate
-        if nested.is_file() and nested.resolve() != script.resolve():
-            text += "\n" + nested.read_text(encoding="utf-8-sig", errors="replace")
-    # Globbed or discovered test runs cover files the runner never names.
-    if re.search(r"test_\*\.py|pytest|unittest\s+discover|-m\s+unittest", text, re.IGNORECASE):
-        return []
-    missing = [p.name for p in test_files if p.name not in text]
-    if not missing:
-        return []
-    shown = ", ".join(missing[:3])
-    if len(missing) > 3:
-        shown += f" +{len(missing) - 3} more"
-    return [
-        f"Test runner - {script_rel} never runs {shown} - "
-        "name them or run tests\\test_*.py so the pass covers them"
-    ]
+    fixes: list[str] = []
+    for script_rel in dict.fromkeys(script_rels):
+        script = app_root / script_rel.replace("\\", "/")
+        if not script.is_file():
+            continue
+        text = strip_inert_runner_lines(script.read_text(encoding="utf-8-sig", errors="replace"))
+        # A runner is allowed to delegate, so follow one level of in-project scripts it calls.
+        # The candidate may sit in a subdirectory: the separator has to be part of the pattern, or
+        # `-File "scripts\run_tests.ps1"` does not match and a thin wrapper looks like a runner that
+        # tests nothing. .sh counts too, now that the posix entry point is a wrapper as well.
+        #
+        # The leading token has to be an invocation of some kind - a bare mention must not count, or
+        # `REM see scripts/run_tests.ps1` above `exit /b 0` would satisfy the check. The vocabulary
+        # therefore lists the spellings that actually run something, including `source`/`.` and any
+        # token naming powershell: a shell wrapper may reach the implementation through a helper
+        # function (pack_pwsh_file) rather than by naming pwsh on the command line, and before that
+        # was covered this check called the pack's own posix entry point a runner that tests nothing.
+        nested_re = re.compile(
+            r"(?im)(?:^|\s)(?:call|cmd\s+/c|exec|source|\.|-File|bash|sh"
+            r"|[\w\-]*(?:pwsh|powershell)[\w\-]*)\s+\"?"
+            r"([\w\-.$%~{}()/\\]*[\w\-.]+\.(?:bat|cmd|ps1|sh))\"?"
+        )
+        for match in nested_re.finditer(text):
+            candidate = match.group(1).replace("\\", "/")
+            # Strip the ways a script spells "my own directory" before resolving in the project.
+            for prefix in ("%~dp0", "$ROOT", "$PSScriptRoot", "${ROOT}", "."):
+                if candidate.startswith(prefix):
+                    candidate = candidate[len(prefix):]
+            candidate = candidate.lstrip("/")
+            nested = app_root / candidate
+            if nested.is_file() and nested.resolve() != script.resolve():
+                text += "\n" + strip_inert_runner_lines(
+                    nested.read_text(encoding="utf-8-sig", errors="replace")
+                )
+        # Globbed or discovered test runs cover files the runner never names.
+        if re.search(r"test_\*\.py|pytest|unittest\s+discover|-m\s+unittest", text, re.IGNORECASE):
+            continue
+        missing = [p.name for p in test_files if p.name not in text]
+        if not missing:
+            continue
+        shown = ", ".join(missing[:3])
+        if len(missing) > 3:
+            shown += f" +{len(missing) - 3} more"
+        fixes.append(
+            f"Test runner - {script_rel} never runs {shown} - "
+            "name them or run tests\\test_*.py so the pass covers them"
+        )
+    return fixes
 
 
 def verify_domain_map_modules_exist(
@@ -821,11 +874,22 @@ def compute_tree_fingerprint(app_root: Path, cfg: dict) -> str | None:
 
 
 def git_head(repo_root: Path) -> str | None:
-    if not (repo_root / ".git").exists():
-        return None
+    """Return HEAD sha when git sees a usable work tree (WQ-461 / G01 parity with Test-PackGitRepo).
+
+    Do not test (.git) path existence - a stale directory, worktree file, or unreadable index
+    can make Test-Path true while rev-parse fails; asking git matches the PowerShell guards.
+    """
     try:
         r = subprocess.run(
-            ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+            [
+                "git",
+                "-c",
+                "safe.directory=*",
+                "-C",
+                str(repo_root),
+                "rev-parse",
+                "HEAD",
+            ],
             capture_output=True,
             text=True,
             timeout=30,
@@ -874,7 +938,7 @@ def verify_semantic_freshness(app_root: Path, cfg: dict, data: dict) -> list[str
     if manifest_head and current_head and manifest_head != current_head:
         fixes.append(
             "Semantic report stale - source tree changed since test pass "
-            "(re-run full run_audit.cmd)"
+            f"(re-run full {pack_entry_point('run_audit')})"
         )
     if cc.get("semanticRequireTestsGitHead", True) and manifest_head:
         if not semantic_head:
@@ -897,7 +961,7 @@ def verify_section_b_inventory(app_root: Path, cfg: dict, sections: dict) -> lis
     if not inv:
         return [
             "Section B - missing docs/.audit_inventory.json "
-            "(re-run run_audit.cmd to generate inventory)"
+            f"(re-run {pack_entry_point('run_audit')} to generate inventory)"
         ]
     if "B" not in sections:
         return []
@@ -1121,8 +1185,8 @@ def verify_semantic_report(
     if not path.is_file():
         fixes.append(
             f"Semantic report missing - {path.relative_to(app_root)} - "
-            "run scripts/write_semantic_audit_template.cmd then review all sections "
-            "before audit is complete"
+            f"run {pack_entry_point('scripts/write_semantic_audit_template')} then review all "
+            "sections before audit is complete"
         )
         return fixes
     try:
@@ -1194,12 +1258,18 @@ def verify_section_l_wiring(app_root: Path, cfg: dict) -> list[str]:
     agents = app_root / "AGENTS.md"
     if agents.is_file():
         text = agents.read_text(encoding="utf-8", errors="replace")
-        for phrase in lcfg.get("agentsMdRequiredPhrases") or [
-            "run_audit.cmd",
-            "run_tests.bat",
+        # An entry may be a string (that exact phrase) or a list (any one of them). The default is
+        # any-of because the requirement is that AGENTS.md names the audit and test entry points, not
+        # that it names the *Windows* ones: a project telling a Linux reader to run ./run_audit.sh was
+        # failing its own audit for being correct (WQ-452). Config may still pin exact strings.
+        for entry in lcfg.get("agentsMdRequiredPhrases") or [
+            ["run_audit.cmd", "run_audit.sh", "run_audit.ps1"],
+            ["run_tests.bat", "run_tests.sh", "run_tests.ps1"],
         ]:
-            if phrase not in text:
-                fixes.append(f"Section L - AGENTS.md missing required phrase: {phrase}")
+            alternatives = entry if isinstance(entry, list) else [entry]
+            if not any(alt in text for alt in alternatives):
+                wanted = " or ".join(str(a) for a in alternatives)
+                fixes.append(f"Section L - AGENTS.md missing required phrase: {wanted}")
     return fixes
 
 
@@ -1400,12 +1470,15 @@ def verify_section_f_portable_policy(app_root: Path, cfg: dict) -> list[str]:
         fixes.append("Section F - AGENTS.md missing (portable-first policy)")
         return fixes
     text = agents.read_text(encoding="utf-8", errors="replace")
-    for phrase in fcfg.get("agentsMdRequiredPhrases") or [
+    # Same any-of shape as Section L, so one key does not mean two things in one config file.
+    for entry in fcfg.get("agentsMdRequiredPhrases") or [
         "portable first",
         "Portable-first",
     ]:
-        if phrase not in text:
-            fixes.append(f"Section F - AGENTS.md missing portable policy phrase: {phrase}")
+        alternatives = entry if isinstance(entry, list) else [entry]
+        if not any(alt in text for alt in alternatives):
+            wanted = " or ".join(str(a) for a in alternatives)
+            fixes.append(f"Section F - AGENTS.md missing portable policy phrase: {wanted}")
     return fixes
 
 

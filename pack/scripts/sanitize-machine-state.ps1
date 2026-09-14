@@ -41,7 +41,7 @@ if (-not $ProjectRoot -or -not (Test-Path -LiteralPath $ProjectRoot)) {
 }
 $ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
 
-$manifestPath = Join-Path $ProjectRoot 'pack\audit\manifest.json'
+$manifestPath = Join-Path $ProjectRoot 'pack/audit/manifest.json'
 if (-not (Test-Path -LiteralPath $manifestPath)) {
     Write-Host "ERROR: no pack/audit/manifest.json under $ProjectRoot - is this a pack checkout?"
     exit 1
@@ -71,7 +71,7 @@ foreach ($dirName in @('__pycache__', '.tmp', '.pytest_cache')) {
 }
 Get-ChildItem -LiteralPath $ProjectRoot -Recurse -File -Force -ErrorAction SilentlyContinue |
     Where-Object {
-        $_.FullName -notmatch '\\\.git\\' -and
+        -not (Test-PackPathHasSegment -Path $_.FullName -Segment @('.git')) -and
         ($_.Name -like '.audit_*' -or $_.Extension -in @('.pyc', '.pyo'))
     } |
     ForEach-Object { $targets += $_.FullName }
@@ -84,7 +84,7 @@ if ($targets.Count -eq 0) {
 }
 
 foreach ($t in $targets) {
-    $rel = $t.Substring($ProjectRoot.Length).TrimStart('\')
+    $rel = Get-PackRelPathKey -Path $t -Root $ProjectRoot
     if ($Apply) {
         $isDir = (Get-Item -LiteralPath $t -ErrorAction SilentlyContinue) -is [System.IO.DirectoryInfo]
         Remove-Item -LiteralPath $t -Force -Recurse:$isDir -ErrorAction SilentlyContinue
@@ -97,7 +97,7 @@ foreach ($t in $targets) {
 Write-Host ""
 if ($Apply) {
     Write-Host "Removed $($targets.Count) machine-local item(s)."
-    Write-Host 'Next on this machine: Refresh-AgentContext.cmd, then run_audit.cmd to rebuild audit state.'
+    Write-Host "Next on this machine: $(Get-PackEntryPoint 'Refresh-AgentContext'), then $(Get-PackEntryPoint 'run_audit') to rebuild audit state."
 } else {
     Write-Host "$($targets.Count) machine-local item(s) would be removed. Re-run with -Apply."
 }

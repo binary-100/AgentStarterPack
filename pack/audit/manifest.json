@@ -1,9 +1,10 @@
-{
-  "version": "2.22.65",
+﻿{
+  "version": "2.22.123",
   "description": "Audit system manifest - every file that must stay in sync. Used by sync-audit-system.ps1 and verify-audit-system.ps1.",
 
   "packMirror": [
     "pack/audit/manifest.json",
+    "pack/audit/behavior-controls.json",
     "pack/docs/START_HERE.md",
     "pack/docs/README.md",
     "pack/docs/AUDIT_SYSTEM.md",
@@ -26,15 +27,37 @@
     "docs/MULTI_TOOL_GAP_PLAN.md",
     "docs/AGENT_UPGRADE_PATH.md",
     "docs/AGENT_FRESHNESS_ADAPTER_PLAN.md",
+    "docs/GUARD_PROOF_PLAN.md",
+    "docs/STARTERPACK_AIRLOCK_PLAN.md",
+    "docs/AUDIT_AIRLOCK_COVERAGE.md",
+    "docs/AIRLOCK_DISCOVERY_AND_OVERLAY.md",
+    "docs/AIRLOCK_MIGRATION_CHECKLIST.md",
     "docs/WORK_QUEUE.md",
     "docs/MULTI_INSTANCE_GUIDE.md",
     "docs/VERSION_SYNC.md",
     "pack/scripts/sync-project-rules.ps1",
     "pack/scripts/verify-agent-setup.ps1",
     "pack/scripts/ensure-work-queue.ps1",
+    "pack/scripts/verify-lib.ps1",
+    "pack/scripts/verify-guard-proofs.ps1",
+    "pack/scripts/simulate-airlock-scenarios.ps1",
+    "pack/scripts/sync-working-copy-to-airlock-repo.ps1",
+    "pack/scripts/verify-airlock-publish-gate.ps1",
+    "pack/scripts/materialize-starter-pack-airlock-templates.ps1",
+    "pack/scripts/Initialize-StarterPackAirlock.ps1",
+    "Initialize-StarterPackAirlock.cmd",
+    "Verify-AirlockPublishGate.cmd",
+    "pack/scripts/Complete-StarterPackAirlockCutover.ps1",
+    "Complete-StarterPackAirlockCutover.cmd",
+    "pack/templates/airlock/overlay/manifest.json.template",
+    "pack/templates/airlock/overlay/docs/WORK_QUEUE.md.template",
+    "pack/templates/airlock/overlay/docs/PUBLISH.md.template",
+    "pack/templates/airlock/repo/.github/workflows/pack-os-smoke.yml",
     "pack/scripts/verify-work-queue.ps1",
     "pack/scripts/verify-agent-handoffs.ps1",
     "pack/scripts/verify-complete-picture.ps1",
+    "pack/scripts/verify-product-truth-paths.ps1",
+    "pack/scripts/verify-session-handoff.ps1",
     "pack/scripts/archive-completed-handoff.ps1",
     "pack/scripts/ensure-work-completion.ps1",
     "pack/scripts/ensure-handoffs-scaffold.ps1",
@@ -44,6 +67,8 @@
     "pack/scripts/repair-agent-docs.ps1",
     "pack/scripts/update-agents.ps1",
     "pack/scripts/refresh-agent-context.ps1",
+    "pack/scripts/repair-project-hooks.ps1",
+    "pack/scripts/repair-project-scripts.ps1",
     "pack/scripts/sanitize-machine-state.ps1",
     "pack/scripts/agent_context_freshness.py",
     "pack/scripts/invoke-agent-freshness.ps1",
@@ -68,6 +93,12 @@
     "Bootstrap-Project.sh",
     "Check-Requirements.sh",
     "run_audit.sh",
+    "Sync-DocVersions.sh",
+    "Update-AgentStack.sh",
+    "Register-Tool-Adapters.sh",
+    "Verify-AgentSetup.sh",
+    "Update-AgentRules.sh",
+    "Bootstrap-Portable-Project.sh",
     "export.ps1",
     "build_installer_exe.ps1",
     "pack/scripts/bootstrap-project.ps1",
@@ -80,10 +111,21 @@
     "pack/templates/docs/ROADMAP.md.template",
     "pack/templates/docs/WORK_QUEUE.md.template",
     "pack/templates/docs/WORK_COMPLETION.md.template",
+    "pack/templates/docs/DOC_MAP.md.template",
+    "pack/templates/docs/product_truth_verify.json.example",
     "pack/templates/docs/handoffs/README.md.template",
     "pack/templates/docs/handoffs/HANDOFF_BUILD.md.template",
+    "pack/templates/docs/handoffs/SESSION.md.template",
+    "pack/templates/portable/opencode.json.template",
     "pack/templates/cursor/hooks.json.template",
     "pack/templates/cursor/hooks/session-freshness.ps1",
+    "pack/templates/cursor/hooks/hook-state.ps1",
+    "pack/templates/cursor/hooks/offload-detect.ps1",
+    "pack/templates/cursor/hooks/completion-gate.ps1",
+    "pack/templates/cursor/hooks/shell-preapprove.ps1",
+    "pack/templates/agent-control/policy.json",
+    "pack/templates/agent-control/conformance.json",
+    "pack/scripts/agent-policy-lib.ps1",
     "pack/templates/docs/audit_allowlist.json.template",
     "pack/templates/docs/KNOWN_LIMITATIONS.md.template",
     "pack/templates/portable/AI_INSTRUCTIONS.md.template",
@@ -101,13 +143,18 @@
     "pack/scripts/run_audit_core.ps1",
     "pack/scripts/audit_code_checks.py",
     "pack/scripts/audit_common.py",
+    "pack/scripts/pack_entry_points.py",
+    "pack/scripts/py-wrap.sh",
     "pack/scripts/audit_version_docs.py",
     "pack/scripts/audit_install_wiring.py",
     "pack/scripts/sync-audit-system.ps1",
     "pack/scripts/verify-audit-system.ps1",
     "pack/scripts/verify-audit-behavior.ps1",
     "pack/templates/run_audit.ps1.template",
-    "pack/templates/run_tests.generic.bat.template",
+    "pack/templates/run_audit.sh.template",
+    "pack/templates/run_tests.ps1.template",
+    "pack/templates/run_tests.sh.template",
+    "pack/templates/test_bootstrap_smoke.py.template",
     "pack/templates/run_tests.bat.template",
     "pack/templates/build-ci.bat.template",
     "pack/templates/apply_version.py.template",
@@ -118,6 +165,10 @@
     "pack/templates/scripts/verify_semantic_audit.cmd.template",
     "pack/templates/scripts/write_semantic_audit_template.cmd.template",
     "pack/templates/scripts/finalize_audit.cmd.template",
+    "pack/templates/scripts/sync_audit_system.sh.template",
+    "pack/templates/scripts/verify_semantic_audit.sh.template",
+    "pack/templates/scripts/write_semantic_audit_template.sh.template",
+    "pack/templates/scripts/finalize_audit.sh.template",
     "pack/templates/audit.mdc.template",
     "pack/templates/docs/AUDIT.md.template",
     "pack/templates/docs/AUDIT.config.json.template",
@@ -129,8 +180,13 @@
     "pack/rules/audit-protocol.mdc",
     "pack/rules/generic-agent-doc-hygiene.mdc",
     "pack/rules/generic-deep-task-execution.mdc",
+    "pack/rules/generic-execution-strategy.mdc",
+    "pack/rules/generic-fix-and-verify-reporting.mdc",
+    "pack/rules/generic-implementation-readiness.mdc",
     "pack/rules/generic-work-queue-discipline.mdc",
+    "pack/rules/generic-structured-chat-output.mdc",
     "pack/rules/generic-agent-handoff-discipline.mdc",
+    "pack/rules/handoff-first.mdc",
     "pack/rules/generic-phased-feature-design.mdc",
     "pack/rules/generic-terminal-and-build-hygiene.mdc",
     "pack/rules/generic-version-sync.mdc",
@@ -138,13 +194,18 @@
     "pack/skills/agent-code-audit/SKILL.md",
     "pack/skills/agent-gui-test-hygiene/SKILL.md",
     "pack/skills/agent-terminal-hygiene/SKILL.md",
-    "pack/audit/behavior-fixture/run_tests_stub.bat",
+    "pack/audit/behavior-fixture/run_tests_stub.ps1",
     "pack/audit/behavior-fixture/run_audit.cmd",
+    "pack/audit/behavior-fixture/run_audit.sh",
     "pack/audit/behavior-fixture/scripts/run_audit.ps1",
     "pack/audit/behavior-fixture/scripts/sync_audit_system.cmd",
+    "pack/audit/behavior-fixture/scripts/sync_audit_system.sh",
     "pack/audit/behavior-fixture/scripts/finalize_audit.cmd",
+    "pack/audit/behavior-fixture/scripts/finalize_audit.sh",
     "pack/audit/behavior-fixture/scripts/verify_semantic_audit.cmd",
+    "pack/audit/behavior-fixture/scripts/verify_semantic_audit.sh",
     "pack/audit/behavior-fixture/scripts/write_semantic_audit_template.cmd",
+    "pack/audit/behavior-fixture/scripts/write_semantic_audit_template.sh",
     "pack/audit/behavior-fixture/.cursor/rules/audit.mdc",
     "pack/audit/behavior-fixture/.gitignore",
     "pack/audit/behavior-fixture/main.py",
@@ -160,12 +221,19 @@
     "AGENTS.md",
     "run_audit.cmd",
     "run_audit_tests.bat",
+    "run_audit_tests.sh",
     "scripts/run_audit.ps1",
+    "scripts/run_audit_tests.ps1",
     "scripts/sync_audit_system.cmd",
     "scripts/finalize_audit.cmd",
     "scripts/verify_semantic_audit.cmd",
     "scripts/write_semantic_audit_template.cmd",
+    "scripts/sync_audit_system.sh",
+    "scripts/finalize_audit.sh",
+    "scripts/verify_semantic_audit.sh",
+    "scripts/write_semantic_audit_template.sh",
     "scripts/fill_pack_semantic_report.py",
+    "scripts/semantic_report_content.json",
     ".cursor/rules/audit.mdc",
     "tests/test_pack_audit.py",
     "pack/templates/docs/AUDIT.pack.reference.md",
@@ -187,8 +255,13 @@
     { "from": "pack/rules/audit-protocol.mdc", "to": "rules/audit-protocol.mdc" },
     { "from": "pack/rules/generic-agent-doc-hygiene.mdc", "to": "rules/generic-agent-doc-hygiene.mdc" },
     { "from": "pack/rules/generic-deep-task-execution.mdc", "to": "rules/generic-deep-task-execution.mdc" },
+    { "from": "pack/rules/generic-execution-strategy.mdc", "to": "rules/generic-execution-strategy.mdc" },
+    { "from": "pack/rules/generic-fix-and-verify-reporting.mdc", "to": "rules/generic-fix-and-verify-reporting.mdc" },
+    { "from": "pack/rules/generic-implementation-readiness.mdc", "to": "rules/generic-implementation-readiness.mdc" },
     { "from": "pack/rules/generic-work-queue-discipline.mdc", "to": "rules/generic-work-queue-discipline.mdc" },
+    { "from": "pack/rules/generic-structured-chat-output.mdc", "to": "rules/generic-structured-chat-output.mdc" },
     { "from": "pack/rules/generic-agent-handoff-discipline.mdc", "to": "rules/generic-agent-handoff-discipline.mdc" },
+    { "from": "pack/rules/handoff-first.mdc", "to": "rules/handoff-first.mdc" },
     { "from": "pack/rules/generic-phased-feature-design.mdc", "to": "rules/generic-phased-feature-design.mdc" },
     { "from": "pack/rules/generic-terminal-and-build-hygiene.mdc", "to": "rules/generic-terminal-and-build-hygiene.mdc" },
     { "from": "pack/rules/generic-version-sync.mdc", "to": "rules/generic-version-sync.mdc" },
@@ -217,28 +290,39 @@
     ]
   },
 
+  "_comment_projectRequired": "WQ-450: the *Sh keys were held out of this list in 2.22.76 and added here in 2.22.77, in that order deliberately. This list only reports a missing project file - no sync command writes into a project - so requiring the twins before pack/scripts/repair-project-scripts.ps1 existed would have produced drift nothing could clear. Behavior step 66 fails if a twin required here is one the repair script cannot deliver, which is the same mistake in the other direction.",
   "projectRequired": {
     "appLayout": {
       "auditMd": "app/docs/AUDIT.md",
       "auditConfig": "app/docs/AUDIT.config.json",
       "auditRule": "app/.cursor/rules/audit.mdc",
       "runAuditCmd": "app/run_audit.cmd",
+      "runAuditSh": "app/run_audit.sh",
       "runAuditPs1": "app/scripts/run_audit.ps1",
       "syncAuditCmd": "app/scripts/sync_audit_system.cmd",
+      "syncAuditSh": "app/scripts/sync_audit_system.sh",
       "finalizeAuditCmd": "app/scripts/finalize_audit.cmd",
+      "finalizeAuditSh": "app/scripts/finalize_audit.sh",
       "verifySemanticCmd": "app/scripts/verify_semantic_audit.cmd",
-      "writeSemanticTemplateCmd": "app/scripts/write_semantic_audit_template.cmd"
+      "verifySemanticSh": "app/scripts/verify_semantic_audit.sh",
+      "writeSemanticTemplateCmd": "app/scripts/write_semantic_audit_template.cmd",
+      "writeSemanticTemplateSh": "app/scripts/write_semantic_audit_template.sh"
     },
     "flatLayout": {
       "auditMd": "docs/AUDIT.md",
       "auditConfig": "docs/AUDIT.config.json",
       "auditRule": ".cursor/rules/audit.mdc",
       "runAuditCmd": "run_audit.cmd",
+      "runAuditSh": "run_audit.sh",
       "runAuditPs1": "scripts/run_audit.ps1",
       "syncAuditCmd": "scripts/sync_audit_system.cmd",
+      "syncAuditSh": "scripts/sync_audit_system.sh",
       "finalizeAuditCmd": "scripts/finalize_audit.cmd",
+      "finalizeAuditSh": "scripts/finalize_audit.sh",
       "verifySemanticCmd": "scripts/verify_semantic_audit.cmd",
-      "writeSemanticTemplateCmd": "scripts/write_semantic_audit_template.cmd"
+      "verifySemanticSh": "scripts/verify_semantic_audit.sh",
+      "writeSemanticTemplateCmd": "scripts/write_semantic_audit_template.cmd",
+      "writeSemanticTemplateSh": "scripts/write_semantic_audit_template.sh"
     }
   },
 
@@ -264,6 +348,85 @@
   ],
 
   "_maintainerOnlyPaths": "Repo files that belong to pack development and must not land in a user's install. install.ps1 copies the whole checkout, so anything not listed here ships to %USERPROFILE%; sync-audit-system.ps1 also deletes these from an existing install. Session handoffs and implementation specs are notes between maintainers - they age badly and mean nothing to someone who just installed the pack.",
+  "_comment_listConsumers": "WQ-442: every script that must read a manifest list, declared. A list having one home is not enough - nothing enumerated its readers, so each consumer was discovered by shipping the bug (WQ-424 to 439). Behavior step 60 fails when a declared reader stops reading its key, and when a script reads a distribution-critical key without being declared here.",
+  "listConsumers": {
+    "machineLocalPaths": [
+      "install.ps1",
+      "export.ps1",
+      "pack/scripts/sanitize-machine-state.ps1",
+      "pack/scripts/simulate-airlock-scenarios.ps1",
+      "pack/scripts/sync-audit-system.ps1",
+      "pack/scripts/sync-working-copy-to-airlock-repo.ps1",
+      "pack/scripts/verify-agent-setup.ps1",
+      "pack/scripts/verify-audit-behavior.ps1"
+    ],
+    "maintainerOnlyPaths": [
+      "install.ps1",
+      "export.ps1",
+      "pack/scripts/pack-paths.ps1",
+      "pack/scripts/simulate-airlock-scenarios.ps1",
+      "pack/scripts/sync-audit-system.ps1",
+      "pack/scripts/sync-working-copy-to-airlock-repo.ps1",
+      "pack/scripts/verify-audit-behavior.ps1"
+    ],
+    "repoOnlyPaths": [
+      "install.ps1",
+      "export.ps1",
+      "pack/scripts/simulate-airlock-scenarios.ps1",
+      "pack/scripts/sync-working-copy-to-airlock-repo.ps1",
+      "pack/scripts/verify-audit-behavior.ps1"
+    ],
+    "packMirror": [
+      "export.ps1",
+      "pack/scripts/sync-audit-system.ps1",
+      "pack/scripts/verify-agent-setup.ps1",
+      "pack/scripts/verify-audit-behavior.ps1",
+      "pack/scripts/verify-audit-system.ps1"
+    ],
+    "packToUser": [
+      "pack/scripts/sync-audit-system.ps1",
+      "pack/scripts/verify-agent-setup.ps1",
+      "pack/scripts/verify-audit-behavior.ps1"
+    ],
+    "forbiddenArtifacts": [
+      "pack/scripts/audit_code_checks.py",
+      "pack/scripts/run_audit_core.ps1",
+      "pack/scripts/verify-audit-behavior.ps1",
+      "pack/scripts/verify-audit-system.ps1"
+    ],
+    "forbiddenPackPaths": [
+      "pack/scripts/sync-audit-system.ps1",
+      "pack/scripts/verify-audit-behavior.ps1",
+      "pack/scripts/verify-audit-system.ps1"
+    ],
+    "pathRulePrimitiveAllowlist": [
+      "pack/scripts/verify-audit-behavior.ps1"
+    ]
+  },
+
+  "_comment_distributionChannels": "WQ-442: the ways this pack reaches a machine that did not build it. Each must honour every distributionCriticalKey - that is precisely what WQ-439 (export shipped what install stripped) and WQ-425 (install kept what export dropped) each got wrong in opposite directions.",
+  "distributionChannels": [
+    "install.ps1",
+    "export.ps1"
+  ],
+  "distributionCriticalKeys": [
+    "machineLocalPaths",
+    "maintainerOnlyPaths",
+    "repoOnlyPaths"
+  ],
+
+  "_repoOnlyPaths": "Paths that belong in Airlock repo/ only (CI workflows). install.ps1 and export.ps1 strip them; sync-working-copy-to-airlock-repo.ps1 materializes them from pack/templates/airlock/repo/ after mirror.",
+  "repoOnlyPaths": [
+    ".github"
+  ],
+
+  "_comment_pathRulePrimitiveAllowlist": "WQ-441: files allowed to contain their own drive-letter or placeholder pattern. Everything else must use pack/scripts/verify-lib.ps1, so the answer to 'is this a real machine path' has one home. Behavior step 59 enforces this.",
+  "pathRulePrimitiveAllowlist": [
+    "pack/scripts/verify-lib.ps1",
+    "pack/scripts/verify-product-truth-paths.ps1",
+    "pack/scripts/verify-audit-behavior.ps1"
+  ],
+
   "maintainerOnlyPaths": [
     ".cursor/rules/no-publish-from-this-machine.mdc",
     "docs/HANDOFF_DESIGN_REFERENCE.md",
@@ -271,10 +434,122 @@
     "docs/handoff_archive"
   ],
 
+  "_comment_citedPathOwnership": "WQ-433: who owns a docs/, scripts/ or tests/ path that a rule, skill or doc names. Step 47 resolves pack/-rooted cites only, so these three roots went unchecked - and an indiscriminate scan of them reports 68 findings on a clean tree, all of them correct advice about the reader's project, which is how the first attempt got muted. Undeclared is the default and means it must exist in this checkout, so a new cite is checked without anyone listing it. Two declarations exist for the cites where existence here is the wrong question: delivered means the pack writes the file into a project, and the check is that deliveredBy still exists, since advice to keep a file no template writes is undeliverable; reader means the project owns it and nothing here can check it, which is why each one carries a why and behavior step 81 prints the list every run. A declaration nothing cites any more is a failure, not a leftover.",
+  "citedPathOwnership": {
+    "docs/ROADMAP.md": {
+      "owner": "delivered",
+      "deliveredBy": "pack/templates/docs/ROADMAP.md.template",
+      "why": "Product roadmap of a bootstrapped app. This pack deliberately has none - START_HERE line 22 contrasts the two in one sentence, which is why ownership is declared per path and not guessed from the citing file."
+    },
+    "docs/KNOWN_LIMITATIONS.md": {
+      "owner": "delivered",
+      "deliveredBy": "pack/templates/docs/KNOWN_LIMITATIONS.md.template",
+      "why": "Product-truth doc a bootstrapped app receives; the pack's own limitations live in its docs, not under this name."
+    },
+    "docs/WORK_COMPLETION.md": {
+      "owner": "delivered",
+      "deliveredBy": "pack/templates/docs/WORK_COMPLETION.md.template",
+      "why": "The project overlay. The pack's own copy is pack/docs/WORK_COMPLETION.md, and WORK_COMPLETION.md line 76 names the overlay path on purpose."
+    },
+    "docs/AUDIT.md.template": {
+      "owner": "delivered",
+      "deliveredBy": "pack/templates/docs/AUDIT.md.template",
+      "why": "Same bootstrap table: the left column is the template name relative to pack/templates, not a path in any tree."
+    },
+    "docs/AUDIT.config.json.template": {
+      "owner": "delivered",
+      "deliveredBy": "pack/templates/docs/AUDIT.config.json.template",
+      "why": "Same bootstrap table as docs/AUDIT.md.template."
+    },
+    "docs/AGENT_CONTEXT.json": {
+      "owner": "delivered",
+      "deliveredBy": "pack/scripts/refresh-agent-context.ps1",
+      "why": "Written by the refresh into a project's docs/. This checkout is meant to be copied, so its four context artifacts go to a machine-local state directory instead - absent here by decision, not by breakage."
+    },
+    "docs/AGENT_REFRESH.md": {
+      "owner": "delivered",
+      "deliveredBy": "pack/scripts/refresh-agent-context.ps1",
+      "why": "Same refresh, same machine-local state directory for this checkout."
+    },
+    "docs/AGENT_SESSION_START.md": {
+      "owner": "delivered",
+      "deliveredBy": "pack/scripts/refresh-agent-context.ps1",
+      "why": "Same refresh. START_HERE says outright that it is not here, which a prose-sniffing filter would read as an exemption and a reader reads as the truth."
+    },
+    "docs/.product_truth_verify.json": {
+      "owner": "delivered",
+      "deliveredBy": "pack/templates/docs/product_truth_verify.json.example",
+      "why": "Optional doc/code claim config a project writes from the shipped example; verify-product-truth-paths.ps1 reports when it is absent rather than failing."
+    },
+    "scripts/apply_version.py": {
+      "owner": "delivered",
+      "deliveredBy": "pack/templates/apply_version.py.template",
+      "why": "Version pipeline a -Stack Python project receives. This pack is not that stack."
+    },
+    "scripts/doc_version_sync.py": {
+      "owner": "delivered",
+      "deliveredBy": "pack/scripts/doc_version_sync.py",
+      "why": "The one Python-stack file bootstrap copies out of pack/scripts rather than from a template, so the pack runs the same implementation it ships."
+    },
+    "scripts/sync_doc_versions.py": {
+      "owner": "delivered",
+      "deliveredBy": "pack/templates/scripts/sync_doc_versions.py.template",
+      "why": "Doc-only sync entry a -Stack Python project receives."
+    },
+    "scripts/sync_doc_versions.cmd": {
+      "owner": "delivered",
+      "deliveredBy": "pack/templates/scripts/sync_doc_versions.cmd.template",
+      "why": "Windows wrapper for the doc-only sync, same stack."
+    },
+    "tests/test_version_consistency.py": {
+      "owner": "delivered",
+      "deliveredBy": "pack/templates/test_version_consistency.py.template",
+      "why": "Version-drift test a -Stack Python project receives."
+    },
+    "docs/PRODUCT_REFERENCE.md": {
+      "owner": "reader",
+      "why": "Cited as 'or equivalent' - the capability doc a project already has under whatever name it uses. The pack ships no template for it, so there is nothing here to check."
+    },
+    "docs/upgrade/BUILD_HANDOFF.md": {
+      "owner": "reader",
+      "why": "A project's own authoring guide for handoffs, named as an example of where one lives; the pack never writes it."
+    },
+    "docs/FEATURE_NAME_PLAN.md": {
+      "owner": "reader",
+      "why": "Illustration in PHASED_FEATURE_DESIGN of how to name a plan file - FEATURE_NAME is the placeholder, and the reader substitutes the feature."
+    },
+    "docs/handoffs/SESSION.md": {
+      "owner": "delivered",
+      "deliveredBy": "pack/templates/docs/handoffs/SESSION.md.template",
+      "why": "Session handoff for bootstrapped projects and the maintainer working copy. B09 sync strips docs/handoffs from Zone B repo/ (maintainer-only); rules cite it for trees that receive the template."
+    },
+    "docs/.audit_agent_manifest.json": {
+      "owner": "delivered",
+      "deliveredBy": "pack/scripts/run_audit_core.ps1",
+      "why": "Agent semantic brief written during audit; absent before the first run and stripped from repo/ on B09 sync."
+    },
+    "docs/.audit_inventory.json": {
+      "owner": "delivered",
+      "deliveredBy": "pack/scripts/run_audit_core.ps1",
+      "why": "Written during audit inventory; absent before the first audit run and stripped from repo/ on B09 sync."
+    },
+    "docs/.audit_domain_expanded.json": {
+      "owner": "delivered",
+      "deliveredBy": "pack/scripts/audit_code_checks.py",
+      "why": "Expanded domain map from the audit inventory pass; same lifecycle as .audit_inventory.json."
+    },
+    "docs/.audit_semantic_report.json": {
+      "owner": "delivered",
+      "deliveredBy": "scripts/fill_pack_semantic_report.py",
+      "why": "Agent semantic report; the maintainer checkout keeps a filled copy between audits, mirrors generate it during run_audit."
+    }
+  },
+
   "auditConfigTemplate": {
     "templatePath": "pack/templates/docs/AUDIT.config.json.template",
     "referencePath": "pack/templates/docs/AUDIT.config.app.reference.json",
     "requiredKeys": [
+      "tests.scriptPosix",
       "syncAndVerify.autoFixDrift",
       "domainMap.orphanScanEnabled",
       "codeChecks.semanticFreshnessCheck",

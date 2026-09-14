@@ -5,14 +5,14 @@ param(
 )
 
 function Resolve-AuditCore([string]$Root) {
-    $local = Join-Path $Root 'pack\scripts\run_audit_core.ps1'
+    $local = Join-Path $Root 'pack/scripts/run_audit_core.ps1'
     if (Test-Path -LiteralPath $local) { return $local }
-    . (Join-Path $Root 'pack\scripts\pack-paths.ps1')
+    . (Join-Path $Root 'pack/scripts/pack-paths.ps1')
     foreach ($base in (Get-AgentStarterPackCandidates)) {
-        $core = Join-Path $base 'pack\scripts\run_audit_core.ps1'
+        $core = Join-Path $base 'pack/scripts/run_audit_core.ps1'
         if (Test-Path -LiteralPath $core) { return $core }
     }
-    Write-Error 'run_audit_core.ps1 not found. Install Agent Starter Pack (Install-AgentStarterPack.cmd).'
+    Write-Error "run_audit_core.ps1 not found. Install Agent Starter Pack ($(Get-PackEntryPoint 'install'))."
 }
 
 $core = Resolve-AuditCore $RepoRoot

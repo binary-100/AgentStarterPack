@@ -29,7 +29,7 @@ Location after install: `%USERPROFILE%\.cursor\AgentStarterPack\pack\docs\WORK_C
 | 3 | **Product-truth propagation** — § [Step 3](#step-3--product-truth-propagation) below; required when runtime behavior changed | Drift survives version sync; next agent rebuilds from stale ROADMAP/limitations |
 | 4 | Handoff registry: **`status: completed`**, **`completed:`** date (ISO) | Archive gates fail |
 | 5 | **`docs/WORK_QUEUE.md`:** move WQ row to **Done log** with evidence | verify-agent-handoffs **Fix** |
-| 5b | **Handoff alignment:** run `verify-complete-picture.ps1`; fix **FAIL** where Done WQ IDs still read parked/not built — see **`pack/docs/RULES_AND_VERIFY_MAP.md`** | Agents rebuild shipped work from stale HANDOFF/spec |
+| 5b | **Handoff alignment:** run `verify-complete-picture.ps1` (includes product-truth paths via Step 3c); fix **FAIL** where Done WQ IDs still read parked/not built — see **`pack/docs/RULES_AND_VERIFY_MAP.md`** | Agents rebuild shipped work from stale HANDOFF/spec |
 | 6 | **`run_audit.cmd`** (full tests + semantic report + finalize) exit **0** | Archive without verification |
 | 7 | Read audit output: handoff **Improve** "archive-ready" (optional but recommended) | Archive while still active |
 | 8 | **Human confirms** archive (or explicit user: "archive the handoff") | Agent archives too early |
@@ -37,7 +37,11 @@ Location after install: `%USERPROFILE%\.cursor\AgentStarterPack\pack\docs\WORK_C
 
 **Multi-agent:** do not archive while **`agents_remaining`** is non-empty (even if `multi_agent: no` but field is filled — treat as blocked).
 
-**This order has one known tension, tracked as WQ-432.** Step 3 says product-truth drift blocks the close, but the audit that would *detect* that drift is step 6 — after the WQ row is already moved to Done in step 5. When runtime behavior changed, running the audit before step 5 costs nothing and catches a stale capability claim while the row is still open. Whether to reorder the steps outright is the open question; until it is decided, prefer the earlier audit in that case.
+**Why the same verify appears at 3c and 5b (settled, WQ-432).** The order looks contradictory — step 3 says product-truth drift blocks the close, yet the audit that would catch it is step 6, after the row is already Done at step 5. It is not, because **5b is the gate and 3c is only a preview.**
+
+The reason is mechanical. `verify-product-truth-paths.ps1` finds contradictions by reading the **Done log** and checking whether any doc still describes those ids as not built or deferred; with no Done ids it returns immediately. Run at **3c**, the row you are closing is not in the Done log yet, so the check that matters **cannot see it** — it passes vacuously and proves nothing about this slice. Run at **5b**, the row is Done and the check finally has its subject.
+
+Keep 3c anyway: the other checks it runs (files exist, ROADMAP no longer reads **Next** for that id) do not depend on the Done log, and catching those before you move the row is cheaper than after. Just do not read a green 3c as clearance — **5b decides**, and step 6's audit is the wider net behind it.
 
 **Orientation handoffs** (`docs/handoffs/HANDOFF_*.md`, not under `active/`): archive only when **superseded**, not tied to WQ Done.
 
@@ -75,7 +79,8 @@ Project overlay (`docs/WORK_COMPLETION.md` from bootstrap) may list **this repo�
 
 1. **Grep** the shipped **WQ id** in `docs/ROADMAP.md` — must not still read **Next**, **In progress**, or link `handoffs/active/HANDOFF_…` for that id.
 2. **Read** the capability/limitation/layout sections you touched — prose must match the code/config you just shipped.
-3. Run **`verify-complete-picture.ps1`** (step **5b**) — fix any **FAIL** on ROADMAP ↔ WORK_QUEUE contradictions before claiming done.
+3. Run **`verify-product-truth-paths.ps1`** — product-truth files exist; Done **WQ** ids are not described as not built/deferred; optional `docs/.product_truth_verify.json` doc/code claims pass.
+4. Run **`verify-complete-picture.ps1`** (step **5b**) — fix any **FAIL** on ROADMAP ↔ WORK_QUEUE contradictions and product-truth paths before claiming done.
 
 ### 3d — Audit interaction (step 6)
 

@@ -11,12 +11,15 @@ British-leaning form. That is exactly why the pack picks one: a reader cannot in
 that the language does not carry, and alternating produced 519 mixed occurrences across 56 files
 before this was settled.
 
-**Handoff** covers both scales of the same act:
+**Handoff** covers three artifacts — each owns one concern:
 
-| Scale | Artifact |
-|-------|----------|
-| One work slice, one agent | `docs/handoffs/active/HANDOFF_WQnnn_<slug>.md` + registry table |
-| One session to the next | The work queue — in this pack, `docs/WORK_QUEUE.md` (Active queue + Done log). A separate session document was retired in 2.22.65: two places claiming what was next contradicted each other three times, and every check that existed to reconcile them went away with it |
+| Scale | Artifact | Owns |
+|-------|----------|------|
+| Session to session | `docs/handoffs/SESSION.md` | **Now** — where we left off, blockers, open items, pointers only |
+| Priority / status | `docs/WORK_QUEUE.md` | **Next**, Active, Inbox, backlog, Parked, Done |
+| One work slice | `docs/handoffs/active/HANDOFF_WQnnn_<slug>.md` | **How** to implement one WQ row |
+
+`HANDOFF_NEXT_AGENT.md` was retired in **2.22.65** (second **Next** claim). **`SESSION.md`** (2.22.68) replaces it with **pointers only** — no duplicate WQ tables. Mechanical check: `verify-session-handoff.ps1`.
 
 Behavior **step 49** fails when the retired synonym reappears in any `.md`, `.mdc`, `.ps1`, `.py`,
 `.cmd`, `.bat`, `.json`, `.txt` or `.template`. Three things stay legal, each for a reason:
@@ -33,12 +36,13 @@ Behavior **step 49** fails when the retired synonym reappears in any `.md`, `.md
 ```
 docs/
   handoffs/
+    SESSION.md             ← first read on continue / what's next? (pointers only)
     README.md              ← index + naming rules
     HANDOFF_<topic>.md     ← orientation (confirm only)
     active/
       HANDOFF_WQ001_<slug>.md   ← build slices in progress
   handoff_archive/         ← completed or superseded (like audit_archive)
-  WORK_QUEUE.md            ← WQ IDs; Done log must match handoff status
+  WORK_QUEUE.md            ← WQ IDs; Done log must match slice handoff status
 ```
 
 Legacy `docs/AGENT_HANDOFF_*.md` — migrate; audit flags until removed.
@@ -85,9 +89,36 @@ Legacy `docs/AGENT_HANDOFF_*.md` — migrate; audit flags until removed.
 
 ---
 
+## Session handoff (`SESSION.md`)
+
+**Read first** when the user says **what's next?**, **continue**, **pick up**, **updated project**, or on a new session after project update.
+
+| Section | Purpose |
+|---------|---------|
+| Where we left off | Short outcome bullets |
+| Blockers | Must clear before unplanned work |
+| Open items | Unchecked `[ ]` → stop at step 1 of lookup |
+| Pointers | Links to WQ + active slice handoff only |
+
+**Forbidden in SESSION:** `## Active queue`, `**Next active ID**`, Done log, or any second priority table.
+
+**Session status:** `active` while open items or blockers remain; `clear` when both are empty.
+
+Always-on rule: **`handoff-first.mdc`**. Lookup order: **SESSION → WORK_QUEUE → unplanned** (only when both clear). **Interrupt rule:** fix or Inbox-triage issues found mid-slice before greenfield work.
+
+Bootstrap: `ensure-work-completion.ps1` creates `SESSION.md` from template when missing (never overwrites).
+
+---
+
 ## Session opener (only line the human sends)
 
 Place immediately after the title block:
+
+**Continue / what's next:**
+
+```text
+Read C:\Users\<you>\Projects\MyApp\docs\handoffs\SESSION.md and confirm.
+```
 
 **Build:**
 
@@ -162,11 +193,15 @@ Project `docs/upgrade/BUILD_HANDOFF.md` describes **how to author** handoffs —
 | `pack/scripts/verify-agent-handoffs.ps1` | Structure + WQ reconciliation |
 | `pack/templates/docs/handoffs/README.md.template` | Bootstrap |
 | `pack/templates/docs/handoffs/HANDOFF_BUILD.md.template` | Build handoff starter |
+| `pack/templates/docs/handoffs/SESSION.md.template` | Session handoff starter |
+| `pack/scripts/verify-session-handoff.ps1` | No duplicate Next; pointer vs WQ header |
+| `pack/rules/handoff-first.mdc` | Always-on lookup order + interrupt rule |
 
 ---
 
 ## Related
 
-- `generic-work-queue-discipline.mdc` — WQ Done log vs handoff status
+- `handoff-first.mdc` — SESSION first on what's next?
+- `generic-work-queue-discipline.mdc` — WQ Done log vs slice handoff status
 - `AGENT_WORKFLOW.md` — loop-back before re-handoff
 - Context refresh — separate protocol (`AGENT_REFRESH.md`)

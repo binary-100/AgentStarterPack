@@ -22,10 +22,19 @@ if (-not (Test-Path -LiteralPath (Join-Path $AppRoot '.git'))) {
     $parent = Split-Path -Parent $AppRoot
     if ($parent -and
         (Split-Path -Leaf $AppRoot) -eq 'app' -and
-        (Test-Path -LiteralPath (Join-Path $AppRoot 'docs\AUDIT.md')) -and
+        (Test-Path -LiteralPath (Join-Path $AppRoot 'docs/AUDIT.md')) -and
         (Test-Path -LiteralPath (Join-Path $parent '.git'))) {
         $RepoRoot = $parent
     }
+}
+
+function Get-HomeDirectory {
+    # USERPROFILE is Windows-only and $null elsewhere, where Join-Path throws "Cannot bind argument
+    # to parameter 'Path'" - so on macOS and Linux this script failed before it could even look for
+    # the pack, and the audit exited 0 having audited nothing.
+    if ($env:USERPROFILE) { return $env:USERPROFILE }
+    if ($env:HOME) { return $env:HOME }
+    return [Environment]::GetFolderPath('UserProfile')
 }
 
 function Resolve-AuditCore {
@@ -33,13 +42,27 @@ function Resolve-AuditCore {
     $candidates = @()
     if ($env:AGENT_STARTER_PACK_ROOT) { $candidates += $env:AGENT_STARTER_PACK_ROOT }
     if ($env:CURSOR_STARTER_PACK_ROOT) { $candidates += $env:CURSOR_STARTER_PACK_ROOT }
-    $candidates += Join-Path $env:USERPROFILE '.cursor\AgentStarterPack'
-    $candidates += Join-Path $env:USERPROFILE '.cursor\agent-starter-pack'
+    $userHome = Get-HomeDirectory
+    $candidates += Join-Path $userHome '.cursor/AgentStarterPack'
+    $candidates += Join-Path $userHome '.cursor/agent-starter-pack'
     foreach ($base in $candidates) {
         if (-not $base) { continue }
-        $core = Join-Path $base 'pack\scripts\run_audit_core.ps1'
+        $core = Join-Path $base 'pack/scripts/run_audit_core.ps1'
         if (Test-Path -LiteralPath $core) { return $core }
     }
+    return $null
+}
+
+function Get-PowerShellHostPath {
+    # The audit core runs in a child process; naming `powershell` pinned that child to Windows
+    # PowerShell, which does not exist off Windows. Prefer 5.1 on Windows (the floor the pack
+    # supports) and pwsh everywhere else.
+    if ($IsWindows -or ($null -eq $IsWindows)) {
+        $winPs = Get-Command powershell.exe -ErrorAction SilentlyContinue
+        if ($winPs) { return $winPs.Source }
+    }
+    $pwshCmd = Get-Command pwsh -ErrorAction SilentlyContinue
+    if ($pwshCmd) { return $pwshCmd.Source }
     return $null
 }
 
@@ -49,11 +72,14 @@ if (-not $core) {
     exit 1
 }
 
-if ($FinalizeOnly) {
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $core -RepoRoot $RepoRoot -AppRoot $AppRoot -FinalizeOnly
-} elseif ($SkipTests) {
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $core -RepoRoot $RepoRoot -AppRoot $AppRoot -SkipTests
-} else {
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $core -RepoRoot $RepoRoot -AppRoot $AppRoot
+$psHost = Get-PowerShellHostPath
+if (-not $psHost) {
+    Write-Error 'No PowerShell host found. Windows needs PowerShell 5.1+; macOS and Linux need PowerShell 7 (pwsh).'
+    exit 1
 }
+
+$coreArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $core, '-RepoRoot', $RepoRoot, '-AppRoot', $AppRoot)
+if ($FinalizeOnly) { $coreArgs += '-FinalizeOnly' }
+elseif ($SkipTests) { $coreArgs += '-SkipTests' }
+& $psHost @coreArgs
 exit $LASTEXITCODE

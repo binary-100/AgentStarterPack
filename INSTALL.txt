@@ -1,38 +1,61 @@
 AGENT STARTER PACK - QUICK INSTALL (v1.8.0)
 ============================================
-Human read-first. Agents: docs\WORK_QUEUE.md (canonical status + radar).
+Human read-first.
 
-NEW PC OR FLASH DRIVE (WQ-011)
---------------------------------
+AGENTS: if you were handed this folder, your job is to INSTALL it. Windows:
+Install-AgentStarterPack.cmd. macOS/Linux: bash install.sh User (use "bash", never "./").
+No git is required and none is used - a download, a folder copy and a flash drive all work.
+Only if you are DEVELOPING this pack do you need docs\WORK_QUEUE.md and AGENTS.md.
+
+WINDOWS - NEW PC OR FLASH DRIVE (WQ-011)
+-----------------------------------------
 1. cd to the pack folder on the stick (drive letter varies).
-2. exFAT + git only:  git config --global --add safe.directory E:/AgentStarterPack
-3. .\Check-Requirements.cmd          (-Fix if Python deps missing)
-4. .\Install-AgentStarterPack.cmd
+2. .\Check-Requirements.cmd          (-Fix if Python deps missing)
+3. .\Install-AgentStarterPack.cmd
    or:  .\install.ps1 -Scope User -NoPause -Prune
-5. Restart Cursor fully.
-6. Verify (expect 0 fail):
+4. Restart Cursor fully.
+5. Verify (expect 0 fail):
      .\pack\scripts\doctor.ps1 -ProjectRoot (Get-Location).Path
      .\pack\scripts\verify-audit-behavior.ps1
 
-THIS PC (already have the folder)
----------------------------------
+WINDOWS - THIS PC (already have the folder)
+--------------------------------------------
 1. Install-AgentStarterPack.cmd
 2. Restart Cursor
 3. doctor.ps1 + verify-audit-system.ps1  (see INSTALL.md)
 
+MACOS / LINUX
+--------------
+Needs PowerShell 7 (pwsh) - the .sh entry points are thin shells over the same .ps1 payloads.
+
+1. cd to the pack folder.
+2. bash Check-Requirements.sh        (-Fix if Python deps missing)
+3. bash install.sh User
+4. Restart Cursor fully.
+5. Verify (expect 0 fail):
+     pwsh -File pack/scripts/doctor.ps1 -ProjectRoot "$PWD"
+     pwsh -File pack/scripts/verify-audit-behavior.ps1
+
+  Use "bash install.sh", NOT "./install.sh". Assume this folder arrived with no Unix execute bit,
+  because that is the normal case: a download, a folder copy, an unzipped archive and exFAT/FAT
+  media all deliver mode 644, and Windows has no bit to copy in the first place. "./install.sh" on
+  such a copy stops at "Permission denied" (exit 126), and it is the one command that cannot fix
+  the problem, because the fix is inside the file you cannot start. bash runs a file it is handed
+  whatever its mode.
+  After that it is self-healing: install.ps1 chmods every .sh it writes. Same reason the verify
+  lines above say "pwsh -File" instead of "./".
+
 INSTALLS TO (per machine, not portable)
-  %USERPROFILE%\.cursor\AgentStarterPack
-  %USERPROFILE%\.cursor\rules
-  %USERPROFILE%\.cursor\skills
-  %USERPROFILE%\.cursor\mcp.json
+  Windows:       %USERPROFILE%\.cursor\{AgentStarterPack,rules,skills,mcp.json}
+  macOS/Linux:   $HOME/.cursor/{AgentStarterPack,rules,skills,mcp.json}
 
 VERSIONS (canonical)
   Pack:   root VERSION  (currently 1.8.0)
-  Audit:  pack\audit\manifest.json  (currently 2.22.43)
-  Queue:  docs\WORK_QUEUE.md  (Next: WQ-011)
+  Audit:  pack\audit\manifest.json  (currently 2.22.123)
+  Queue:  docs\WORK_QUEUE.md  - the only place that states what is next
 
 MORE
-  INSTALL.md              full install + upgrade
+  INSTALL.md              full install + upgrade, both platforms
     pack\docs\START_HERE.md maintainer onboarding
 
 CURSOR CHAT

@@ -7,7 +7,8 @@ param(
     [string]$ProjectName = "",
     [ValidateSet("Python", "Generic")]
     [string]$Stack = "Generic",
-    [ValidateSet("All", "Cursor", "Portable", "Claude", "Copilot", "Windsurf")]
+    # No ValidateSet: through `-File` a list arrives as one comma-joined string, which a ValidateSet
+    # rejects as a single unknown name. Split first, then validate below against the same set.
     [string[]]$Targets = @("All"),
     [string]$SourceModule = "main.py",
     [string]$VersionFile = "VERSION.txt",
@@ -24,8 +25,8 @@ function Resolve-PackRoot {
     if (-not (Test-Path (Join-Path $packDir "templates"))) {
         . (Join-Path $scriptsDir 'pack-paths.ps1')
         $found = Get-AgentStarterPackRoot
-        if ($found) { return @{ StarterRoot = $found; PackDir = Join-Path $found "pack"; Templates = Join-Path $found "pack\templates" } }
-        $starterRoot = Join-Path $env:USERPROFILE ".cursor\AgentStarterPack"
+        if ($found) { return @{ StarterRoot = $found; PackDir = Join-Path $found "pack"; Templates = Join-Path $found "pack/templates" } }
+        $starterRoot = Join-Path (Get-PackHomeDir) ".cursor/AgentStarterPack"
         $packDir = Join-Path $starterRoot "pack"
     }
     return @{ StarterRoot = $starterRoot; PackDir = $packDir; Templates = Join-Path $packDir "templates" }
@@ -121,6 +122,15 @@ function Test-TargetEnabled {
 }
 
 $paths = Resolve-PackRoot
+. (Join-Path $PSScriptRoot 'pack-paths.ps1')
+$knownTargets = @("All", "Cursor", "Portable", "Claude", "Copilot", "Windsurf", "OpenCode")
+$Targets = @(Expand-PackListArgument -Value $Targets)
+if ($Targets.Count -eq 0) { $Targets = @("All") }
+$unknownTargets = @($Targets | Where-Object { $knownTargets -notcontains $_ })
+if ($unknownTargets.Count -gt 0) {
+    Write-Host "[FAIL] unknown -Targets value(s): $($unknownTargets -join ', '). Valid: $($knownTargets -join ', ')"
+    exit 1
+}
 $StarterRoot = $paths.StarterRoot
 $PackDir = $paths.PackDir
 $Templates = $paths.Templates
@@ -138,11 +148,11 @@ if (-not $ProjectName) {
 $EffectiveTargets = @($Targets)
 . (Join-Path $PSScriptRoot 'pack-paths.ps1')
 $canonicalPack = Get-InstalledAgentStarterPack
-$mcpServer = Join-Path $canonicalPack "mcp\agent_hygiene_server.py"
+$mcpServer = Join-Path $canonicalPack "mcp/agent_hygiene_server.py"
 if (-not (Test-Path $mcpServer)) {
     # Falling back to this pack folder bakes its current path into the project's MCP config.
     # That breaks when the pack lives on removable media (drive letter changes, disk unplugged).
-    $mcpServer = Join-Path $StarterRoot "mcp\agent_hygiene_server.py"
+    $mcpServer = Join-Path $StarterRoot "mcp/agent_hygiene_server.py"
     Write-Host "[WARN] Pack not installed on this machine - MCP path will point at $StarterRoot"
     Write-Host "[WARN] Run install.ps1 first if that path is a removable drive or may move."
 }
@@ -178,11 +188,19 @@ $coreMaps = @(
     @{ Src = "docs\AUDIT.md.template"; Dst = "docs\AUDIT.md" }
     @{ Src = "docs\AUDIT.config.json.template"; Dst = "docs\AUDIT.config.json" }
     @{ Src = "run_audit.cmd.template"; Dst = "run_audit.cmd" }
+    @{ Src = "run_audit.sh.template"; Dst = "run_audit.sh" }
     @{ Src = "run_audit.ps1.template"; Dst = "scripts\run_audit.ps1" }
+    # Both twins on every OS, the way run_audit.cmd/.sh already ship. A project generated with only
+    # the .cmd half could run run_audit.sh on Linux and then had nothing to run for the semantic and
+    # finalize steps the audit told it to run next (WQ-449).
     @{ Src = "scripts\sync_audit_system.cmd.template"; Dst = "scripts\sync_audit_system.cmd" }
+    @{ Src = "scripts\sync_audit_system.sh.template"; Dst = "scripts\sync_audit_system.sh" }
     @{ Src = "scripts\verify_semantic_audit.cmd.template"; Dst = "scripts\verify_semantic_audit.cmd" }
+    @{ Src = "scripts\verify_semantic_audit.sh.template"; Dst = "scripts\verify_semantic_audit.sh" }
     @{ Src = "scripts\write_semantic_audit_template.cmd.template"; Dst = "scripts\write_semantic_audit_template.cmd" }
+    @{ Src = "scripts\write_semantic_audit_template.sh.template"; Dst = "scripts\write_semantic_audit_template.sh" }
     @{ Src = "scripts\finalize_audit.cmd.template"; Dst = "scripts\finalize_audit.cmd" }
+    @{ Src = "scripts\finalize_audit.sh.template"; Dst = "scripts\finalize_audit.sh" }
     @{ Src = "AGENTS.md.template"; Dst = "AGENTS.md" }
     @{ Src = "portable\AI_INSTRUCTIONS.md.template"; Dst = "AI_INSTRUCTIONS.md" }
     @{ Src = "docs\ROADMAP.md.template"; Dst = "docs\ROADMAP.md" }
@@ -197,7 +215,7 @@ foreach ($map in $coreMaps) {
 }
 
 # Patch AUDIT.config.json projectName if still placeholder
-$configPath = Join-Path $ProjectRoot "docs\AUDIT.config.json"
+$configPath = Join-Path $ProjectRoot "docs/AUDIT.config.json"
 if (Test-Path $configPath) {
     $cfgRaw = Get-Content $configPath -Raw -Encoding UTF8
     $cfgRaw = $cfgRaw.Replace('"YOUR_PROJECT_NAME"', "`"$ProjectName`"")
@@ -221,7 +239,7 @@ if (Test-Path $configPath) {
 if ($Stack -ne "Python") {
     # The template's example domain-map row names main.py, which the Generic stack does not create,
     # so the audit reported a mapped module missing on disk. Leave the table empty for the user.
-    $auditMdPath = Join-Path $ProjectRoot "docs\AUDIT.md"
+    $auditMdPath = Join-Path $ProjectRoot "docs/AUDIT.md"
     if (Test-Path $auditMdPath) {
         $mdRaw = Get-Content $auditMdPath -Raw -Encoding UTF8
         $mdPatched = $mdRaw -replace '(?m)^\|\s*`main\.py`\s*\|\s*D\s*\|\r?\n', ''
@@ -241,16 +259,16 @@ if (-not (Test-Path $readme)) {
 
 ## Quick start
 
-``````bat
-run_tests.bat
-run_audit.cmd
+``````$(if (Test-PackIsWindows) { 'bat' } else { 'bash' })
+$(if (Test-PackIsWindows) { 'run_tests.bat' } else { './run_tests.sh' })
+$(Get-PackEntryPoint 'run_audit')
 ``````
 
 ## Audit
 
-1. ``run_audit.cmd`` - machine checks + tests
-2. Edit ``docs/.audit_semantic_report.json``, then ``scripts\verify_semantic_audit.cmd``
-3. ``scripts\finalize_audit.cmd``
+1. ``$(Get-PackEntryPoint 'run_audit')`` - machine checks + tests
+2. Edit ``docs/.audit_semantic_report.json``, then ``$(Get-PackEntryPoint 'scripts/verify_semantic_audit')``
+3. ``$(Get-PackEntryPoint 'scripts/finalize_audit')``
 
 See ``docs/AUDIT.md`` for the checklist and ``AGENTS.md`` for agent instructions.
 "@
@@ -261,38 +279,72 @@ See ``docs/AUDIT.md`` for the checklist and ``AGENTS.md`` for agent instructions
 # writes docs/AGENT_REFRESH.md beside it. The engine version is stamped now, not left null: the audit
 # reports a stale stamp, and a null would have made every brand-new project open with that Improve
 # while a genuinely years-old project stayed just as quiet.
-$contextPath = Join-Path $ProjectRoot "docs\AGENT_CONTEXT.json"
+$contextPath = Join-Path $ProjectRoot "docs/AGENT_CONTEXT.json"
 if ($Force -or -not (Test-Path $contextPath)) {
     $engineVersion = 'unknown'
-    $bootManifest = Join-Path $StarterRoot 'pack\audit\manifest.json'
+    $bootManifest = Join-Path $StarterRoot 'pack/audit/manifest.json'
     if (Test-Path -LiteralPath $bootManifest) {
         try { $engineVersion = (Get-Content -LiteralPath $bootManifest -Raw -Encoding UTF8 | ConvertFrom-Json).version } catch { }
     }
     $contextVars = $vars.Clone()
     $contextVars['AUDIT_ENGINE_VERSION'] = $engineVersion
-    Write-TemplateFile -Source (Join-Path $Templates "docs\AGENT_CONTEXT.json.template") `
+    Write-TemplateFile -Source (Join-Path $Templates "docs/AGENT_CONTEXT.json.template") `
         -Destination $contextPath -Vars $contextVars -ForceWrite:$Force
 }
 
-Merge-GitignoreSnippet -ProjectRootPath $ProjectRoot -SnippetPath (Join-Path $Templates "docs\gitignore.audit.snippet")
+Merge-GitignoreSnippet -ProjectRootPath $ProjectRoot -SnippetPath (Join-Path $Templates "docs/gitignore.audit.snippet")
 
 # --- Portable instruction files (per tool) ---
 if (Test-TargetEnabled "Claude") {
-    Write-TemplateFile -Source (Join-Path $Templates "portable\CLAUDE.md.template") `
+    Write-TemplateFile -Source (Join-Path $Templates "portable/CLAUDE.md.template") `
         -Destination (Join-Path $ProjectRoot "CLAUDE.md") -Vars $vars -ForceWrite:$Force
-    $mcpDstDir = Join-Path $ProjectRoot "docs\portable"
-    Write-TemplateFile -Source (Join-Path $Templates "portable\mcp-claude-desktop.json.template") `
+    $mcpDstDir = Join-Path $ProjectRoot "docs/portable"
+    Write-TemplateFile -Source (Join-Path $Templates "portable/mcp-claude-desktop.json.template") `
         -Destination (Join-Path $mcpDstDir "mcp-claude-desktop.json") -Vars $vars -ForceWrite:$Force
 }
 
 if (Test-TargetEnabled "Copilot") {
-    Write-TemplateFile -Source (Join-Path $Templates "portable\copilot-instructions.md.template") `
-        -Destination (Join-Path $ProjectRoot ".github\copilot-instructions.md") -Vars $vars -ForceWrite:$Force
+    Write-TemplateFile -Source (Join-Path $Templates "portable/copilot-instructions.md.template") `
+        -Destination (Join-Path $ProjectRoot ".github/copilot-instructions.md") -Vars $vars -ForceWrite:$Force
 }
 
 if (Test-TargetEnabled "Windsurf") {
-    Write-TemplateFile -Source (Join-Path $Templates "portable\windsurfrules.template") `
+    Write-TemplateFile -Source (Join-Path $Templates "portable/windsurfrules.template") `
         -Destination (Join-Path $ProjectRoot ".windsurfrules") -Vars $vars -ForceWrite:$Force
+}
+
+# OpenCode reads AGENTS.md natively, so this file is not where the instructions go - it is the one
+# place a host can be told to load rule files it did not author. The `instructions` globs are why the
+# generic rules need no conversion for OpenCode: the same .mdc files Cursor loads from
+# .cursor/rules/ are loaded by path here, front matter and all.
+# The policy every host's control compiles from, written before any adapter that reads it. It lands
+# OUTSIDE .cursor/ on purpose: shared decision data inside one host's folder becomes that host's data,
+# and the next adapter reimplements the logic instead of reading it (WQ-480).
+if ((Test-TargetEnabled "Cursor") -or (Test-TargetEnabled "OpenCode")) {
+    Copy-TemplateBinary -Source (Join-Path $Templates "agent-control/policy.json") `
+        -Destination (Join-Path $ProjectRoot ".agent-control/policy.json") -ForceWrite:$Force
+}
+
+if (Test-TargetEnabled "OpenCode") {
+    # The permission block is COMPILED from the same .agent-control/policy.json the Cursor hooks read,
+    # so the two hosts cannot disagree about which commands the agent must run itself. That is the
+    # whole point of the neutral policy: one list, two native mechanisms, no second implementation.
+    . (Join-Path $PSScriptRoot 'agent-policy-lib.ps1')
+    $policyDest = Join-Path $ProjectRoot '.agent-control/policy.json'
+    $permissionJson = ''
+    $policyObj = Get-PackAgentPolicy -Path $policyDest
+    if ($policyObj) {
+        $policyProblems = Test-PackAgentPolicyShape -Policy $policyObj
+        if ($policyProblems.Count -gt 0) {
+            Write-Host "  [WARN] agent policy unusable, opencode.json written without a permission block: $($policyProblems -join '; ')"
+        } else {
+            $permissionJson = ",`n" + (ConvertTo-PackOpenCodePermissionJson -Policy $policyObj)
+        }
+    }
+    $ocVars = @{} + $vars
+    $ocVars['OPENCODE_PERMISSION_BLOCK'] = $permissionJson
+    Write-TemplateFile -Source (Join-Path $Templates "portable/opencode.json.template") `
+        -Destination (Join-Path $ProjectRoot "opencode.json") -Vars $ocVars -ForceWrite:$Force
 }
 
 # --- Cursor ---
@@ -302,7 +354,7 @@ if (Test-TargetEnabled "Windsurf") {
 # very first run_audit.cmd reported a missing file and a sync drift. Non-Cursor agents read
 # AGENTS.md and AI_INSTRUCTIONS.md; this file costs them nothing and keeps one audit standard.
 Copy-TemplateBinary -Source (Join-Path $Templates "audit.mdc.template") `
-    -Destination (Join-Path $ProjectRoot ".cursor\rules\audit.mdc") -ForceWrite:$Force
+    -Destination (Join-Path $ProjectRoot ".cursor/rules/audit.mdc") -ForceWrite:$Force
 
 if (Test-TargetEnabled "Cursor") {
     if ($Stack -eq "Python") {
@@ -310,33 +362,49 @@ if (Test-TargetEnabled "Cursor") {
         # {{SOURCE_MODULE}}, including in the frontmatter globs line, so copying it verbatim shipped
         # a rule whose glob was the literal text "{{SOURCE_MODULE}}" and never matched anything.
         Write-TemplateFile -Source (Join-Path $Templates "version-sync.mdc.template") `
-            -Destination (Join-Path $ProjectRoot ".cursor\rules\version-sync.mdc") -Vars $vars -ForceWrite:$Force
+            -Destination (Join-Path $ProjectRoot ".cursor/rules/version-sync.mdc") -Vars $vars -ForceWrite:$Force
     }
-    $cursorHooksDir = Join-Path $ProjectRoot ".cursor\hooks"
+    $cursorHooksDir = Join-Path $ProjectRoot ".cursor/hooks"
     if (-not (Test-Path -LiteralPath $cursorHooksDir)) {
         New-Item -ItemType Directory -Path $cursorHooksDir -Force | Out-Null
     }
-    Copy-TemplateBinary -Source (Join-Path $Templates "cursor\hooks\session-freshness.ps1") `
-        -Destination (Join-Path $cursorHooksDir "session-freshness.ps1") -ForceWrite:$Force
-    Copy-TemplateBinary -Source (Join-Path $Templates "cursor\hooks.json.template") `
-        -Destination (Join-Path $ProjectRoot ".cursor\hooks.json") -ForceWrite:$Force
+    # WQ-476 accountability hooks. shell-preapprove.ps1 ships but hooks.json.template does not
+    # register it: the other two tighten what the agent may get away with, while that one widens what
+    # runs unattended, and widening a project's review posture is not a default to choose for someone.
+    foreach ($hookFile in @(
+        "session-freshness.ps1",
+        "hook-state.ps1",
+        "offload-detect.ps1",
+        "completion-gate.ps1",
+        "shell-preapprove.ps1"
+    )) {
+        Copy-TemplateBinary -Source (Join-Path $Templates "cursor/hooks/$hookFile") `
+            -Destination (Join-Path $cursorHooksDir $hookFile) -ForceWrite:$Force
+    }
+    Copy-TemplateBinary -Source (Join-Path $Templates "cursor/hooks.json.template") `
+        -Destination (Join-Path $ProjectRoot ".cursor/hooks.json") -ForceWrite:$Force
 }
 
 # --- Python stack (or minimal test runner for Generic) ---
 if ($Stack -eq "Python") {
-    Write-TemplateFile -Source (Join-Path $Templates "docs\VERSION_SYNC.json.template") `
-        -Destination (Join-Path $ProjectRoot "docs\VERSION_SYNC.json") -Vars $vars -ForceWrite:$Force
+    Write-TemplateFile -Source (Join-Path $Templates "docs/VERSION_SYNC.json.template") `
+        -Destination (Join-Path $ProjectRoot "docs/VERSION_SYNC.json") -Vars $vars -ForceWrite:$Force
     $pyMaps = @(
         @{ Src = "apply_version.py.template"; Dst = "scripts\apply_version.py"; Vars = $true }
         @{ Src = "test_version_consistency.py.template"; Dst = "tests\test_version_consistency.py"; Vars = $true }
+        # The trio: one implementation plus a wrapper per platform, so `run_tests` means the same
+        # thing on Windows, macOS and Linux - and so the audit, which shells out to these to earn
+        # its test-pass proof, can complete on all three.
+        @{ Src = "run_tests.ps1.template"; Dst = "scripts\run_tests.ps1"; Vars = $false }
         @{ Src = "run_tests.bat.template"; Dst = "run_tests.bat"; Vars = $false }
+        @{ Src = "run_tests.sh.template"; Dst = "run_tests.sh"; Vars = $false }
         @{ Src = "build-ci.bat.template"; Dst = "build_ci.bat"; Vars = $false }
         @{ Src = "scripts/sync_doc_versions.cmd.template"; Dst = "scripts\sync_doc_versions.cmd"; Vars = $false }
         @{ Src = "scripts/sync_doc_versions.py.template"; Dst = "scripts\sync_doc_versions.py"; Vars = $false }
     )
-    $packScripts = Join-Path $StarterRoot "pack\scripts"
+    $packScripts = Join-Path $StarterRoot "pack/scripts"
     Copy-TemplateBinary -Source (Join-Path $packScripts "doc_version_sync.py") `
-        -Destination (Join-Path $ProjectRoot "scripts\doc_version_sync.py") -ForceWrite:$Force
+        -Destination (Join-Path $ProjectRoot "scripts/doc_version_sync.py") -ForceWrite:$Force
     foreach ($map in $pyMaps) {
         $src = Join-Path $Templates $map.Src
         $dst = Join-Path $ProjectRoot $map.Dst
@@ -394,12 +462,38 @@ v$stubVer highlights:
         Write-Host "[ok] $VersionFile"
     }
 } else {
-    Copy-TemplateBinary -Source (Join-Path $Templates "run_tests.generic.bat.template") `
-        -Destination (Join-Path $ProjectRoot "run_tests.bat") -ForceWrite:$Force
+    # Same trio as the Python stack. There is no separate generic runner any more: the implementation
+    # runs the version-sync step only when scripts/apply_version.py exists, so one file covers both
+    # stacks instead of two Batch runners that had to be kept in step by hand.
+    foreach ($map in @(
+            @{ Src = "run_tests.ps1.template"; Dst = "scripts\run_tests.ps1" }
+            @{ Src = "run_tests.bat.template"; Dst = "run_tests.bat" }
+            @{ Src = "run_tests.sh.template"; Dst = "run_tests.sh" })) {
+        Copy-TemplateBinary -Source (Join-Path $Templates $map.Src) `
+            -Destination (Join-Path $ProjectRoot $map.Dst) -ForceWrite:$Force
+    }
+    # A test file, so the generated suite proves something on its first run. The Python stack gets
+    # test_version_consistency.py; the Generic stack got an empty tests\ folder, and a runner that
+    # finds no tests cannot honestly report a pass - which is the same hole the hollow-runner probe
+    # guards against from the other direction.
+    Write-TemplateFile -Source (Join-Path $Templates "test_bootstrap_smoke.py.template") `
+        -Destination (Join-Path $ProjectRoot "tests/test_bootstrap_smoke.py") -Vars $vars -ForceWrite:$Force
     if (-not (Test-Path (Join-Path $ProjectRoot "tests"))) {
         New-Item -ItemType Directory -Path (Join-Path $ProjectRoot "tests") -Force | Out-Null
     }
 }
+
+# The generated .sh entry points are written by PowerShell, which creates them without the execute
+# bit - so on Linux a freshly bootstrapped project answered "Permission denied" to the very command
+# its own README tells you to run, and its audit could not run its tests.
+Set-PackExecutableBit -Path @(
+    (Join-Path $ProjectRoot 'run_audit.sh'),
+    (Join-Path $ProjectRoot 'run_tests.sh'),
+    (Join-Path $ProjectRoot 'scripts/sync_audit_system.sh'),
+    (Join-Path $ProjectRoot 'scripts/verify_semantic_audit.sh'),
+    (Join-Path $ProjectRoot 'scripts/write_semantic_audit_template.sh'),
+    (Join-Path $ProjectRoot 'scripts/finalize_audit.sh')
+)
 
 # --- Bootstrap manifest ---
 # Lists what bootstrap actually wrote. docs/AGENT_REFRESH.md is deliberately absent: it is generated
@@ -447,25 +541,29 @@ Write-Host "Next steps:"
 Write-Host "  1. Customize docs/AUDIT.md domain map for your modules"
 Write-Host "  2. Edit docs/AUDIT.config.json paths if layout differs"
 if (Test-TargetEnabled "Cursor") {
-    Write-Host "  3. Cursor: install starter pack once - Install-AgentStarterPack.cmd"
+    Write-Host "  3. Cursor: install starter pack once - $(Get-PackEntryPoint 'install')"
     Write-Host "     Optional: install.ps1 -InstallSessionHooks for user-level sessionStart freshness"
     Write-Host "     Project hook: .cursor/hooks.json (installed by bootstrap -Targets Cursor/All)"
 }
 if (Test-TargetEnabled "Claude") {
-    Write-Host "  4. Claude: Register-Tool-Adapters.cmd $ProjectRoot Claude"
+    Write-Host "  4. Claude: $(Get-PackEntryPoint 'Register-Tool-Adapters') $ProjectRoot Claude"
     Write-Host "     Or: register-portable-mcp.ps1 -Tool Claude (MCP only)"
 }
 if (Test-TargetEnabled "Copilot") {
-    Write-Host "  Copilot: Register-Tool-Adapters.cmd $ProjectRoot Copilot"
+    Write-Host "  Copilot: $(Get-PackEntryPoint 'Register-Tool-Adapters') $ProjectRoot Copilot"
 }
 if (Test-TargetEnabled "Windsurf") {
-    Write-Host "  Windsurf: Register-Tool-Adapters.cmd $ProjectRoot Windsurf"
+    Write-Host "  Windsurf: $(Get-PackEntryPoint 'Register-Tool-Adapters') $ProjectRoot Windsurf"
+}
+if (Test-TargetEnabled "OpenCode") {
+    Write-Host "  OpenCode: opencode.json written - rules load via its 'instructions' globs"
+    Write-Host "            Verify the merged result with: opencode debug config"
 }
 if ($EffectiveTargets -contains 'Portable' -or $EffectiveTargets -contains 'All') {
     Write-Host "  Non-Cursor: read docs/portable/GENERIC_RULES.md + AI_INSTRUCTIONS.md at session start"
     Write-Host "              (project copy synced on bootstrap/refresh; pack install path is fallback)"
 }
-Write-Host "  5. Run run_audit.cmd after first test wiring"
+Write-Host "  5. Run $(Get-PackEntryPoint 'run_audit') after first test wiring"
 Write-Host ""
 Write-Host "Guide: $StarterRoot\docs\PORTABLE_SETUP.md"
 

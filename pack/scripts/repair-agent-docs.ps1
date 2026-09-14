@@ -81,8 +81,8 @@ function Sync-ProjectPortableExports {
         [string]$PackRootPath,
         [string]$ProjectRootPath
     )
-    $srcPortable = Join-Path $PackRootPath 'pack\docs\portable'
-    $dstPortable = Join-Path $ProjectRootPath 'docs\portable'
+    $srcPortable = Join-Path $PackRootPath 'pack/docs/portable'
+    $dstPortable = Join-Path $ProjectRootPath 'docs/portable'
     if (-not (Test-Path -LiteralPath (Join-Path $srcPortable 'GENERIC_RULES.md'))) {
         Write-Fail 'pack export missing: pack/docs/portable/GENERIC_RULES.md (run sync-portable-docs.ps1 on pack)'
         return
@@ -141,7 +141,7 @@ if (-not $PackRoot -or -not (Test-Path -LiteralPath $PackRoot)) {
 }
 $PackRoot = (Resolve-Path -LiteralPath $PackRoot).Path
 $ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
-$templates = Join-Path $PackRoot 'pack\templates'
+$templates = Join-Path $PackRoot 'pack/templates'
 
 function Get-ProjectTemplateVars {
     $name = Split-Path $ProjectRoot -Leaf
@@ -154,14 +154,14 @@ function Get-ProjectTemplateVars {
             if ($boot.projectName) { $name = [string]$boot.projectName }
         } catch { }
     }
-    if (Test-Path -LiteralPath (Join-Path $ProjectRoot 'docs\VERSION_SYNC.json')) {
+    if (Test-Path -LiteralPath (Join-Path $ProjectRoot 'docs/VERSION_SYNC.json')) {
         try {
-            $vs = Get-Content -LiteralPath (Join-Path $ProjectRoot 'docs\VERSION_SYNC.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+            $vs = Get-Content -LiteralPath (Join-Path $ProjectRoot 'docs/VERSION_SYNC.json') -Raw -Encoding UTF8 | ConvertFrom-Json
             if ($vs.sourceModule) { $sourceModule = [string]$vs.sourceModule }
             if ($vs.versionFile) { $versionFile = [string]$vs.versionFile }
         } catch { }
     }
-    $mcpServer = Join-Path $PackRoot 'mcp\agent_hygiene_server.py'
+    $mcpServer = Join-Path $PackRoot 'mcp/agent_hygiene_server.py'
     return @{
         PROJECT_NAME    = $name
         SOURCE_MODULE   = $sourceModule

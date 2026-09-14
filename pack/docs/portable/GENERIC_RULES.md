@@ -4,13 +4,14 @@ Auto-generated from ``pack/rules/*.mdc``. **Do not edit by hand.**
 
 Regenerate: ``pack\scripts\sync-portable-docs.ps1`` (also runs during ``sync-audit-system.ps1`` on the pack maintainer repo).
 
-| Load path | Tool |
-|-----------|------|
-| ``%USERPROFILE%\.cursor\rules\*.mdc`` | Cursor (after ``install.ps1``) |
-| This file | Claude, Copilot, Windsurf, CLI - paste or attach at session start |
+| Load path | Tool | Loads? |
+|-----------|------|--------|
+| ``<project>\.cursor\rules\*.mdc`` | Cursor - deliver with ``sync-project-rules.ps1 -ProjectRoot <project>`` | Yes |
+| ``%USERPROFILE%\.cursor\rules\*.mdc`` | Reference copy written by ``install.ps1`` | No - no editor documents reading a home rules folder |
+| This file | Claude, Copilot, Windsurf, CLI - paste or attach at session start | Yes, when pasted |
 
 Pack version: 1.8.0
-Rule files: 12
+Rule files: 17
 
 ---
 
@@ -93,6 +94,24 @@ When **you** find a fixable gap during work (verify drift, sync failure, doc-ver
 
 **Forbidden:** ending with "run X to fix" when you can run X yourself (unless blocked — name the blocker and what remains unverified).
 
+### When approval is required, resend the command unchanged
+
+The approval flag is a **retry** flag, not a request flag. It only means something when the *same*
+call was just rejected, so two rules apply:
+
+- **Call plainly first.** Setting the flag pre-emptively, on a call nothing has rejected, leaves the
+  approval with no rejection to attach to and it fails instead of prompting.
+- **Resend byte-identical**, paired with the **exact** rejection text *that* command produced.
+  Editing the command between block and retry — even shortening its output — or reusing a reason
+  string from an earlier block breaks the match just as thoroughly.
+
+Either way the retry fails on its own terms and never reaches the user.
+
+That failure is **the agent's**, not the tool's. Do not report it as a broken dialog, and do not let
+it become the "blocker" that turns a fix you can run into a command the user has to type — the rule
+above still applies. If two retries fail, suspect the retry, not the harness: compare the command and
+the reason string against the ones that were actually rejected.
+
 ## Starter pack location
 
 - `%USERPROFILE%\.cursor\AgentStarterPack\` — prefix the doc paths above and below with this when the
@@ -105,13 +124,32 @@ When **you** find a fixable gap during work (verify drift, sync failure, doc-ver
 
 When citing files on the user's machine in chat, use **full absolute paths** — see **`full-paths-in-chat.mdc`** (`alwaysApply: true`).
 
+## Chat output shape
+
+Answer first, then structure the detail — headings once a reply covers more than one topic, bullets for lists, tables only for facts with the same shape in every row, and anything the user must do in its own section. See **`generic-structured-chat-output.mdc`** (`alwaysApply: true`).
+
+After a failed test or gate that you fixed, report **fix + current verification together** — never a
+past failure without closure. See **`generic-fix-and-verify-reporting.mdc`** (`alwaysApply: true`).
+When a background run finishes, read its log and report; do not hand verification back to the user.
+
+## Execution shape (batch / parallel / serial)
+
+Before starting work with more than one item in it, decide **how** it runs and say which in the first
+tool-using turn — see **`generic-execution-strategy.mdc`** (`alwaysApply: true`). The one that gets
+missed is **batching**: an expensive gate run once over ten subjects instead of ten times over one.
+It never reduces depth; the contract below still applies in full.
+
 ## Deep / exhaustive requests
 
 When the user asks for **deep**, **full**, **thorough**, **compare**, **everything**, or **check everything** work, follow **`generic-deep-task-execution.mdc`** (`alwaysApply: true`). Run the matching depth contract with tools **before** concluding. Do **not** tell the user to rephrase or add keywords.
 
+## Multi-zone features (readiness before build)
+
+When **`generic-implementation-readiness.mdc`** triggers apply (split trees, publish lane, sync-before-ship, or proof mode differs by zone), complete **Phase 0** in the feature plan — **`## Implementation readiness`** table with evidence per row — before Phase 1 implementation code or claiming design complete. Template: **`pack/docs/PHASED_FEATURE_DESIGN.md`** appendix. Works with **`generic-phased-feature-design.mdc`**.
+
 ## Work queue (what's on the radar)
 
-When the user asks **what's next**, **what's pending**, or priorities **change mid-session**, read **`docs/WORK_QUEUE.md`** first if present. Follow **`generic-work-queue-discipline.mdc`**. Do not replace the queue in chat without updating that file.
+When the user asks **what's next**, **what's pending**, or priorities **change mid-session**, follow **`handoff-first.mdc`**: **`docs/handoffs/SESSION.md`** first (if present), then **`docs/WORK_QUEUE.md`**, then **`generic-work-queue-discipline.mdc`**. Do not replace the queue in chat without updating that file.
 
 ## Agent handoffs (implement / confirm)
 
@@ -185,9 +223,9 @@ Referenced from **`agent-defaults-always.mdc`** (always-on).
 
 ## Agent Starter Pack
 
-Canonical copy: `pack/rules/full-paths-in-chat.mdc` — copied to `%USERPROFILE%\.cursor\rules\` on **`install.ps1`**. Verified by **`doctor.ps1`**.
+Canonical copy: `pack/rules/full-paths-in-chat.mdc`. **This rule only applies where it has been synced into a project's `.cursor/rules/`** — run **`sync-project-rules.ps1 -ProjectRoot <project>`** after pack edits and verify with `-VerifyOnly`; see **`pack/docs/PACK_MAINTENANCE.md`**.
 
-Projects that keep a local copy: run **`sync-project-rules.ps1`** after pack edits — see **`pack/docs/PACK_MAINTENANCE.md`**.
+`install.ps1` also copies it to `%USERPROFILE%\.cursor\rules\` and `doctor.ps1` checks it is there, but no editor is documented as reading a home-folder rules directory, so that copy is best-effort reference text rather than a delivery mechanism.
 
 
 ---
@@ -261,7 +299,7 @@ Full convention: **`pack/docs/AGENT_HANDOFFS.md`** (after install: `%USERPROFILE
 
 ## Problem
 
-Multiple paste blocks for the same implement job (handoff file + PLAN + BUILD_HANDOFF + chat) confuse humans and agents.
+Multiple paste blocks for the same implement job (handoff file + PLAN + BUILD_HANDOFF + chat) confuse humans and agents. A second doc claiming **Next** (retired root session mega-doc, 2.22.65) contradicted WORK_QUEUE three times — use **`docs/handoffs/SESSION.md`** for session continuity instead (**pointers only**; see **`handoff-first.mdc`**).
 
 ## Build / implement handoffs
 
@@ -403,6 +441,26 @@ Use when the user asks for **where we stand**, **what's pending**, **handoff cle
 
 ---
 
+## Contract: implementation readiness (multi-zone / before we build)
+
+Use when **`generic-implementation-readiness.mdc`** triggers apply, or the user asks **before we build**, **implementation readiness**, **multi-zone**, **split tree**, **publish lane**, **ready to implement**, or **what could we be missing** on a phased or multi-tree feature.
+
+**Mandatory before "ready to implement", "design holds", or Phase 1 code:**
+
+| Step | Requirement |
+|------|-------------|
+| 1 | Read or write the plan's **`## Implementation readiness`** table (template in `PHASED_FEATURE_DESIGN.md`) |
+| 2 | Inventory **consumers** — scripts, rules, hooks, CI, verify, and docs that assume the old single-tree shape |
+| 3 | When runtime is split, classify each check by **zone** — which proof runs where |
+| 4 | Run evidence for each required row; report **Status** per row before any ready verdict |
+| 5 | End-to-end dry-run the ship/deploy path when a separate lane exists — if blocked, mark **Blocked** with what remains unverified |
+
+**Forbidden:** Treating one partial pass (layout sim, one zone, one suite arm) as full readiness. See **`generic-implementation-readiness.mdc`** for forbidden success claims.
+
+**Response order:** Triggers → Readiness table (with statuses) → Consumer inventory → Evidence per row → Verdict → Remaining **Not done** / **Blocked** rows.
+
+---
+
 ## On user pushback ("too fast", "not deep enough", "you missed X")
 
 This is a **loop-back** trigger (see `loop-back-protocol.mdc`):
@@ -416,7 +474,220 @@ This is a **loop-back** trigger (see `loop-back-protocol.mdc`):
 
 ## Pack maintenance
 
-Canonical copy: `pack/rules/generic-deep-task-execution.mdc` — installed to `%USERPROFILE%\.cursor\rules\` via `install.ps1`. Referenced from `agent-defaults-always.mdc`.
+Canonical copy: `pack/rules/generic-deep-task-execution.mdc`. **Applies where synced into a project's `.cursor/rules/`** via `sync-project-rules.ps1` — the profile copy `install.ps1` writes to `%USERPROFILE%\.cursor\rules\` is best-effort, since no editor documents reading that folder. Referenced from `agent-defaults-always.mdc`.
+
+
+---
+
+## generic-execution-strategy
+
+Source: `pack/rules/generic-execution-strategy.mdc`
+
+# Execution strategy (all sessions)
+
+Before starting work with **more than one item in it**, decide **how** it will be run, and say so in
+the first tool-using turn. This is the agent's job, not something the user should have to ask for.
+
+## Why this rule exists
+
+The other always-on rules all ask *"did you do enough?"* — depth contracts, completion checklists,
+proof registries. **None of them asked "what is the cheapest correct way to do this?"**, and
+`generic-deep-task-execution.mdc` pushes the opposite way by design: run every step, with tools, in
+this turn. An agent optimizes for what is checked, so execution cost went unoptimized for a month.
+
+The measured instance: a validation list ran **over a week**. Running tasks concurrently helped a
+little. **Batching helped far more** — and nobody had asked for either, because nothing required the
+question. A rule that says *be thorough* and no rule that says *be shaped* produces exhaustive serial
+work, which is the slowest correct answer available.
+
+## Decide, then name it
+
+| Shape | Use when | Test |
+|---|---|---|
+| **Batch** | N items share an expensive setup or gate | Would running them one at a time repeat the same cost N times? |
+| **Parallel** | N items are independent and each has its own cost | Does any item need another's output? If no, issue them together |
+| **Serial** | Step N's **input** is step N-1's **output** | Can you name the value that flows between them? If not, it is not serial work |
+
+State the choice in one line — "batching the four doc reads", "one suite run covers steps 61 and 54",
+"serial: the report must be regenerated after the test pass" — so a reader can disagree before the
+cost is paid rather than after.
+
+## Batching is the one that gets missed
+
+Parallelism is visible: several calls in one message. Batching is invisible until someone measures,
+because **the repeated cost is usually a gate, not the work**.
+
+- **One expensive run, many subjects.** A test suite, a full audit, a build, a container start, an
+  index rebuild. If a gate takes four minutes and answers for ten items, run it **once** with ten
+  items staged — not ten times.
+- **Group by the cost you are paying**, not by the tidiness of the list. Ten fixes that share one
+  suite run belong in one pass even if they are unrelated in subject.
+- **Read once, decide many.** Reading a file per question costs a round trip per question; read it
+  once and answer all of them.
+- **Watch for the serial trap in a loop:** *fix one, verify, fix next, verify* multiplies the gate by
+  the number of fixes. Fix the set, then verify once — and if the verify goes red, **then** bisect.
+
+## Batching never reduces depth
+
+This rule changes the **shape** of the work, never the **amount**. If a depth contract in
+`generic-deep-task-execution.mdc` requires a full inventory, batching means running it in one pass —
+not sampling it. Two rules, and the depth one wins on any conflict:
+
+- Legitimate: "one suite run proves all five changed steps."
+- **Forbidden:** "I batched, so I checked a representative subset."
+
+A batch that skips items is not a batch, it is a shortcut wearing the word.
+
+## When to stop and re-shape
+
+If work is taking materially longer than the user expects, **say which shape you chose and what it is
+costing** before continuing. "Over a week" is not something to discover in retrospect: a gate run
+N times, when it could have run once, is a finding worth reporting mid-flight.
+
+## Forbidden
+
+- Starting multi-item work without naming the shape.
+- Re-running an expensive gate per item when one run covers them all.
+- Reporting elapsed time without saying what the time was spent **on** (gate runs, tool round trips,
+  waiting on a build).
+- Using "batching" to describe work that dropped items.
+- Leaving the choice to the user, or waiting to be asked whether it could be faster.
+
+## Pack maintenance
+
+Canonical copy: `pack/rules/generic-execution-strategy.mdc`. **Applies where synced into a project's
+`.cursor/rules/`** by `sync-project-rules.ps1`, and exported for non-Cursor hosts by
+`sync-portable-docs.ps1` — see `pack/docs/PACK_MAINTENANCE.md`. Referenced from
+`agent-defaults-always.mdc`.
+
+
+---
+
+## generic-fix-and-verify-reporting
+
+Source: `pack/rules/generic-fix-and-verify-reporting.mdc`
+
+# Fix-and-verify reporting (all sessions)
+
+When a test, build, verify script, audit gate, CI check, or orchestrated run fails and is then fixed,
+report **what changed** and **what the latest run shows** in the same breath. The reader must never
+have to guess whether the failure is still their problem.
+
+Referenced from **`agent-defaults-always.mdc`** § Fixes the agent runs and **`generic-structured-chat-output.mdc`**.
+
+## Required
+
+- **Current verdict first** — pass or fail on the **latest** run that matters for the question.
+- **If a fix landed in this workstream** — pair it with the current verdict in one unit:
+  - **Fix:** what was wrong and what changed (file, mechanism, or config — one line each is enough).
+  - **Current:** pass/fail with evidence (exit code, log path, count, gate name).
+- **When a background or scheduled run finishes** — the agent reads the log and reports fix + current;
+  do not tell the user to open logs or search for `SUMMARY` unless the agent cannot read them.
+- **When still failing** — current failure only, with evidence and the next corrective step the agent
+  will run. Prior attempts belong in prose only when they explain *why* the current fix differs.
+
+## Forbidden
+
+- A **past failure alone** — `exit 1`, `guard=1`, "baseline failed step N" — with no fix + current
+  verdict. That reads as open work.
+- **Historical replay** when the latest run passes — no run-by-run diary of every failed attempt;
+  fix summary + current pass is enough.
+- **Splitting fix and closure across turns** — fix in one message, "check the log in the morning" in
+  another, with no current verdict in the same session.
+- **Asking the user to verify** what the agent can run and read (`run X yourself`, `paste SUMMARY
+  here`) when execution is in scope — see **`agent-defaults-always.mdc`** § Fixes the agent runs.
+
+## Shape (chat)
+
+One line or bullet per item is enough:
+
+```text
+Guard proofs: step 35 self-test ignored empty install sandbox → fixed in pack/scripts/agent_context_freshness.py. Current: full registry 82/82 exit 0 (log path).
+```
+
+Tables are optional; use them only when several gates share the same columns.
+
+## Applies to
+
+Any verifiable outcome: shell exit codes, pytest/CI, `verify-*.ps1`, `run_audit.cmd`, semantic
+finalize, guard-proof registry, orchestrator `SUMMARY` lines, MCP/background task completion
+notifications, and handoff **Evidence** rows after a fix.
+
+## Related rules
+
+| Rule | Division |
+|------|----------|
+| **`generic-structured-chat-output.mdc`** | Answer first; shape of the reply |
+| **`agent-defaults-always.mdc`** | Agent runs the fix and the re-verify |
+| **`loop-back-protocol.mdc`** | User says still broken — loop back, then fix + current again |
+| **`generic-work-queue-discipline.mdc`** | Done log evidence cites the passing gate, not the first red run |
+
+## Pack maintenance
+
+Canonical copy: `pack/rules/generic-fix-and-verify-reporting.mdc`. Delivered into a project's
+`.cursor/rules/` by **`sync-project-rules.ps1`**, and into **`pack/docs/portable/GENERIC_RULES.md`**
+by **`sync-portable-docs.ps1`** for non-Cursor hosts.
+
+
+---
+
+## generic-implementation-readiness
+
+Source: `pack/rules/generic-implementation-readiness.mdc`
+
+# Implementation readiness (all projects)
+
+## When Phase 0 applies
+
+Use **Phase 0** with **`generic-phased-feature-design.mdc`** when the work is a **multi-step feature or refactor** **and** any trigger below is true:
+
+| Trigger | Illustrative shapes (not exhaustive) |
+|---------|--------------------------------------|
+| Runtime split across two roots or trees | Dev checkout vs publish repo; app vs infra repo |
+| Separate deploy or publish lane | Staging tree, release bundle, export-only handout |
+| Sync or copy between trees before ship | Merge working tree into release dir before push |
+| Proof mode differs by zone | Content fingerprint vs VCS HEAD; offline vs online verify |
+| Full proof blocked on external input | Missing credential, hardware, or host-only path — mark **Blocked**, not silent skip |
+
+If **none** of the triggers apply, phased design alone is enough — **do not** invent a readiness table for ordinary single-tree features.
+
+## Phase 0 — before Phase 1 code or "design complete"
+
+1. Add **`## Implementation readiness`** to the feature plan (`docs/*_PLAN.md`, `docs/ROADMAP.md` phased section, or equivalent).
+2. Use the table template in **`pack/docs/PHASED_FEATURE_DESIGN.md`** (appendix).
+3. Each row: **Track | Check | Evidence required | Status**.
+4. **Status** is exactly one of: **Done** (cite log path, exit code, or artifact), **Not done**, or **Blocked** (owner + re-open when).
+5. **Batch** expensive gates across rows — see **`generic-execution-strategy.mdc`**. One suite run covering ten subjects beats ten serial reruns.
+
+## Required before claiming ready
+
+| Claim | Requirement |
+|-------|-------------|
+| "Design holds" / "simulations pass" | Every **required** readiness row is **Done** or **Blocked** with owner — not **Not done** |
+| "Through Phase N" (N ≥ 1) | Phase 0 complete when triggers applied |
+| Start Phase 1 **implementation code** | Same as above |
+
+**Required** rows are those the plan marks required, or every row when the plan does not distinguish optional tracks.
+
+## Forbidden
+
+- Reporting success on **one green gate** (layout sim, one grep, one partial suite) while cross-cutting tracks — consumers, policy, sync, end-to-end ship path — are absent from the table or still **Not done**.
+- Equating **"simulations pass"** with **implementable**.
+- Starting Phase 1 code while required rows are **Not done** unless the plan records them **Blocked** with owner.
+- If the user asks **"what could we be missing?"** on readiness work — the Phase 0 table was incomplete; loop back and fill rows. Do not ask them to rephrase.
+
+## Relationship to other rules
+
+| Rule | Division |
+|------|----------|
+| `generic-phased-feature-design.mdc` | Phase order **0 → N**; Phase 0 = readiness, Phase 1+ = build |
+| `generic-deep-task-execution.mdc` | Readiness triggers also invoke the implementation-readiness contract |
+| `generic-execution-strategy.mdc` | Batch readiness gates; never batch away required rows |
+| Feature plan in project docs | **Concrete rows and evidence** — never in this generic rule |
+
+## Pack maintenance
+
+Canonical copy: `pack/rules/generic-implementation-readiness.mdc`. Delivered into a project's `.cursor/rules/` by **`sync-project-rules.ps1`** and into **`pack/docs/portable/GENERIC_RULES.md`** by **`sync-portable-docs.ps1`**. Edit **`pack/rules/`** only — not synced copies under `.cursor/rules/`.
 
 
 ---
@@ -433,10 +704,11 @@ Use for **multi-step features**, refactors, and “fix it properly” workstream
 
 ## Non-negotiables
 
-1. **One sequence** — Phases 1 → N; **runtime order = build order**.
+1. **One sequence** — Phases **0 → N** when readiness triggers apply, else **1 → N**; **runtime order = build order**.
 2. **No phase skips** — Never implement a later phase before an earlier one is complete.
 3. **One checklist** — Single table; project/feature done when every phase is ☑.
 4. **Optional work owns a phase** — No orphan “optional” steps in the main flow.
+5. **Phase 0 when triggered** — Multi-zone or multi-tree work: complete **`generic-implementation-readiness.mdc`** before Phase 1 code or claiming design complete.
 
 ## Optional / deferred work
 
@@ -452,10 +724,92 @@ Choose one style per plan (do not mix inconsistently):
 ## Before coding
 
 1. Write or read a phased plan (use template in `PHASED_FEATURE_DESIGN.md`).
-2. Implement **next unchecked phase only**.
-3. Report progress as **“through Phase N”**.
+2. If **`generic-implementation-readiness.mdc`** triggers apply, complete **Phase 0** (`## Implementation readiness` table) before any Phase 1 implementation code.
+3. Implement **next unchecked phase only**.
+4. Report progress as **“through Phase N”** — never claim Phase 1+ while Phase 0 rows are **Not done**.
 
 Store plans in `docs/*_PLAN.md` for large features; link from `AGENTS.md` when relevant.
+
+
+---
+
+## generic-structured-chat-output
+
+Source: `pack/rules/generic-structured-chat-output.mdc`
+
+# Structured chat output (all projects)
+
+Lead with the answer, then organize the supporting detail. A reply the user has to re-read is not
+short, however few words it used.
+
+Referenced from **`agent-defaults-always.mdc`** § Chat output shape.
+
+## Required
+
+- **Answer first** — one or two sentences stating the outcome, before any heading or table.
+- **Headings** (`##`) once a reply covers more than one topic.
+- **Bullets** for anything the user reads as a list: findings, changed files, next steps.
+- **Tables** for enumerable facts with the same shape across rows — status per item, file per purpose, before vs after, option vs cost.
+- **Action items in their own section** when — and only when — something is genuinely the user's to do, with the exact command or path, where to run it, and why the agent could not.
+
+## Forbidden
+
+- Multi-paragraph prose where a table or bullet list carries the same facts.
+- A reply that opens with background and buries the result at the bottom.
+- Restating a table in prose immediately after it.
+- Labels the user has to cross-reference (`option A`, `item 3`, `as noted above`) instead of naming the thing.
+- Arrow chains and shorthand as sentence substitutes (`A → B → fails`).
+- Burying something the user must do inside a status paragraph.
+- **An action section with nothing in it** — an empty **What I need from you**, a standing
+  "nothing needed" line, or any sentence whose only content is that the agent has no ask. When there
+  is no ask, the section is **absent**; its absence is the message.
+- **Returning the turn to ask for work the user already authorized** — a closing "shall I continue?",
+  "let me know if you want the next one", or a status report that stops at a finished item while the
+  queue has a next one. See **`generic-work-queue-discipline.mdc`** § Continuing without being asked
+  again.
+
+## Keep as prose
+
+Tables flatten reasoning. Use sentences for:
+
+- **Why** — cause, mechanism, what the bug actually did
+- **Tradeoffs and recommendations** — when one option wins and why
+- **Uncertainty** — what was not verified, and what would verify it
+
+## Shape by request type
+
+| User asks | Reply shape |
+|-----------|-------------|
+| Simple or factual question | Direct answer in one or two sentences — no headings, no table |
+| Status / "where are we" | Short verdict, then a status table, then next actions as a list |
+| Test/gate after a fix | Current pass/fail first; **Fix:** … **Current:** … in one block — see **`generic-fix-and-verify-reporting.mdc`** |
+| Multi-file change or audit | Answer first, then grouped bullets or a table per area |
+| Choice between approaches | Table of option vs cost, then one sentence naming the recommendation |
+| Explanation of a failure | Prose for the mechanism; table or bullets only for the affected files |
+
+## Length
+
+Cut content, not clarity. Drop detail that would not change what the user does next; keep complete
+sentences and spelled-out technical terms in what remains. Brevity that costs a re-read has saved
+nothing.
+
+## Related rules — not restated here
+
+- **`full-paths-in-chat.mdc`** — absolute paths when telling the user where something lives. This rule
+  governs the *shape* of a reply; that one governs how a path inside it is written.
+- **`generic-deep-task-execution.mdc`** — prescribes a **response order** for deep compare, full scan
+  and complete-picture work (evidence before verdict). Where a depth contract names an order, it wins:
+  this rule says answer first, and for those requests the answer is not credible before the evidence.
+- **`generic-fix-and-verify-reporting.mdc`** — after a fix, pair mechanism with the latest gate
+  result; a past failure alone reads as open work.
+
+## Pack maintenance
+
+Canonical copy: `pack/rules/generic-structured-chat-output.mdc`. **Applies where synced into a
+project's `.cursor/rules/`** by `sync-project-rules.ps1` — a project's rules folder is loaded, and
+no editor documents reading `%USERPROFILE%\.cursor\rules\`, which is why this rule lives here rather
+than in the profile. An earlier copy of this guidance sat in the profile declaring
+`alwaysApply: true` for months and applied to nothing.
 
 
 ---
@@ -584,8 +938,31 @@ If `docs/WORK_QUEUE.md` is missing in a bootstrapped project, treat `docs/ROADMA
 
 ### Before changing priorities or saying "what's next?"
 
-1. Read **`docs/WORK_QUEUE.md`** if it exists (else note its absence).
-2. Report: **Next ID**, **Active count**, **Inbox count**, **Parked count** — not only the latest chat bullet list.
+Follow **`handoff-first.mdc`** lookup order:
+
+1. Read **`docs/handoffs/SESSION.md`** if present — open items or blockers → **stop here**.
+2. Read **`docs/WORK_QUEUE.md`** if it exists (else note its absence).
+3. Report: **Next ID**, **Active count**, **Inbox count**, **Parked count** — not only the latest chat bullet list.
+4. Unplanned next only when SESSION **and** WQ are clear — label it explicitly.
+
+### Continuing without being asked again
+
+Standing authorization is the normal case, not an edge case: "work the queue", "continue", "keep
+going", "work on the whole project until it is done". Under it, **finishing a row is not the end of
+the turn — the next Active row is.**
+
+- Close the finished row (Done log, evidence, propagation), set exactly one row **Next**, then
+  **begin that row in the same session**.
+- Report **once** when the authorized work is finished, or at the first thing only the user can
+  settle — not after each row.
+- **Stop and ask only** for a real blocker: a decision that is the user's to make (publish, spend,
+  delete, change a settled decision), credentials or hardware the agent does not have, or a conflict
+  with something the user already decided.
+- A finished row plus "shall I do the next one?" is a **false stop**. It spends a user turn on an
+  instruction they already gave, and it reads as progress halting for a reason that does not exist.
+
+Re-reading the queue between rows is required (rows may have been re-ordered); asking permission to
+read it is not.
 
 ### When adding work
 
@@ -630,7 +1007,8 @@ Order in **Active queue** is **not frozen**. Move rows when dependencies, blocke
 | `run_audit.cmd` report | Ephemeral **Fix** / **Improve** for that audit run |
 | `WORK_QUEUE.md` → Engineering backlog | Recurring gaps worth scheduling (e.g. audit depth findings) |
 | `ROADMAP.md` | Product features and phased plans |
-| Handoff / session notes | Session context + pointer to **Next** ID in work queue |
+| `docs/handoffs/SESSION.md` | Session **now** + pointers (no duplicate Next table) |
+| Slice handoffs | Implement packet for one WQ row |
 
 ## Forbidden
 
@@ -647,6 +1025,62 @@ Template: `pack/templates/docs/WORK_QUEUE.md.template` — bootstrap `-Targets` 
 **Verify:** `pack/scripts/verify-work-queue.ps1 -ProjectRoot PATH` (also in `verify-agent-setup.ps1` and behavior step 31).  
 **Status alignment:** `pack/scripts/verify-complete-picture.ps1` (step 37) — see **`pack/docs/RULES_AND_VERIFY_MAP.md`**.  
 **Backfill:** `ensure-work-queue.ps1` runs from `refresh-agent-context.ps1` when the file is missing.
+
+
+---
+
+## handoff-first
+
+Source: `pack/rules/handoff-first.mdc`
+
+# Handoff-first and "what's next?" (all projects)
+
+Normative detail: **`pack/docs/AGENT_HANDOFFS.md`** § Session handoff.
+
+## Canonical files
+
+| File | Owns |
+|------|------|
+| `docs/handoffs/SESSION.md` | **Now** — where we left off, blockers, open items, pointers only |
+| `docs/WORK_QUEUE.md` | **Priority/status** — one **Next**, Active, Inbox, backlog, Parked, Done |
+| `docs/handoffs/active/HANDOFF_WQ*.md` | **How** to implement one WQ slice |
+
+**Forbidden:** a second doc claiming **Next**, root session mega-docs (retired 2.22.65), chat-only priority lists.
+
+## Project updated / new session
+
+Read in order:
+
+1. `docs/handoffs/SESSION.md` (if present)
+2. `docs/WORK_QUEUE.md` (if present)
+3. Active slice handoff if implementing
+4. `AGENTS.md` / product docs as needed
+
+## Trigger: "what's next?" (and equivalents)
+
+Includes: **what's next**, **continue**, **pick up**, **updated project**, **where did we leave off**, **what remains**.
+
+| Step | Read | If … then next is … |
+|------|------|---------------------|
+| 1 | **SESSION.md** | Open items or blockers → **stop here**; report and act on those |
+| 2 | **WORK_QUEUE.md** | **Next** / untriaged Inbox → that (after SESSION clear) |
+| 3 | Unplanned | Only if SESSION **and** WQ are clear — say so explicitly |
+
+Report format: `Session handoff: … | WQ: … | Unplanned proposal: yes/no`.
+
+## Interrupt rule (while on SESSION or WQ work)
+
+Issues found during the slice (failing tests, verify, regressions, doc contradictions):
+
+- **Fix or triage in the same session** when possible
+- Large surprise → **WQ Inbox** row + note in **SESSION** blockers; do not jump to step 3
+- Do not abandon a broken tree for greenfield ideas
+
+## End of session
+
+Update **SESSION.md** (evidence, blockers, open items, pointers). If WQ status changed, update **WORK_QUEUE.md** first, then align SESSION pointers in the same session.
+
+Related: **`generic-work-queue-discipline.mdc`**, **`generic-agent-handoff-discipline.mdc`**.
 
 
 ---

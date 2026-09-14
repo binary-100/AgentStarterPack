@@ -40,7 +40,7 @@ if ($ReferenceProjectRoot) { Write-Host "ReferenceProjectRoot: $ReferenceProject
 else { Info 'ReferenceProjectRoot not set - pack-only mode (default).' }
 
 # 1. Generic rules sync (optional - only when reference project provided)
-$sync = Join-Path $PackRoot 'pack\scripts\sync-project-rules.ps1'
+$sync = Join-Path $PackRoot 'pack/scripts/sync-project-rules.ps1'
 if (-not (Test-Path -LiteralPath $sync)) {
     Fail "Missing sync-project-rules.ps1: $sync"
 } elseif ($ReferenceProjectRoot) {
@@ -57,7 +57,7 @@ if (-not (Test-Path -LiteralPath $sync)) {
 # verified - the same "guard narrower than the thing it guards" that let a broken export ship
 # (2.22.60). Anything added to packToUser is now checked without touching this file.
 $userRoot = Get-AgentStarterPackUserRoot
-if (-not $userRoot) { $userRoot = Join-Path $env:USERPROFILE '.cursor' }
+if (-not $userRoot) { $userRoot = Join-Path (Get-PackHomeDir) '.cursor' }
 $toUser = @($manifest.packToUser | Where-Object { $_.to })
 if ($toUser.Count -eq 0) {
     Fail 'manifest has no packToUser entries - cannot verify what install should have placed in the profile'
@@ -76,7 +76,9 @@ if ($toUser.Count -eq 0) {
 }
 
 # 3. Canonical pack installed
-$installed = Join-Path $env:USERPROFILE '.cursor\AgentStarterPack\pack\audit\manifest.json'
+# Unconditional, so this was the line that made Verify-AgentSetup.sh impossible off Windows: no
+# guard, no fallback, and $env:USERPROFILE is $null there. $userRoot above is already resolved.
+$installed = Join-Path $userRoot 'AgentStarterPack/pack/audit/manifest.json'
 if (Test-Path -LiteralPath $installed) { Pass "Installed pack manifest: $installed" }
 else { Fail "Installed pack missing: $installed" }
 
@@ -104,8 +106,8 @@ if ($mirrorExpected.Count -eq 0) {
 }
 
 # 5. Work queue (pack repo + optional reference project)
-$verifyWq = Join-Path $PackRoot 'pack\scripts\verify-work-queue.ps1'
-$ensureWq = Join-Path $PackRoot 'pack\scripts\ensure-work-queue.ps1'
+$verifyWq = Join-Path $PackRoot 'pack/scripts/verify-work-queue.ps1'
+$ensureWq = Join-Path $PackRoot 'pack/scripts/ensure-work-queue.ps1'
 if (-not (Test-Path -LiteralPath $verifyWq)) {
     Fail "Missing verify-work-queue.ps1: $verifyWq"
 } else {
@@ -116,7 +118,7 @@ if (-not (Test-Path -LiteralPath $verifyWq)) {
             Invoke-PackScript -PassOutput -NoProfile -ScriptPath $ensureWq -ProjectRoot $root -PackRoot $PackRoot | Out-Host
             if ($LASTEXITCODE -ne 0) { Fail "ensure-work-queue failed for $root"; continue }
         }
-        $ensureWc = Join-Path $PackRoot 'pack\scripts\ensure-work-completion.ps1'
+        $ensureWc = Join-Path $PackRoot 'pack/scripts/ensure-work-completion.ps1'
         if ($root -eq $ReferenceProjectRoot -and (Test-Path -LiteralPath $ensureWc)) {
             Invoke-PackScript -PassOutput -NoProfile -ScriptPath $ensureWc -ProjectRoot $root -PackRoot $PackRoot | Out-Host
             if ($LASTEXITCODE -ne 0) { Fail "ensure-work-completion failed for $root"; continue }
@@ -125,8 +127,8 @@ if (-not (Test-Path -LiteralPath $verifyWq)) {
         if ($LASTEXITCODE -eq 0) { Pass "WORK_QUEUE valid: $root" }
         else { Fail "WORK_QUEUE verification failed: $root" }
     }
-    $verifyHandoffs = Join-Path $PackRoot 'pack\scripts\verify-agent-handoffs.ps1'
-    $verifyCompletePicture = Join-Path $PackRoot 'pack\scripts\verify-complete-picture.ps1'
+    $verifyHandoffs = Join-Path $PackRoot 'pack/scripts/verify-agent-handoffs.ps1'
+    $verifyCompletePicture = Join-Path $PackRoot 'pack/scripts/verify-complete-picture.ps1'
     if (Test-Path -LiteralPath $verifyHandoffs) {
         foreach ($root in $wqRoots) {
             Invoke-PackScript -PassOutput -NoProfile -ScriptPath $verifyHandoffs -ProjectRoot $root -AllowMissing 2>&1 | Out-Host
@@ -145,7 +147,7 @@ if (-not (Test-Path -LiteralPath $verifyWq)) {
 
 # 6. Portable bootstrap profile (reference project)
 if ($ReferenceProjectRoot) {
-    $portableVerify = Join-Path $PackRoot 'pack\scripts\verify-portable-bootstrap.ps1'
+    $portableVerify = Join-Path $PackRoot 'pack/scripts/verify-portable-bootstrap.ps1'
     if (-not (Test-Path -LiteralPath $portableVerify)) {
         Fail "Missing verify-portable-bootstrap.ps1: $portableVerify"
     } else {
@@ -154,7 +156,7 @@ if ($ReferenceProjectRoot) {
         else { Fail "Portable bootstrap profile failed: $ReferenceProjectRoot" }
     }
 
-    $registerAdapters = Join-Path $PackRoot 'pack\scripts\register-tool-adapters.ps1'
+    $registerAdapters = Join-Path $PackRoot 'pack/scripts/register-tool-adapters.ps1'
     if (-not (Test-Path -LiteralPath $registerAdapters)) {
         Fail "Missing register-tool-adapters.ps1: $registerAdapters"
     } else {
@@ -163,7 +165,7 @@ if ($ReferenceProjectRoot) {
         else { Fail "Tool adapter verification failed: $ReferenceProjectRoot" }
     }
 
-    $repairDocs = Join-Path $PackRoot 'pack\scripts\repair-agent-docs.ps1'
+    $repairDocs = Join-Path $PackRoot 'pack/scripts/repair-agent-docs.ps1'
     if (-not (Test-Path -LiteralPath $repairDocs)) {
         Fail "Missing repair-agent-docs.ps1: $repairDocs"
     } else {
@@ -176,12 +178,12 @@ if ($ReferenceProjectRoot) {
     # state directory, so checking docs\ there would warn about a file that is correctly absent.
     $sessionStart = Join-Path (Get-AgentStateRoot -ProjectRoot $ReferenceProjectRoot) 'AGENT_SESSION_START.md'
     if (Test-Path -LiteralPath $sessionStart) { Pass "AGENT_SESSION_START.md present: $ReferenceProjectRoot" }
-    else { Warn "AGENT_SESSION_START.md missing - run Refresh-AgentContext.cmd for $ReferenceProjectRoot" }
+    else { Warn "AGENT_SESSION_START.md missing - run $(Get-PackEntryPoint 'Refresh-AgentContext') for $ReferenceProjectRoot" }
 }
 
 if ($ReferenceProjectRoot) {
     # 7. Audit sync drift (reference project)
-    $auditSync = Join-Path $PackRoot 'pack\scripts\sync-audit-system.ps1'
+    $auditSync = Join-Path $PackRoot 'pack/scripts/sync-audit-system.ps1'
     if (Test-Path -LiteralPath $auditSync) {
         Invoke-PackScript -PassOutput -NoProfile -ScriptPath $auditSync -VerifyOnly -ProjectRoot $ReferenceProjectRoot 2>&1 | Out-Host
         if ($LASTEXITCODE -eq 0) { Pass 'Audit system sync drift: OK (reference project)' }
@@ -191,7 +193,7 @@ if ($ReferenceProjectRoot) {
     Info 'Reference-project audit sync skipped. Pass -ReferenceProjectRoot when verifying a bootstrapped app.'
 
     # Pack self-audit sync verify
-    $auditSync = Join-Path $PackRoot 'pack\scripts\sync-audit-system.ps1'
+    $auditSync = Join-Path $PackRoot 'pack/scripts/sync-audit-system.ps1'
     if (Test-Path -LiteralPath $auditSync) {
         Invoke-PackScript -PassOutput -NoProfile -ScriptPath $auditSync -VerifyOnly -ProjectRoot $PackRoot 2>&1 | Out-Host
         if ($LASTEXITCODE -eq 0) { Pass 'Audit system sync drift: OK (pack repo)' }

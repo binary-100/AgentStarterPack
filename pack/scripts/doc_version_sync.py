@@ -217,6 +217,47 @@ def _collect_doc_paths(project_root: Path, repo_root: Path, doc_sync: dict) -> l
     return out
 
 
+def load_historical_regions(vs_cfg: dict | None) -> dict:
+    """Files that carry a historical region, mapped to the heading where it starts.
+
+    A work queue mixes two kinds of version cite in one file: the header says which engine is
+    current, and every Done-log row says which engine shipped that item. The first must move on a
+    bump; the second is a claim about the past and must never move. Nothing separated them, so the
+    bump procedure was "split the file at the Done-log heading and replace only above it, by hand" -
+    and four historical cites were rewritten anyway, twice in a single session (WQ-437).
+
+    Declaring the boundary here makes it the tool's behaviour instead of a habit.
+    """
+    regions: dict[str, str] = {}
+    for entry in (vs_cfg or {}).get("historicalRegions") or []:
+        rel = (entry.get("file") or "").replace("\\", "/").strip()
+        heading = (entry.get("fromHeading") or "").strip()
+        if rel and heading:
+            regions[rel] = heading
+    return regions
+
+
+def split_at_historical_heading(text: str, heading: str) -> tuple:
+    """Split into (mutable head, frozen tail) at a markdown heading.
+
+    Only lines that are themselves headings are considered, so prose quoting the heading - "the Done
+    log is the one file where every version is a historical claim" - cannot move the boundary. An
+    unanchored search for the same string is a bug this codebase has already paid for once, in the
+    section parser these documents share.
+
+    When the heading is absent the whole text stays mutable and the caller is told: a boundary that
+    silently stopped existing is worse than never having had one.
+    """
+    want = heading.lstrip("#").strip().casefold()
+    offset = 0
+    for line in text.splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped.startswith("#") and stripped.lstrip("#").strip().casefold() == want:
+            return text[:offset], text[offset:]
+        offset += len(line)
+    return text, ""
+
+
 def _apply_extra_replacements(
     text: str, pack_ver: str | None, audit_ver: str | None, rules: list
 ) -> str:
@@ -244,6 +285,19 @@ def sync_documentation_versions(project_root: Path, *, dry_run: bool = False) ->
     updated: list[str] = []
     stale: list[str] = []
 
+    regions = load_historical_regions(vs_cfg)
+    missing_regions: list[str] = []
+
+    def split_frozen(rel: str, text: str) -> tuple:
+        """Head to sync, tail to leave alone. Records a declared-but-absent heading."""
+        heading = regions.get(rel.replace("\\", "/"))
+        if not heading:
+            return text, ""
+        head, tail = split_at_historical_heading(text, heading)
+        if not tail:
+            missing_regions.append("{} (no heading '{}')".format(rel, heading))
+        return head, tail
+
     app_ver = read_canonical_version(project_root, vs_cfg)
     doc_sync = vs_cfg.get("docSync") or {}
     has_doc_targets = bool(doc_sync.get("scanFiles") or doc_sync.get("scanGlobs"))
@@ -254,13 +308,14 @@ def sync_documentation_versions(project_root: Path, *, dry_run: bool = False) ->
             except ValueError:
                 rel = str(path.relative_to(project_root))
             original = path.read_text(encoding="utf-8-sig")
-            lines = original.splitlines(keepends=True)
+            mutable, frozen = split_frozen(rel, original)
+            lines = mutable.splitlines(keepends=True)
             new_parts = []
             for line in lines:
                 body = line.rstrip("\r\n")
                 suffix = line[len(body) :]
                 new_parts.append(_sync_app_versions_in_line(body, app_ver) + suffix)
-            new_text = "".join(new_parts)
+            new_text = "".join(new_parts) + frozen
             if new_text != original:
                 if dry_run:
                     stale.append(rel)
@@ -289,7 +344,8 @@ def sync_documentation_versions(project_root: Path, *, dry_run: bool = False) ->
             if not path.is_file():
                 continue
             original = path.read_text(encoding="utf-8-sig")
-            lines = original.splitlines(keepends=True)
+            mutable, frozen = split_frozen(rel, original)
+            lines = mutable.splitlines(keepends=True)
             new_parts = []
             for line in lines:
                 body = line.rstrip("\r\n")
@@ -300,7 +356,7 @@ def sync_documentation_versions(project_root: Path, *, dry_run: bool = False) ->
                 if mode in ("pack", "both") and pack_ver:
                     new_body = _sync_pack_versions_in_line(new_body, pack_ver)
                 new_parts.append(new_body + suffix)
-            new_text = "".join(new_parts)
+            new_text = "".join(new_parts) + frozen
             if new_text != original:
                 if dry_run:
                     stale.append(rel)
@@ -316,7 +372,11 @@ def sync_documentation_versions(project_root: Path, *, dry_run: bool = False) ->
             if not path.is_file():
                 continue
             original = path.read_text(encoding="utf-8-sig")
-            new_text = _apply_extra_replacements(original, pack_ver, audit_ver, [rule])
+            # extraReplacements are whole-file regex substitutions, which is the shape most likely
+            # to reach into the past: the header-row rules below are anchored, but a rule written
+            # with a looser pattern would rewrite every match in the Done log too.
+            mutable, frozen = split_frozen(rel, original)
+            new_text = _apply_extra_replacements(mutable, pack_ver, audit_ver, [rule]) + frozen
             if new_text != original:
                 if dry_run:
                     stale.append(rel)
@@ -327,7 +387,16 @@ def sync_documentation_versions(project_root: Path, *, dry_run: bool = False) ->
 
     stale = list(dict.fromkeys(stale))
     updated = list(dict.fromkeys(updated))
-    return {"updated": updated, "stale": stale, "ok": len(stale) == 0}
+    missing_regions = list(dict.fromkeys(missing_regions))
+    # A declared region whose heading cannot be found is a failure, not a note: the file is being
+    # rewritten end to end while the config says part of it is protected.
+    return {
+        "updated": updated,
+        "stale": stale,
+        "frozenRegions": sorted(regions),
+        "missingRegions": missing_regions,
+        "ok": len(stale) == 0 and not missing_regions,
+    }
 
 
 def run_cli(project_root: Path, argv: list[str]) -> int:

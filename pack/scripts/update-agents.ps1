@@ -32,7 +32,11 @@ if (-not (Test-Path $installPs1)) {
     exit 1
 }
 
-$userCursor = Join-Path $env:USERPROFILE '.cursor'
+# Get-PackHomeDir, not $env:USERPROFILE: that variable is Windows-only, so off Windows this line
+# threw "Cannot bind argument to parameter 'Path' because it is null" before doing anything - which
+# is how Update-AgentRules.sh failed the first time it was ever run (WQ-451/WQ-454). The helper
+# returns USERPROFILE first, so Windows behaviour is unchanged.
+$userCursor = Join-Path (Get-PackHomeDir) '.cursor'
 $installedRoot = Join-Path $userCursor 'AgentStarterPack'
 $userRules = Join-Path $userCursor 'rules'
 $userSkills = Join-Path $userCursor 'skills'
@@ -45,7 +49,7 @@ function Get-TreeHashes([string]$Root) {
     Get-ChildItem -LiteralPath $rootFull -Recurse -File -Force -ErrorAction SilentlyContinue |
         Where-Object { $_.FullName -notmatch '\\__pycache__\\' } |
         ForEach-Object {
-            $rel = $_.FullName.Substring($rootFull.Length).TrimStart('\')
+            $rel = Get-PackRelPathKey -Path $_.FullName -Root $rootFull
             $map[$rel] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
         }
     return $map
@@ -69,7 +73,7 @@ function Get-PackVersion([string]$Root) {
 }
 
 function Get-AuditEngineVersion([string]$Root) {
-    $f = Join-Path $Root 'pack\audit\manifest.json'
+    $f = Join-Path $Root 'pack/audit/manifest.json'
     if (-not (Test-Path $f)) { return '(none)' }
     try { return ((Get-Content $f -Raw -Encoding UTF8) | ConvertFrom-Json).version }
     catch { return '(unreadable)' }
@@ -153,8 +157,8 @@ Write-Host "Audit engine:  $($before.engine) -> $($after.engine)"
 Write-Host ''
 $prevRules = if ($prevManifest -and $prevManifest.rules) { @($prevManifest.rules) } else { @() }
 $prevSkills = if ($prevManifest -and $prevManifest.skills) { @($prevManifest.skills) } else { @() }
-Write-TreeDiff 'Rules ' $before.rules $after.rules (Join-Path $sourceRoot 'pack\rules') $prevRules
-Write-TreeDiff 'Skills' $before.skills $after.skills (Join-Path $sourceRoot 'pack\skills') $prevSkills
+Write-TreeDiff 'Rules ' $before.rules $after.rules (Join-Path $sourceRoot 'pack/rules') $prevRules
+Write-TreeDiff 'Skills' $before.skills $after.skills (Join-Path $sourceRoot 'pack/skills') $prevSkills
 Write-TreeDiff 'Pack  ' $before.pack $after.pack $sourceRoot
 
 $mcpAdded = @($after.mcp | Where-Object { $before.mcp -notcontains $_ })
@@ -169,12 +173,12 @@ $verifyFailed = $false
 if (-not $SkipVerify) {
     Write-Host ''
     Write-Host '=== Verify ==='
-    $doctor = Join-Path $installedRoot 'pack\scripts\doctor.ps1'
+    $doctor = Join-Path $installedRoot 'pack/scripts/doctor.ps1'
     if (Test-Path $doctor) {
         Invoke-PackScript -PassOutput -NoProfile -ScriptPath $doctor | Select-Object -Last 3 | ForEach-Object { Write-Host "  $_" }
         if ($LASTEXITCODE -ne 0) { $verifyFailed = $true; Write-Host '  doctor.ps1 reported failures' }
     }
-    $sync = Join-Path $sourceRoot 'pack\scripts\sync-audit-system.ps1'
+    $sync = Join-Path $sourceRoot 'pack/scripts/sync-audit-system.ps1'
     if (Test-Path $sync) {
         Invoke-PackScript -PassOutput -NoProfile -ScriptPath $sync -VerifyOnly | Select-Object -Last 2 | ForEach-Object { Write-Host "  $_" }
         if ($LASTEXITCODE -ne 0) { $verifyFailed = $true; Write-Host '  sync verify reported drift' }
@@ -183,7 +187,13 @@ if (-not $SkipVerify) {
 
 Write-Host ''
 Write-Host '=== Agents ==='
-Write-Host 'New chats and sessions read the updated rules and skills automatically.'
+# WQ-456: this used to promise rules load automatically. Skills do - `~/.cursor/skills/` is a
+# documented global load path. Rules do not: no editor documents reading a home-folder rules
+# directory, so a rule binds only where it has been synced into a project's `.cursor/rules/`.
+Write-Host 'New chats read the updated skills automatically.'
+Write-Host 'Rules do not load from the user profile - no editor documents reading that folder.'
+Write-Host 'Deliver them per project:  sync-project-rules.ps1 -ProjectRoot <project>'
+Write-Host "Already-open chat: run $(Get-PackEntryPoint 'Refresh-AgentContext') - it names the rule files to re-read."
 if ($mcpAdded.Count -gt 0 -or -not $wasInstalled) {
     Write-Host 'Restart Cursor once so the MCP server list reloads.'
 }

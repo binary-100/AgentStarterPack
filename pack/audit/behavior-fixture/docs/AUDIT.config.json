@@ -1,7 +1,7 @@
 {
   "configVersion": 1,
   "projectName": "audit-behavior-fixture",
-  "tests": { "script": "run_tests_stub.bat" },
+  "tests": { "script": "run_tests_stub.ps1" },
   "syncAndVerify": {
     "runSyncVerify": false,
     "runLegacyVerify": false

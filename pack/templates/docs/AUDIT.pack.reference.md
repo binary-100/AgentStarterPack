@@ -42,6 +42,7 @@ Re-run full **`run_audit.cmd`** if git HEAD or source tree changed since step 1.
 ### D. Python audit engine
 - `pack/scripts/audit_code_checks.py` — manifest JSON, semantic gates, domain map
 - `pack/scripts/audit_common.py`, `audit_version_docs.py`, `audit_install_wiring.py` — shared primitives, Section M version cites, and the checks that read outside the repo (installed copy, `mcp.json`, reference templates)
+- `pack/scripts/pack_entry_points.py` — host-correct spelling for the pack's entry points; the Python twin of `Get-PackEntryPoint` in `pack-paths.ps1`, compared against it by behavior step 65
 
 ### E. PowerShell audit engine
 - `pack/scripts/run_audit_core.ps1`, `sync-audit-system.ps1`, `verify-audit-system.ps1`, `verify-audit-behavior.ps1`
@@ -93,6 +94,7 @@ Semantic gate: list **every path above** in `modulesReviewed[]` for section I.
 | `install_launcher.py` | F |
 | `audit_code_checks.py` | D |
 | `audit_common.py` | D |
+| `pack_entry_points.py` | D |
 | `audit_version_docs.py` | D |
 | `audit_install_wiring.py` | D |
 | `doc_version_sync.py` | D |

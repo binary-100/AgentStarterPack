@@ -1,0 +1,19 @@
+# Publish lane — StarterPack-Airlock overlay
+
+**Not the development queue.** Canonical **Next** and Active rows live in the working copy
+`docs/WORK_QUEUE.md` in the git-free pack checkout.
+
+This file tracks **publish and CI** status only. Rows reference WQ ids from the project queue.
+
+## Publish status
+
+| WQ | Task | Status | Notes |
+|----|------|--------|-------|
+| WQ-465 | Publish requires Airlock on Desktop | **Decided** | Do not re-ask |
+| WQ-455 | Promote macOS CI to blocking | Parked | Re-open when CI runs from `repo/` |
+
+## Publish checklist
+
+1. Sync: `pack/scripts/sync-working-copy-to-airlock-repo.ps1`
+2. Zone B audit from Airlock `repo/`
+3. Human `git push` from `repo/` only

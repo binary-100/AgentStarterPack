@@ -4,6 +4,15 @@
 # A CRLF here makes "#!/usr/bin/env bash" unrunnable on the systems install.sh exists for.
 *.sh text eol=lf
 
+# The generated half of the same problem. A template is copied into a project verbatim and lands as
+# a .sh there, but "*.sh" does not match "run_audit.sh.template" - so these fell through to
+# "* text=auto" and a Windows checkout (core.autocrlf=true is the Git-for-Windows default) would
+# convert them. Every project bootstrapped from that checkout then got CRLF shell entry points that
+# answer "$'\r': command not found" on Linux. Pin the payload's endings, not the file suffix's.
+*.sh.template text eol=lf
+
 # Batch parsing is line-ending sensitive; keep the Windows entry points CRLF on every checkout.
 *.cmd text eol=crlf
 *.bat text eol=crlf
+*.cmd.template text eol=crlf
+*.bat.template text eol=crlf

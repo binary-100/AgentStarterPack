@@ -11,6 +11,7 @@ Checked by `verify-agent-handoffs.ps1` during audit, which reports and **never d
 
 | Path | Holds |
 |------|-------|
+| `SESSION.md` | **First read** on continue / what's next? — blockers, open items, pointers only |
 | `active/HANDOFF_WQnnn_<slug>.md` | Build slices in progress — one per work-queue item |
 | `HANDOFF_<topic>.md` | Orientation notes; read and confirm, no code |
 | `../handoff_archive/` | Completed or superseded, moved after audit Improve **and** a human's confirmation |

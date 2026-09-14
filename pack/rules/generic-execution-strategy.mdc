@@ -1,0 +1,81 @@
+---
+description: Choose the execution shape before starting - batch, parallel or serial - and say which
+alwaysApply: true
+---
+
+# Execution strategy (all sessions)
+
+Before starting work with **more than one item in it**, decide **how** it will be run, and say so in
+the first tool-using turn. This is the agent's job, not something the user should have to ask for.
+
+## Why this rule exists
+
+The other always-on rules all ask *"did you do enough?"* — depth contracts, completion checklists,
+proof registries. **None of them asked "what is the cheapest correct way to do this?"**, and
+`generic-deep-task-execution.mdc` pushes the opposite way by design: run every step, with tools, in
+this turn. An agent optimizes for what is checked, so execution cost went unoptimized for a month.
+
+The measured instance: a validation list ran **over a week**. Running tasks concurrently helped a
+little. **Batching helped far more** — and nobody had asked for either, because nothing required the
+question. A rule that says *be thorough* and no rule that says *be shaped* produces exhaustive serial
+work, which is the slowest correct answer available.
+
+## Decide, then name it
+
+| Shape | Use when | Test |
+|---|---|---|
+| **Batch** | N items share an expensive setup or gate | Would running them one at a time repeat the same cost N times? |
+| **Parallel** | N items are independent and each has its own cost | Does any item need another's output? If no, issue them together |
+| **Serial** | Step N's **input** is step N-1's **output** | Can you name the value that flows between them? If not, it is not serial work |
+
+State the choice in one line — "batching the four doc reads", "one suite run covers steps 61 and 54",
+"serial: the report must be regenerated after the test pass" — so a reader can disagree before the
+cost is paid rather than after.
+
+## Batching is the one that gets missed
+
+Parallelism is visible: several calls in one message. Batching is invisible until someone measures,
+because **the repeated cost is usually a gate, not the work**.
+
+- **One expensive run, many subjects.** A test suite, a full audit, a build, a container start, an
+  index rebuild. If a gate takes four minutes and answers for ten items, run it **once** with ten
+  items staged — not ten times.
+- **Group by the cost you are paying**, not by the tidiness of the list. Ten fixes that share one
+  suite run belong in one pass even if they are unrelated in subject.
+- **Read once, decide many.** Reading a file per question costs a round trip per question; read it
+  once and answer all of them.
+- **Watch for the serial trap in a loop:** *fix one, verify, fix next, verify* multiplies the gate by
+  the number of fixes. Fix the set, then verify once — and if the verify goes red, **then** bisect.
+
+## Batching never reduces depth
+
+This rule changes the **shape** of the work, never the **amount**. If a depth contract in
+`generic-deep-task-execution.mdc` requires a full inventory, batching means running it in one pass —
+not sampling it. Two rules, and the depth one wins on any conflict:
+
+- Legitimate: "one suite run proves all five changed steps."
+- **Forbidden:** "I batched, so I checked a representative subset."
+
+A batch that skips items is not a batch, it is a shortcut wearing the word.
+
+## When to stop and re-shape
+
+If work is taking materially longer than the user expects, **say which shape you chose and what it is
+costing** before continuing. "Over a week" is not something to discover in retrospect: a gate run
+N times, when it could have run once, is a finding worth reporting mid-flight.
+
+## Forbidden
+
+- Starting multi-item work without naming the shape.
+- Re-running an expensive gate per item when one run covers them all.
+- Reporting elapsed time without saying what the time was spent **on** (gate runs, tool round trips,
+  waiting on a build).
+- Using "batching" to describe work that dropped items.
+- Leaving the choice to the user, or waiting to be asked whether it could be faster.
+
+## Pack maintenance
+
+Canonical copy: `pack/rules/generic-execution-strategy.mdc`. **Applies where synced into a project's
+`.cursor/rules/`** by `sync-project-rules.ps1`, and exported for non-Cursor hosts by
+`sync-portable-docs.ps1` — see `pack/docs/PACK_MAINTENANCE.md`. Referenced from
+`agent-defaults-always.mdc`.

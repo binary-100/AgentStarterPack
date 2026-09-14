@@ -12,20 +12,28 @@
 #>
 $ErrorActionPreference = 'Stop'
 
-# Cursor writes its sessionStart payload to stdin and closes the handle, so ReadToEnd returns at once.
-# Any other parent that inherits stdin without writing to it - bash, a CI step, this pack's own
-# behavior probe - leaves the pipe open, and ReadToEnd then waits for an EOF that never arrives. That
-# is how running run_audit.sh through bash hung the whole suite for 11 minutes with no output: a read
-# that never returns raises nothing, so the fail-open promise above cannot catch it. Drain the payload
-# when it is actually there, so a writer never sees a broken pipe, but never wait on it.
-try {
-    if ([Console]::IsInputRedirected) {
-        $drain = [System.Threading.Tasks.Task]::Run([Func[string]] { [Console]::In.ReadToEnd() })
-        [void]$drain.Wait(250)
-    }
-} catch {
-    # stdin is optional for sessionStart; a threadpool read left blocked cannot hold up process exit
-}
+# This hook never reads stdin, and that is the decision rather than an omission.
+#
+# Cursor writes its sessionStart payload to stdin and closes the handle. Any other parent that
+# inherits stdin without writing - bash, a CI step, this pack's own behavior probe - leaves the pipe
+# open, and a read then waits for an EOF that never comes. That is how `run_audit.sh` under bash hung
+# the whole suite for 11 minutes with no output (2.22.63): a read that never returns raises nothing,
+# so the fail-open promise above cannot catch it. The payload is not needed here - this hook reports
+# context freshness and ignores what Cursor sends - so the only reason to read was to spare the writer
+# a broken pipe, and a payload that size lands in the pipe buffer whether anyone reads it or not.
+#
+# Two bounded drains were tried and measured, and both cost more than that courtesy is worth.
+# Task::Run([Func[string]] { [Console]::In.ReadToEnd() }) shipped for three releases and never ran at
+# all: a PowerShell scriptblock cast to a delegate needs a runspace, a threadpool thread has none, so
+# the task faulted in ~6ms and its Wait returned instantly whatever bound it held (WQ-473). Replacing
+# it with a real off-thread read - BeginRead, bounded by WaitOne(250) - drains correctly in isolation
+# and exits in about half a second, but inside this hook, which goes on to run a Python child that
+# inherits the same handle, it hung past 15s on both PowerShell hosts with the pipe held open. So the
+# working version of that courtesy reintroduces the exact defect it was meant to fix.
+#
+# What must stay true is the guarantee, not the drain: this hook always returns, whoever started it
+# and whatever they do with stdin. Behavior step 38 holds that line by running the hook with stdin
+# redirected and never written to, and failing if it has not exited within 20 seconds.
 
 function Write-HookJson([string]$Context) {
     $payload = [ordered]@{
@@ -44,14 +52,31 @@ try {
     $projectRoot = (Get-Location).Path
     $packRoot = $env:AGENT_STARTER_PACK_ROOT
     if (-not $packRoot) {
-        $packRoot = Join-Path $env:USERPROFILE '.cursor\AgentStarterPack'
+        # USERPROFILE is Windows-only and $null elsewhere, where Join-Path then throws before the
+        # fail-open path below can report anything useful. Resolved inline rather than through
+        # pack-paths.ps1: this hook runs at every session start, and the home directory is needed to
+        # find the pack in the first place.
+        $home1 = if ($env:USERPROFILE) { $env:USERPROFILE } elseif ($env:HOME) { $env:HOME }
+        else { [Environment]::GetFolderPath('UserProfile') }
+        $packRoot = Join-Path $home1 '.cursor/AgentStarterPack'
     }
-    $freshPy = Join-Path $packRoot 'pack\scripts\agent_context_freshness.py'
+    $freshPy = Join-Path $packRoot 'pack/scripts/agent_context_freshness.py'
     if (-not (Test-Path -LiteralPath $freshPy)) {
         Write-HookEmpty
     }
 
-    $raw = & py -3 $freshPy --session-brief --project-root $projectRoot 2>&1 | Out-String
+    # `py` is the Windows launcher and does not exist on macOS or Linux, where the interpreter is
+    # python3 - so this hook produced no context at all off Windows.
+    $pyExe = $null
+    $pyPre = @()
+    foreach ($cand in @(@{ exe = 'py'; pre = @('-3') }, @{ exe = 'python3'; pre = @() }, @{ exe = 'python'; pre = @() })) {
+        if (Get-Command $cand.exe -ErrorAction SilentlyContinue) { $pyExe = $cand.exe; $pyPre = $cand.pre; break }
+    }
+    if (-not $pyExe) {
+        Write-HookEmpty
+    }
+
+    $raw = & $pyExe @($pyPre + @($freshPy, '--session-brief', '--project-root', $projectRoot)) 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) {
         Write-HookEmpty
     }

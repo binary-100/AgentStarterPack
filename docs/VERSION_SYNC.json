@@ -4,6 +4,13 @@
     "txtFile": "VERSION",
     "txtPattern": "^(\\d+\\.\\d+\\.\\d+)"
   },
+  "historicalRegions": [
+    {
+      "_why": "Done-log rows say which engine shipped an item - a claim about the past. The header above says which engine is current. Only the header may move on a bump (WQ-437).",
+      "file": "docs/WORK_QUEUE.md",
+      "fromHeading": "## Done log"
+    }
+  ],
   "maintainerDocSync": {
     "enabled": true,
     "packVersionScanFiles": [
@@ -47,6 +54,13 @@
         "pattern": "QUICK INSTALL \\(v\\d+\\.\\d+\\.\\d+\\)",
         "replace": "QUICK INSTALL (v{packVersion})",
         "versionKind": "pack"
+      },
+      {
+        "_why": "Only the header line above was synced, so the engine cite drifted to 2.22.43 while the manifest read 2.22.77 - a 34-release lie in the file a human on a new machine reads first. INSTALL.txt is plain text and not in auditVersionScanFiles, which only scans .md.",
+        "file": "INSTALL.txt",
+        "pattern": "manifest\\.json  \\(currently \\d+\\.\\d+\\.\\d+\\)",
+        "replace": "manifest.json  (currently {auditVersion})",
+        "versionKind": "audit"
       }
     ]
   }

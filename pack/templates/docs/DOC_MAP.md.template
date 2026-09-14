@@ -1,0 +1,53 @@
+# Documentation map — {{PROJECT_NAME}}
+
+**Purpose:** One place to learn **which doc owns what** — so audits and agents do not duplicate content or "fix" the wrong file.
+
+Last updated: bootstrap · version: see [`VERSION.txt`](../VERSION.txt) when present
+
+---
+
+## Rule: canonical vs pointer
+
+| Kind | Rule | Examples |
+|------|------|----------|
+| **Canonical** | Owns the truth; update here when behavior changes | `PRODUCT_REFERENCE.md`, `ROADMAP.md`, `AUDIT.md` |
+| **Pointer / hub** | Links only; **no** duplicated tables or backlog rows | `IMPROVEMENT_BACKLOG.md` |
+| **Thin rule (`.mdc`)** | Triggers + short text; **must link** to canonical doc | project rules under `.cursor/rules/` |
+| **Archive** | Historical; not current policy | `docs/audit_archive/`, design archive folders |
+
+---
+
+## Product-truth owners (Step 3b)
+
+Update these when **runtime behavior** changes (paths, capabilities, limits, install modes). Version-string sync alone is not enough — see `%USERPROFILE%\.cursor\AgentStarterPack\pack\docs\WORK_COMPLETION.md` Step 3.
+
+| Role | Path | Notes |
+|------|------|-------|
+| Capabilities / agent obligations | `docs/PRODUCT_REFERENCE.md` | Create when the app has a capability reference |
+| Accepted tradeoffs / limits | `docs/KNOWN_LIMITATIONS.md` | Not bugs — intentional tradeoffs |
+| Product plan / build order | `docs/ROADMAP.md` | Work queue + Approved intent (if used) |
+| Layout / runtime paths | `PROJECT_LAYOUT.md` or README install section | Paths users and agents rely on |
+| Maintainer process radar | `docs/WORK_QUEUE.md` | WQ ids — not the same as ROADMAP product queue |
+| Optional doc/code claims | `docs/.product_truth_verify.json` | Copy from `pack/templates/docs/product_truth_verify.json.example` |
+
+Project overlay: `docs/WORK_COMPLETION.md` lists the same paths for your machine after bootstrap.
+
+---
+
+## Active documentation inventory
+
+Add rows as the project grows. **Audit Section M:** read every active doc listed here on a full audit.
+
+| File | Role |
+|------|------|
+| [`AGENTS.md`](../AGENTS.md) | Agent entry — commands, tests, audit |
+| [`docs/WORK_QUEUE.md`](WORK_QUEUE.md) | Maintainer radar (if used) |
+| [`docs/WORK_COMPLETION.md`](WORK_COMPLETION.md) | Post-ship checklist overlay |
+| [`docs/AUDIT.md`](AUDIT.md) | Full audit protocol |
+
+---
+
+## Related
+
+- `%USERPROFILE%\.cursor\AgentStarterPack\pack\docs\WORK_COMPLETION.md` — Step 3 propagation
+- `%USERPROFILE%\.cursor\AgentStarterPack\pack\docs\RULES_AND_VERIFY_MAP.md` — verify scripts map

@@ -1,0 +1,37 @@
+# Publish guide — StarterPack-Airlock
+
+**Zone A:** git-free working copy (develop, export, install).
+
+**Zone B:** `{Desktop}/StarterPack-Airlock/repo/` (git, CI, human push).
+
+## Before push
+
+Preferred one-shot (B11):
+
+```powershell
+Verify-AirlockPublishGate.cmd
+```
+
+Or step-by-step:
+
+1. Zone A — run tests/audit in the working copy (`run_audit.cmd` or behavior suite).
+2. B09 — sync working copy into `repo/` with `pack/scripts/sync-working-copy-to-airlock-repo.ps1`.
+3. Zone B — run the pack audit from `repo/` (`run_audit.cmd` from `repo/` root).
+4. Human `git push` from `repo/` only — working-copy hooks refuse agent push.
+
+`verify-audit-system.ps1 -PublishRoot .../StarterPack-Airlock/repo` runs an optional Zone B behavior pass after the working-copy pass.
+
+## First-time layout
+
+**Recommended:** parallel build — working copy keeps git until publish is proven:
+
+```powershell
+Initialize-StarterPackAirlock.cmd -GitMode Copy
+Verify-AirlockPublishGate.cmd
+# ... remote, push, CI ...
+Complete-StarterPackAirlockCutover.cmd
+```
+
+Full checklist: `docs/AIRLOCK_MIGRATION_CHECKLIST.md` in the working copy.
+
+**Human-only:** agent hooks refuse `git push` from the working copy (H01). Push from `repo/` only.

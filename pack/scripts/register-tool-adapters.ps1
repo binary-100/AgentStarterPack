@@ -16,7 +16,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$ProjectRoot,
-    [ValidateSet('Claude', 'Copilot', 'Windsurf', 'All')]
+    # No ValidateSet - see bootstrap-project.ps1: a list sent through `-File` arrives comma-joined.
     [string[]]$Tool = @('All'),
     [switch]$Repair,
     [switch]$InstallMcp,
@@ -44,13 +44,21 @@ function Expand-TemplateText {
 }
 
 . (Join-Path $PSScriptRoot 'pack-paths.ps1')
+$knownTools = @('Claude', 'Copilot', 'Windsurf', 'All')
+$Tool = @(Expand-PackListArgument -Value $Tool)
+if ($Tool.Count -eq 0) { $Tool = @('All') }
+$unknownTools = @($Tool | Where-Object { $knownTools -notcontains $_ })
+if ($unknownTools.Count -gt 0) {
+    Write-Fail "unknown -Tool value(s): $($unknownTools -join ', '). Valid: $($knownTools -join ', ')"
+    exit 1
+}
 $ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
 $packRoot = Get-AgentStarterPackRoot
 if (-not $packRoot) {
     Write-Fail 'Agent Starter Pack root not found'
     exit 1
 }
-$templates = Join-Path $packRoot 'pack\templates'
+$templates = Join-Path $packRoot 'pack/templates'
 
 function Get-ProjectTemplateVars {
     $name = Split-Path $ProjectRoot -Leaf
@@ -63,9 +71,9 @@ function Get-ProjectTemplateVars {
             if ($boot.projectName) { $name = [string]$boot.projectName }
         } catch { }
     }
-    if (Test-Path -LiteralPath (Join-Path $ProjectRoot 'docs\VERSION_SYNC.json')) {
+    if (Test-Path -LiteralPath (Join-Path $ProjectRoot 'docs/VERSION_SYNC.json')) {
         try {
-            $vs = Get-Content -LiteralPath (Join-Path $ProjectRoot 'docs\VERSION_SYNC.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+            $vs = Get-Content -LiteralPath (Join-Path $ProjectRoot 'docs/VERSION_SYNC.json') -Raw -Encoding UTF8 | ConvertFrom-Json
             if ($vs.sourceModule) { $sourceModule = [string]$vs.sourceModule }
             if ($vs.versionFile) { $versionFile = [string]$vs.versionFile }
         } catch { }
@@ -144,7 +152,7 @@ if (Test-ToolSelected 'Claude') {
         Write-Ok 'Claude adapter skipped (not in bootstrap targets)'
     } else {
     $claudePath = Join-Path $ProjectRoot 'CLAUDE.md'
-    $mcpPath = Join-Path $ProjectRoot 'docs\portable\mcp-claude-desktop.json'
+    $mcpPath = Join-Path $ProjectRoot 'docs/portable/mcp-claude-desktop.json'
     if (-not (Test-Path -LiteralPath $claudePath)) {
         if ($Repair) { Repair-FromTemplate 'portable\CLAUDE.md.template' $claudePath $vars 'Claude entry' }
         else { Write-Fail "CLAUDE.md missing (bootstrap with -Targets Claude or use -Repair)" }
@@ -175,7 +183,7 @@ if (Test-ToolSelected 'Copilot') {
     if (-not (Test-TargetInBootstrap 'Copilot')) {
         Write-Ok 'Copilot adapter skipped (not in bootstrap targets)'
     } else {
-    $copilotPath = Join-Path $ProjectRoot '.github\copilot-instructions.md'
+    $copilotPath = Join-Path $ProjectRoot '.github/copilot-instructions.md'
     if (-not (Test-Path -LiteralPath $copilotPath)) {
         if ($Repair) { Repair-FromTemplate 'portable\copilot-instructions.md.template' $copilotPath $vars 'Copilot entry' }
         else { Write-Fail '.github/copilot-instructions.md missing (bootstrap with -Targets Copilot or use -Repair)' }

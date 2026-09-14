@@ -16,6 +16,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# WQ-441: shared path vocabulary, so this script's answer to "is that a placeholder root" is the same
+# answer every other verifier gives.
+. (Join-Path $PSScriptRoot 'verify-lib.ps1')
+
 function Write-Ok($m) { if (-not $AuditMode) { Write-Host "[OK] $m" } }
 function Write-Info($m) { Write-Host "[INFO] $m" }
 function Write-Fail($m) { Write-Host "[FAIL] $m"; $script:fail++ }
@@ -38,26 +42,11 @@ $handoffs = Join-Path $docs 'handoffs'
 $active = Join-Path $handoffs 'active'
 $archive = Join-Path $docs 'handoff_archive'
 
-function Get-SectionBody([string]$content, [string]$startHdr, [string[]]$endHdrs) {
-    $start = $content.IndexOf($startHdr)
-    if ($start -lt 0) { return '' }
-    $slice = $content.Substring($start + $startHdr.Length)
-    $endPos = $slice.Length
-    foreach ($eh in $endHdrs) {
-        if ($eh -eq '---') {
-            $m = [regex]::Match($slice, '(?m)^\s*---\s*$')
-        } else {
-            $m = [regex]::Match($slice, '(?m)^\s*' + [regex]::Escape($eh))
-        }
-        if ($m.Success -and $m.Index -lt $endPos) { $endPos = $m.Index }
-    }
-    return $slice.Substring(0, $endPos)
-}
 
 function Parse-RegistryTable([string]$raw) {
     $result = @{}
     if ($raw -notmatch '## Handoff registry') { return $result }
-    $body = Get-SectionBody $raw '## Handoff registry' @('**Session opener')
+    $body = Get-PackSectionBody $raw '## Handoff registry' @('**Session opener')
     $matches = [regex]::Matches($body, '\|\s*\*\*([^*]+)\*\*\s*\|\s*([^|]*?)\s*\|')
     foreach ($m in $matches) {
         $key = ($m.Groups[1].Value -replace '\s+', '_' ).Trim('_').ToLower()
@@ -71,18 +60,15 @@ function Test-SessionOpener([string]$raw, [string]$kind) {
     if ($raw -notmatch 'Session opener \(only') { return $false }
     $verb = if ($kind -eq 'orientation') { 'confirm' } else { 'implement' }
     if ($raw -notmatch "and $verb") { return $false }
-    # Require a root-anchored path inside the backtick opener (may be on the line after the label).
-    # A real absolute path is the normal case. A placeholder root - <pack folder>\..., %PACK_ROOT%\...,
-    # $env:SOMETHING\... - counts too, because a handoff written for *another* machine cannot name a
-    # path that exists here, and hard-coding the sending machine's path into a tracked file is the
-    # disclosure that machine-local classification exists to prevent. What stays banned is a bare
-    # relative path, which opens the wrong file in whichever workspace happens to be current.
-    if ($raw -match '`Read\s+([^`]+)\s+and\s+' + [regex]::Escape($verb) + '\.`') {
-        $pathPart = $Matches[1].Trim()
-        if ($pathPart -match '^[A-Za-z]:\\' -or $pathPart -match '^/') { return $true }
-        if ($pathPart -match '^(<[^>]+>|%[^%]+%|\$env:[A-Za-z_][A-Za-z0-9_]*)[\\/]') { return $true }
-    }
-    return $false
+        # Require a root-anchored path inside the backtick opener (may be on the line after the label).
+        # What stays banned is a bare relative path, which opens the wrong file in whichever workspace
+        # happens to be current. The predicate is shared (WQ-441) because this script's answer to "is that
+        # a placeholder root" used to differ from every other script's, which is how a later verifier came
+        # to ship with no path rule at all.
+        if ($raw -match '`Read\s+([^`]+)\s+and\s+' + [regex]::Escape($verb) + '\.`') {
+            return (Test-PackRootAnchoredPath $Matches[1].Trim())
+        }
+        return $false
 }
 
 function Get-WqIdsFromSection([string]$body) {
@@ -99,8 +85,8 @@ $doneIds = [System.Collections.Generic.HashSet[string]]::new()
 $activeWqIds = [System.Collections.Generic.HashSet[string]]::new()
 if (Test-Path -LiteralPath $wqPath) {
     $wqRaw = Get-Content -LiteralPath $wqPath -Raw -Encoding UTF8
-    $doneBody = Get-SectionBody $wqRaw '## Done log' @('## Cross-references', '---', '**Agents:**')
-    $activeBody = Get-SectionBody $wqRaw '## Active queue' @('## Inbox', '## Engineering backlog', '## Parked', '## Done log')
+    $doneBody = Get-PackSectionBody $wqRaw '## Done log' @('## Cross-references', '---', '**Agents:**')
+    $activeBody = Get-PackSectionBody $wqRaw '## Active queue' @('## Inbox', '## Engineering backlog', '## Parked', '## Done log')
     foreach ($id in (Get-WqIdsFromSection $doneBody)) { [void]$doneIds.Add($id) }
     foreach ($id in (Get-WqIdsFromSection $activeBody)) { [void]$activeWqIds.Add($id) }
 } elseif (-not $AllowMissing) {

@@ -6,6 +6,13 @@
     "txtFile": "VERSION.txt",
     "txtPattern": "^Version:\\s*(\\S+)"
   },
+  "historicalRegions": [
+    {
+      "_why": "scanGlobs below includes docs/*.md, which sweeps up the work queue. Its Done-log rows record which release shipped an item and must not move when the version bumps - only the current-state cites above the heading may.",
+      "file": "docs/WORK_QUEUE.md",
+      "fromHeading": "## Done log"
+    }
+  ],
   "docSync": {
     "enabled": true,
     "scanFiles": [

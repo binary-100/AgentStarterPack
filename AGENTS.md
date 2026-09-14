@@ -1,5 +1,23 @@
 # AGENTS.md
 
+## Were you handed this folder to install?
+
+Then stop here and install it — the rest of this file is for people **developing** the pack, and
+following it would send you to a work queue and an edit boundary you have no use for.
+
+| Host | Command |
+|------|---------|
+| Windows | `Install-AgentStarterPack.cmd` |
+| macOS / Linux | `bash install.sh User` — `bash`, never `./` |
+
+**No git is required and none is used.** A download, a folder copy, an unzipped archive and a flash
+drive are all supported deliveries; none of them carry a Unix execute bit, which is exactly why the
+command is `bash install.sh`. Full instructions: `INSTALL.txt`, then `INSTALL.md`.
+
+---
+
+Everything below is for **maintaining** this pack.
+
 Instructions for AI coding agents working in **Agent Starter Pack** (this repo).
 
 **Read first:** `pack/docs/START_HERE.md`
@@ -19,11 +37,17 @@ Rules (always on in this workspace):
 - `.cursor/rules/pack-only-edit-boundary.mdc` — edit boundary
 - `.cursor/rules/agent-recommendation-discipline.mdc` — how to recommend and execute changes
 
-Global (all projects, via `pack/rules/` + `install.ps1`):
+Generic rules — canonical in `pack/rules/`, **delivered into this repo's `.cursor/rules/`** by
+`pack\scripts\sync-project-rules.ps1`. They are always-on here because that folder is loaded;
+`%USERPROFILE%\.cursor\rules\` is **not** (WQ-456). Edit `pack/rules/`, never the synced copy:
 
 - `pack/rules/generic-agent-doc-hygiene.mdc` — read existing agent docs before adding rules or `AGENTS.md`
 - `pack/rules/generic-deep-task-execution.mdc` — mandatory depth contracts for deep compare / full scan; agent-owned, not user phrasing
+- `pack/rules/generic-implementation-readiness.mdc` — Phase 0 readiness table before Phase 1 on multi-zone/multi-tree features
+- `pack/rules/generic-phased-feature-design.mdc` — phase order 0→N; links Phase 0 to readiness rule
 - `pack/rules/generic-work-queue-discipline.mdc` — stable WQ IDs; update `docs/WORK_QUEUE.md` before changing priority lists
+- `pack/rules/generic-structured-chat-output.mdc` — answer first; headings, bullets, tables only for uniform facts
+- `pack/rules/generic-fix-and-verify-reporting.mdc` — after a fix, report fix + current gate result together; never a bare past failure
 
 ## Recommendations
 
@@ -32,7 +56,7 @@ When proposing or executing work here:
 1. **Default first** — smallest correct fix; no invented alternatives.
 2. **Scope before action and before Shell/Write** — target paths, layer, writes elsewhere?, does not affect, downside.
 3. **Read before add** — follow `generic-agent-doc-hygiene.mdc`.
-4. **Rule layers** — workspace-only in `.cursor/rules/`; generic in `pack/rules/` only.
+4. **Rule layers** — author workspace-only rules in `.cursor/rules/` and generic ones in `pack/rules/`; `.cursor/rules/` also holds synced copies of the generic set, which you must not edit in place.
 5. **Optional extras** — only if needed; each needs mechanism, blast radius, and “skip unless.”
 6. **Install** — only when you asked; call out `%USERPROFILE%\.cursor\` paths that will change.
 7. **Scripts** — no hardcoded external project paths as defaults; use parameters.
@@ -44,10 +68,12 @@ When proposing or executing work here:
 - **Version file:** `VERSION` (canonical)
 - **Test command:** `run_audit_tests.bat` (behavior + system verify)
 - **Self-audit:** `run_audit.cmd` → report per `docs/AUDIT.md` (Fix + Improve only)
-- **Install:** `Install-AgentStarterPack.cmd` (or `install.ps1 -Scope User`). Do not run `-Scope Both`
-  from this folder: project scope copies every global rule into this repo's `.cursor\rules\`,
-  which is reserved for the workspace-only rules.
-- **Bootstrap new apps:** `Bootstrap-Project.cmd`
+- **Install:** `Install-AgentStarterPack.cmd` (or `install.ps1 -Scope User`). On macOS/Linux,
+ `bash install.sh User` — `bash`, not `./`, because a copy or zip arrives at mode 644 and `./install.sh`
+ cannot set the bit it needs to start. `-Scope Both` from this folder is redundant rather than harmful:
+ `sync-project-rules.ps1` already delivers the generic rules into this repo's `.cursor\rules\`, which is
+ the only reason they load at all (WQ-456).
+- **Bootstrap new apps:** `Bootstrap-Project.cmd` (macOS/Linux: `bash Bootstrap-Project.sh`)
 
 ## Before long shell commands
 

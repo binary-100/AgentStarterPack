@@ -1,0 +1,65 @@
+# Session handoff — {{PROJECT_NAME}}
+
+**Updated:** {{SESSION_DATE}}  
+**Session status:** active | clear  
+**Normative:** `%USERPROFILE%\.cursor\AgentStarterPack\pack\docs\AGENT_HANDOFFS.md` § Session handoff
+
+This file is the **first read** on project update and when the user asks **what's next?**  
+It holds **now** (where we left off, blockers, open items). **`docs/WORK_QUEUE.md`** holds **priority/status**.
+
+---
+
+## Where we left off
+
+- *(2–5 bullets: outcome of last session, paths, exit codes)*
+
+---
+
+## Blockers
+
+| Blocker | Owner | Re-open when |
+|---------|-------|--------------|
+| *(none)* | | |
+
+Agents: **do not** start new unplanned work while a row here is open.
+
+---
+
+## Open items (stop here for "what's next?")
+
+- [ ] *(unchecked = still open for this session)*
+
+When every item is checked or removed, set **Session status:** `clear`.
+
+---
+
+## Pointers (no duplicate WQ tables)
+
+| Kind | Location |
+|------|----------|
+| **Work queue (canonical Next)** | `{{PROJECT_ROOT}}\docs\WORK_QUEUE.md` |
+| **Active build slice** | *(none)* or `{{PROJECT_ROOT}}\docs\handoffs\active\HANDOFF_WQnnn_<slug>.md` |
+
+**Forbidden in this file:** `## Active queue`, `**Next active ID**`, or any second priority table.
+
+---
+
+## Last evidence
+
+- *(tests, commits, verify exit codes — optional)*
+
+---
+
+## Session openers
+
+**Continue / what's next / updated project:**
+
+```text
+Read {{PROJECT_ROOT}}\docs\handoffs\SESSION.md and confirm.
+```
+
+**Implement active slice:**
+
+```text
+Read {{PROJECT_ROOT}}\docs\handoffs\active\HANDOFF_WQnnn_<slug>.md and implement.
+```

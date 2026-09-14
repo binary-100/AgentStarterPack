@@ -36,6 +36,7 @@ param(
     [switch]$Install,
     [switch]$SkipProjectSync,
     [string]$PackRoot = '',
+    [string[]]$StarterPackAirlockDesktopRoots = @(),
     [switch]$NoClipboard
 )
 
@@ -82,9 +83,27 @@ function Get-RulesRevision([string]$RulesDir) {
     return 'sha256:' + ([BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-', '').ToLowerInvariant())
 }
 
+# WQ-456: the rules an agent must re-read are the ones an editor actually loads, and that is the
+# project's rules folder - never `%USERPROFILE%\.cursor\rules\`. Cursor documents four rule locations
+# (project `.cursor/rules/`, User Rules, Team Rules, AGENTS.md) and a home-folder rules directory is
+# not among them; a profile copy with `alwaysApply: true` sat inert for months behind a green
+# doctor.ps1. Rules also do not reload mid-session, so this list is the only channel that can carry a
+# rule change into a chat that is already open.
+function Get-AlwaysOnRuleFiles([string]$RulesDir) {
+    if (-not (Test-Path -LiteralPath $RulesDir)) { return @() }
+    return @(Get-ChildItem -LiteralPath $RulesDir -Filter '*.mdc' -File -ErrorAction SilentlyContinue |
+        Sort-Object Name |
+        Where-Object {
+            # Frontmatter only: a rule body may quote `alwaysApply: true` while describing another rule.
+            $head = @(Get-Content -LiteralPath $_.FullName -TotalCount 12 -ErrorAction SilentlyContinue)
+            ($head -join "`n") -match '(?m)^\s*alwaysApply:\s*true\s*$'
+        } |
+        ForEach-Object { $_.FullName })
+}
+
 # Write-Utf8NoBom comes from pack-paths.ps1 - one writer for the whole pack.
 
-$isPackRepo = (Test-Path -LiteralPath (Join-Path $ProjectRoot 'pack\audit\manifest.json')) -and
+$isPackRepo = (Test-Path -LiteralPath (Join-Path $ProjectRoot 'pack/audit/manifest.json')) -and
               (Test-Path -LiteralPath (Join-Path $ProjectRoot 'install.ps1'))
 
 Write-Host "Agent context refresh"
@@ -139,6 +158,7 @@ $refreshPath = Join-Path $stateDir 'AGENT_REFRESH.md'
 $previous = Get-JsonOrNull $contextPath
 
 $layers = [ordered]@{
+    loadedRules    = 'unknown'
     globalRules    = 'skipped'
     installedPack  = 'unknown'
     projectRules   = 'skipped'
@@ -159,7 +179,7 @@ if ($Install) {
 
 # The pack repo is the source of the rules and templates, so syncing it into itself is meaningless.
 if (-not $SkipProjectSync -and -not $isPackRepo) {
-    $syncRules = Join-Path $PackRoot 'pack\scripts\sync-project-rules.ps1'
+    $syncRules = Join-Path $PackRoot 'pack/scripts/sync-project-rules.ps1'
     if (Test-Path -LiteralPath $syncRules) {
         Write-Host 'Syncing generic rules into the project ...'
         Invoke-PackScript -PassOutput -NoProfile -ScriptPath $syncRules -ProjectRoot $ProjectRoot `
@@ -167,14 +187,14 @@ if (-not $SkipProjectSync -and -not $isPackRepo) {
         if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: rule sync failed (exit $LASTEXITCODE)"; exit 1 }
         $layers.projectRules = 'updated'
     }
-    $syncAudit = Join-Path $PackRoot 'pack\scripts\sync-audit-system.ps1'
+    $syncAudit = Join-Path $PackRoot 'pack/scripts/sync-audit-system.ps1'
     if (Test-Path -LiteralPath $syncAudit) {
         Write-Host 'Syncing audit templates into the project ...'
         Invoke-PackScript -PassOutput -NoProfile -ScriptPath $syncAudit -ProjectRoot $ProjectRoot | Out-Host
         if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: audit template sync failed (exit $LASTEXITCODE)"; exit 1 }
         $layers.auditTemplates = 'updated'
     }
-    $repairDocs = Join-Path $PackRoot 'pack\scripts\repair-agent-docs.ps1'
+    $repairDocs = Join-Path $PackRoot 'pack/scripts/repair-agent-docs.ps1'
     if (Test-Path -LiteralPath $repairDocs) {
         Write-Host 'Repairing tool-neutral hub docs (AI_INSTRUCTIONS, portable rules, adapters) ...'
         Invoke-PackScript -PassOutput -NoProfile -ScriptPath $repairDocs -ProjectRoot $ProjectRoot -PackRoot $PackRoot 2>&1 | Out-Host
@@ -184,13 +204,13 @@ if (-not $SkipProjectSync -and -not $isPackRepo) {
 }
 
 $packVersion = Get-TextOrNull (Join-Path $PackRoot 'VERSION')
-$packManifest = Get-JsonOrNull (Join-Path $PackRoot 'pack\audit\manifest.json')
+$packManifest = Get-JsonOrNull (Join-Path $PackRoot 'pack/audit/manifest.json')
 $auditEngineVersion = if ($packManifest) { $packManifest.version } else { $null }
-$rulesRevision = Get-RulesRevision (Join-Path $PackRoot 'pack\rules')
+$rulesRevision = Get-RulesRevision (Join-Path $PackRoot 'pack/rules')
 
 $installedRoot = Get-InstalledAgentStarterPack
 if (Test-AgentStarterPackInstalled) {
-    $installedManifest = Get-JsonOrNull (Join-Path $installedRoot 'pack\audit\manifest.json')
+    $installedManifest = Get-JsonOrNull (Join-Path $installedRoot 'pack/audit/manifest.json')
     $installedVersion = if ($installedManifest) { $installedManifest.version } else { $null }
     # A stale install is what agents actually load from, so name the drift rather than the intent.
     $layers.installedPack = if ($installedVersion -eq $auditEngineVersion) { 'ok' } else { 'stale' }
@@ -199,17 +219,43 @@ if (Test-AgentStarterPackInstalled) {
     $layers.installedPack = 'skipped'
     $installedRoot = $null
 }
-if ($layers.globalRules -eq 'skipped' -and $layers.installedPack -eq 'ok') { $layers.globalRules = 'ok' }
+# WQ-456: this used to read `globalRules = 'ok'` whenever the installed pack matched, which asserted
+# nothing about rules and reassured the reader that a dead path was healthy. The profile copy is
+# best-effort by nature - no editor documents reading it - so say so, and report the load path
+# separately because that is the one that determines whether a rule has any effect.
+if ($layers.globalRules -eq 'skipped' -and $layers.installedPack -eq 'ok') {
+    $layers.globalRules = 'best-effort (profile copy; no editor documents loading it)'
+}
+
+# The load path, and the always-on rules sitting in it. `stale` here is the finding that matters: rules
+# exist in the pack but never reached a folder an editor reads, so nothing the pack says can bind.
+$ruleLoadPath = Join-Path $ProjectRoot $RulesRelativePath
+$alwaysOnRules = @(Get-AlwaysOnRuleFiles $ruleLoadPath)
+# Hashed separately from `rulesRevision`, which covers `pack/rules` - the pack source. A project's
+# loaded copy can move without the source moving (a sync lands, a rule is added by hand, a stale
+# folder is finally populated), and that is the change an open chat has to be told about.
+$loadedRulesRevision = Get-RulesRevision $ruleLoadPath
+$layers.loadedRules = if (-not (Test-Path -LiteralPath $ruleLoadPath)) {
+    'stale (no rules folder in the project - nothing an editor loads)'
+} elseif ($alwaysOnRules.Count -eq 0) {
+    'stale (rules folder has no alwaysApply rule)'
+} else {
+    "ok ($($alwaysOnRules.Count) always-on in $RulesRelativePath)"
+}
 
 $changed = New-Object System.Collections.ArrayList
 if ($previous) {
     if ($previous.packVersion -ne $packVersion) { [void]$changed.Add('packVersion') }
     if ($previous.auditEngineVersion -ne $auditEngineVersion) { [void]$changed.Add('auditEngineVersion') }
     if ($previous.rulesRevision -ne $rulesRevision) { [void]$changed.Add('rules') }
+    if ($previous.loadedRulesRevision -ne $loadedRulesRevision) { [void]$changed.Add('loadedRules') }
     foreach ($name in @($layers.Keys)) {
         $was = if ($previous.layers) { $previous.layers.$name } else { $null }
-        if ($layers[$name] -eq 'updated' -and $was -ne 'updated') { [void]$changed.Add($name) }
-        elseif ($layers[$name] -eq 'stale' -and $was -ne 'stale') { [void]$changed.Add($name) }
+        # Prefix, not equality: a layer may carry a reason after its status ('stale (no rules folder)')
+        # and a status that only counts when it is bare would silently stop reporting.
+        if ($changed -contains $name) { continue }
+        if ($layers[$name] -like 'updated*' -and $was -notlike 'updated*') { [void]$changed.Add($name) }
+        elseif ($layers[$name] -like 'stale*' -and $was -notlike 'stale*') { [void]$changed.Add($name) }
     }
 } else {
     [void]$changed.Add('firstRefresh')
@@ -239,13 +285,45 @@ if (Test-Path -LiteralPath (Join-Path $canonicalProjectRoot 'AI_INSTRUCTIONS.md'
     [void]$requiredReads.Add((Join-Path $canonicalProjectRoot 'AI_INSTRUCTIONS.md'))
 }
 [void]$requiredReads.Add($refreshPath)
-if (Test-Path -LiteralPath (Join-Path $canonicalProjectRoot 'docs\WORK_QUEUE.md')) {
-    [void]$requiredReads.Add((Join-Path $canonicalProjectRoot 'docs\WORK_QUEUE.md'))
+$sessionHandoffPath = Join-Path $canonicalProjectRoot 'docs/handoffs/SESSION.md'
+if (Test-Path -LiteralPath $sessionHandoffPath) {
+    [void]$requiredReads.Add($sessionHandoffPath)
+}
+if (Test-Path -LiteralPath (Join-Path $canonicalProjectRoot 'docs/WORK_QUEUE.md')) {
+    [void]$requiredReads.Add((Join-Path $canonicalProjectRoot 'docs/WORK_QUEUE.md'))
 }
 if ($isPackRepo) {
-    # The pack repo has no session document since 2.22.65; its queue is the status claim, and the
-    # maintainer-only reading is how the audit system is put together.
-    [void]$requiredReads.Add((Join-Path $canonicalProjectRoot 'pack\docs\START_HERE.md'))
+    [void]$requiredReads.Add((Join-Path $canonicalProjectRoot 'pack/docs/START_HERE.md'))
+}
+
+# WQ-456: name the rule files, do not just say "re-read the rules". The old brief carried that sentence
+# with no paths, which is unactionable in an open chat - and pointed at a profile folder no editor
+# reads. Listed only when the rule text actually moved (or on a first refresh), because a required-read
+# list that grows by eighteen entries every run is one nobody follows.
+# `alwaysOnRules` absent means the stamp predates rule awareness, so no agent on this machine has ever
+# been told to read a rule file. That is a one-time migration, not a steady state - without it the fix
+# ships and stays dormant on precisely the installs that needed it.
+$stampPredatesRuleReads = ($null -ne $previous) -and ($null -eq $previous.PSObject.Properties['alwaysOnRules'])
+# The load path's own revision is the load-bearing condition: it fires when a rule is added, edited or
+# removed, and - the case the layer status misses - when a stale folder finally becomes ok, which is
+# precisely the moment an agent has never read these rules before.
+$loadedRulesMoved = ($null -ne $previous) -and ($previous.loadedRulesRevision -ne $loadedRulesRevision)
+$ruleReadsApply = ($changed -contains 'rules') -or ($changed -contains 'firstRefresh') -or
+                  ($changed -contains 'projectRules') -or ($changed -contains 'loadedRules') -or
+                  $stampPredatesRuleReads -or $loadedRulesMoved
+if ($ruleReadsApply) {
+    foreach ($rule in $alwaysOnRules) { [void]$requiredReads.Add($rule) }
+}
+
+# StarterPack-Airlock Phase 4 (WQ-487): append overlay requiredReads when Desktop discovery is active.
+# Overlay WORK_QUEUE is publish-lane status only - never copied into the working copy tree.
+$airlockDesktopOverride = if (@($StarterPackAirlockDesktopRoots).Count -gt 0) { @($StarterPackAirlockDesktopRoots) } else { $null }
+$airlockDisc = Find-StarterPackAirlock -DesktopRoots $airlockDesktopOverride
+$overlayRequiredReads = @()
+if ($null -ne $airlockDisc) {
+    $overlayRequiredReads = @($airlockDisc.RequiredReads)
+    $requiredReads = [System.Collections.ArrayList]@(
+        Merge-StarterPackAirlockRequiredReads -BaseReads @($requiredReads) -AirlockDiscovery $airlockDisc)
 }
 
 $syncedAt = (Get-Date).ToUniversalTime().ToString('o')
@@ -262,9 +340,15 @@ $context = [ordered]@{
     projectRoot            = $ProjectRoot
     canonicalProjectRoot   = $canonicalProjectRoot
     isPackRepo             = $isPackRepo
+    ruleLoadPath           = $ruleLoadPath
+    loadedRulesRevision    = $loadedRulesRevision
+    alwaysOnRules          = @($alwaysOnRules)
     layers                 = $layers
     changedLayers          = @($changed)
     requiredReads          = @($requiredReads)
+    starterPackAirlockActive = ($null -ne $airlockDisc)
+    starterPackAirlockRoot = if ($airlockDisc) { $airlockDisc.AirlockRoot } else { $null }
+    overlayRequiredReads   = @($overlayRequiredReads)
     triggerPhrases         = $triggerPhrases
     handshake              = $handshake
 }
@@ -274,12 +358,29 @@ $plain = @{
     firstRefresh       = 'First refresh for this project - treat all pack guidance as new.'
     packVersion        = "Pack version is now $packVersion."
     auditEngineVersion = "Audit engine is now $auditEngineVersion."
-    rules              = 'Generic rule text changed - re-read the rules before acting on remembered ones.'
-    globalRules        = 'Global rules and skills in the user profile were reinstalled.'
+    rules              = "Generic rule text changed - re-read the always-on rules listed below before acting on remembered ones. Editors do not reload rules mid-session, so this list is the only way the change reaches an open chat."
+    loadedRules        = if ($layers.loadedRules -like 'stale*') {
+        "No always-on rule reached ``$ruleLoadPath`` - the folder an editor loads. A rule in the pack, or in the user profile, binds nothing until it lands there: run ``sync-project-rules.ps1 -ProjectRoot <project>``."
+    } else {
+        "The always-on rules in ``$ruleLoadPath`` changed. They are listed under Re-read below; your editor will not reload them in this session, so reading them is the only way this reaches an open chat."
+    }
+    globalRules        = 'Global rules and skills were copied to the user profile. That copy is best-effort - no editor documents loading a home-folder rules directory - so treat the project rules folder as the one that binds.'
     installedPack      = "Installed pack differs from this pack ($installedVersion vs $auditEngineVersion) - run install to align."
     projectRules       = 'This project''s copy of the generic rules was updated.'
     auditTemplates     = 'This project''s audit templates were updated.'
 }
+# A standing defect is not a change, and forcing it into changedLayers would report it as news on
+# every refresh forever. It still has to be said on the first refresh - the one where a project has no
+# rules folder yet and nothing the pack says can bind - so stale layers get their own section, driven
+# by current status rather than by a diff against a previous stamp.
+$attentionLines = @(
+    foreach ($name in @($layers.Keys)) {
+        if ($layers[$name] -like 'stale*') {
+            '- ' + $(if ($plain[$name]) { $plain[$name] } else { "Layer is stale: $name ($($layers[$name]))" })
+        }
+    }
+)
+
 $changeLines = if ($changed.Count -eq 0) {
     @('- Nothing changed since the last refresh; the stamp below is current.')
 } else {
@@ -291,6 +392,10 @@ $idx = 1
 foreach ($abs in @($requiredReads)) {
     if ($abs -match 'START_HERE\.md$') {
         [void]$readList.Add("$idx. ``$abs`` - pack maintainers only")
+    } elseif ($abs -match '\.mdc$') {
+        [void]$readList.Add("$idx. ``$abs`` - always-on rule; your editor will not reload it mid-session")
+    } elseif ($abs -match 'StarterPack-Airlock[\\/]overlay[\\/]') {
+        [void]$readList.Add("$idx. ``$abs`` - publish-lane overlay (required when Desktop Airlock is active)")
     } else {
         [void]$readList.Add("$idx. ``$abs``")
     }
@@ -308,10 +413,14 @@ if ($canonicalProjectRoot -ne $ProjectRoot) {
 $stampShort = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm') + ' UTC'
 $refreshDocPath = $refreshPath
 $agentsPath = Join-Path $ProjectRoot 'AGENTS.md'
+$sessionPathForPaste = Join-Path $ProjectRoot 'docs/handoffs/SESSION.md'
 $pasteLine = if ($isPackRepo) {
+    $sessionClause = if (Test-Path -LiteralPath $sessionPathForPaste) {
+        "read $sessionPathForPaste, then "
+    } else { '' }
     "PACK CONTEXT REFRESHED $stampShort (pack $packVersion, audit engine $auditEngineVersion). " +
-    "Before your next action: read $refreshDocPath, then re-read $agentsPath and " +
-    "$(Join-Path $ProjectRoot 'docs\WORK_QUEUE.md'). Treat conclusions from earlier in this chat " +
+    "Before your next action: read $refreshDocPath, then ${sessionClause}re-read $agentsPath and " +
+    "$(Join-Path $ProjectRoot 'docs/WORK_QUEUE.md'). Treat conclusions from earlier in this chat " +
     "as possibly stale. Confirm by replying with the pack version and audit engine version you just read."
 } else {
     "PACK CONTEXT REFRESHED $stampShort (pack $packVersion, audit engine $auditEngineVersion). " +
@@ -340,6 +449,7 @@ $($readList -join "`n")
 ## What changed since the last refresh
 
 $($changeLines -join "`n")
+$(if ($attentionLines.Count -gt 0) { "`n## Needs attention (standing, not new)`n`n" + ($attentionLines -join "`n") + "`n" })
 
 ## Reminders
 
@@ -365,7 +475,7 @@ Machine-readable stamp: ``$contextPath``$(if ($stateIsOutsideProject) { "
 
 **This file is not in the repository.** The pack folder is portable - it travels on a stick, in a
 clone, in a download - so nothing describing *this* machine is written into it. Per-machine context
-lives under the state directory above and is regenerated by ``Refresh-AgentContext.cmd``." })
+lives under the state directory above and is regenerated by ``$(Get-PackEntryPoint 'Refresh-AgentContext')``." })
 "@
 Write-Utf8NoBom $refreshPath $md
 
@@ -375,7 +485,7 @@ $pastePath = Join-Path $stateDir 'AGENT_PASTE.txt'
 Write-Utf8NoBom $pastePath $pasteLine
 
 $sessionStartPath = Join-Path $stateDir 'AGENT_SESSION_START.md'
-& py -3 (Join-Path $PSScriptRoot 'agent_context_freshness.py') --write-session-start --project-root $ProjectRoot 2>&1 | Out-Null
+Invoke-PackPython (Join-Path $PSScriptRoot 'agent_context_freshness.py') --write-session-start --project-root $ProjectRoot 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "WARN: --write-session-start failed (exit $LASTEXITCODE)"
 } elseif (-not (Test-Path -LiteralPath $sessionStartPath)) {
@@ -407,6 +517,11 @@ if ($changed.Count -gt 0) {
     foreach ($line in $changeLines) { Write-Host "  $($line.TrimStart('- '))" }
 } else {
     Write-Host 'No changes since the last refresh.'
+}
+if ($attentionLines.Count -gt 0) {
+    Write-Host ''
+    Write-Host 'Needs attention:'
+    foreach ($line in $attentionLines) { Write-Host "  $($line.TrimStart('- '))" }
 }
 Write-Host ''
 # Lead with the action, not the payload. The line below is long enough to fill the window, so a

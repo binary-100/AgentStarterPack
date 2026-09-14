@@ -26,13 +26,14 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
 . (Join-Path $PSScriptRoot 'pack-paths.ps1')
+. (Join-Path $PSScriptRoot 'verify-lib.ps1')
 $docs = Join-Path $ProjectRoot 'docs'
-$active = Join-Path $docs 'handoffs\active'
+$active = Join-Path $docs 'handoffs/active'
 $archive = Join-Path $docs 'handoff_archive'
 $wqPath = Join-Path $docs 'WORK_QUEUE.md'
 $packRoot = Get-SourceAgentStarterPack
 if (-not $packRoot) { $packRoot = Get-AgentStarterPackRoot }
-$verifyScript = if ($packRoot) { Join-Path $packRoot 'pack\scripts\verify-agent-handoffs.ps1' } else { '' }
+$verifyScript = if ($packRoot) { Join-Path $packRoot 'pack/scripts/verify-agent-handoffs.ps1' } else { '' }
 
 function Write-Preview([string]$m) { Write-Host "[PREVIEW] $m" }
 function Write-Skip([string]$m) { Write-Host "[SKIP] $m" }
@@ -59,26 +60,11 @@ if (-not $SkipVerify) {
     }
 }
 
-function Get-SectionBody([string]$content, [string]$startHdr, [string[]]$endHdrs) {
-    $start = $content.IndexOf($startHdr)
-    if ($start -lt 0) { return '' }
-    $slice = $content.Substring($start + $startHdr.Length)
-    $endPos = $slice.Length
-    foreach ($eh in $endHdrs) {
-        if ($eh -eq '---') {
-            $m = [regex]::Match($slice, '(?m)^\s*---\s*$')
-        } else {
-            $m = [regex]::Match($slice, '(?m)^\s*' + [regex]::Escape($eh))
-        }
-        if ($m.Success -and $m.Index -lt $endPos) { $endPos = $m.Index }
-    }
-    return $slice.Substring(0, $endPos)
-}
 
 function Parse-RegistryTable([string]$raw) {
     $result = @{}
     if ($raw -notmatch '## Handoff registry') { return $result }
-    $body = Get-SectionBody $raw '## Handoff registry' @('**Session opener')
+    $body = Get-PackSectionBody $raw '## Handoff registry' @('**Session opener')
     $matches = [regex]::Matches($body, '\|\s*\*\*([^*]+)\*\*\s*\|\s*([^|]*?)\s*\|')
     foreach ($m in $matches) {
         $key = ($m.Groups[1].Value -replace '\s+', '_' ).Trim('_').ToLower()
@@ -91,7 +77,7 @@ function Parse-RegistryTable([string]$raw) {
 $doneIds = [System.Collections.Generic.HashSet[string]]::new()
 if (Test-Path -LiteralPath $wqPath) {
     $wqRaw = Get-Content -LiteralPath $wqPath -Raw -Encoding UTF8
-    $doneBody = Get-SectionBody $wqRaw '## Done log' @('## Cross-references', '---', '**Agents:**')
+    $doneBody = Get-PackSectionBody $wqRaw '## Done log' @('## Cross-references', '---', '**Agents:**')
     foreach ($m in [regex]::Matches($doneBody, '\|\s*(WQ-\d+)\s*\|')) {
         [void]$doneIds.Add($m.Groups[1].Value)
     }

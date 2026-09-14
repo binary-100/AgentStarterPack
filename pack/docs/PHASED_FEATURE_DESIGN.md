@@ -8,10 +8,11 @@
 
 ## Core rules
 
-1. **One sequence** — Runtime order and build order are the **same** numbered phases (1 → N).
+1. **One sequence** — Runtime order and build order are the **same** numbered phases (**0 → N** when readiness triggers apply, else **1 → N**).
 2. **No phase skips** — Do not implement Phase 7 before Phase 4, or ship “Milestone A = Phases 2–4 + 7”.
 3. **One checklist** — Single table; check off phases in order. Project is done when every phase is ☑.
 4. **Optional work has an owner** — Nothing floats as “optional” in the main narrative without a phase number.
+5. **Phase 0 when triggered** — Multi-zone or multi-tree features: **`generic-implementation-readiness.mdc`** before Phase 1 code.
 
 ---
 
@@ -110,14 +111,30 @@ Phase 1 → Phase 2 → … → Phase N
 
 ---
 
+## Phase 0 — Implementation readiness (when triggered)
+
+**Rule:** `generic-implementation-readiness.mdc`  
+**Use when:** Runtime is split across trees/zones, there is a separate publish/deploy lane, sync-before-ship, or proof mode differs by zone.
+
+**Before Phase 1 implementation code or claiming “design complete”:**
+
+1. Add **`## Implementation readiness`** to the feature plan.
+2. Fill the table below — one row per track that must be proven.
+3. Every required row must be **Done** (with evidence) or **Blocked** (owner + re-open when) — not **Not done**.
+
+Copy the appendix table into `docs/FEATURE_NAME_PLAN.md` (or your project's plan path).
+
+---
+
 ## Agent workflow
 
 When planning or implementing a multi-step feature:
 
 1. **Write or read** the phased plan before coding.
-2. **Implement** the next unchecked phase only (complete it before starting the following phase).
-3. **Report progress** as “through Phase N” — not as unrelated milestone names.
-4. **Add optional work** only via approach A (sub-steps) or B (appendix keyed to parent phase).
+2. **Phase 0** — if readiness triggers apply, complete the implementation readiness table first.
+3. **Implement** the next unchecked phase only (complete it before starting the following phase).
+4. **Report progress** as “through Phase N” — not as unrelated milestone names; never claim Phase 1+ while Phase 0 rows are **Not done**.
+5. **Add optional work** only via approach A (sub-steps) or B (appendix keyed to parent phase).
 
 For sustained features, store the plan in project docs (e.g. `docs/FEATURE_NAME_PLAN.md`) and link from `AGENTS.md`.
 
@@ -131,10 +148,42 @@ Store the plan in the app repo: `docs/FEATURE_NAME_PLAN.md` and link from `AGENT
 
 ---
 
+## Appendix — Implementation readiness table (copy into feature plans)
+
+```markdown
+## Implementation readiness
+
+**Triggers:** [which generic-implementation-readiness triggers apply — split tree, publish lane, sync-before-ship, etc.]
+
+| # | Track | Check | Evidence required | Status |
+|---|-------|-------|-------------------|--------|
+| 1 | [e.g. Primary zone tests] | [what must pass] | [log path, exit code, command] | Not done / Done / Blocked |
+| 2 | [e.g. Ship lane tests] | … | … | … |
+| 3 | [e.g. Consumer inventory] | Every script/rule/CI that assumes old layout | List path + grep or read evidence | … |
+| 4 | [e.g. End-to-end ship dry-run] | Full path from dev to deploy | Script sequence + exit codes | … |
+
+**Rule:** Do not start Phase 1 implementation code while required rows are **Not done**.
+If the maintainer asks "what could we be missing?", this table was incomplete.
+```
+
+### Example shapes (illustrative — replace with project-specific rows)
+
+| Shape | Typical tracks |
+|-------|----------------|
+| Client + API | Unit/UI tests on client; contract + integration tests on API; staged deploy dry-run |
+| Feature flag rollout | Off-path regression; on-path smoke; config sync between environments |
+| Export bundle vs dev repo | Full test suite on dev tree; export hygiene; install-from-export proof |
+| Credential-gated plugin | Load proof; fire proof (or **Blocked** until credential available) |
+
+Project-specific worked examples belong in **that project's** plan doc — not in this generic appendix.
+
+---
+
 ## Related starter-pack docs
 
 | Doc | Use |
 |-----|-----|
 | `AGENT_WORKFLOW.md` | Loop-back, pre-flight, audits |
 | `AUDIT_SYSTEM.md` | Audit tooling only |
-| `generic-phased-feature-design.mdc` | Always-on rule pointer for agents |
+| `generic-phased-feature-design.mdc` | Always-on rule — phase order |
+| `generic-implementation-readiness.mdc` | Always-on rule — Phase 0 table |

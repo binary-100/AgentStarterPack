@@ -18,6 +18,15 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# Same shim as audit_code_checks.py: sys.path[0] is already this folder when run as a script, but
+# this module is also imported by path (the MCP server, behavior probes), where the sibling is not
+# otherwise importable.
+_SCRIPT_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPT_DIR)
+
+from pack_entry_points import pack_entry_point  # noqa: E402
+
 TRIGGER_PHRASES = (
     "refresh pack context",
     "sync agent context",
@@ -170,7 +179,9 @@ def check_freshness(project_root: str | None = None) -> dict[str, Any]:
     layers: dict[str, str] = {}
 
     if not ctx:
-        reasons.append("missing AGENT_CONTEXT.json - run Refresh-AgentContext.cmd")
+        reasons.append(
+            f"missing AGENT_CONTEXT.json - run {pack_entry_point('Refresh-AgentContext')}"
+        )
         stale = True
     else:
         # Starts clean and is set by each reason below, rather than a trailing else deciding it: the
@@ -190,7 +201,8 @@ def check_freshness(project_root: str | None = None) -> dict[str, Any]:
             if recorded_path is not None and recorded_path != proj and not recorded_path.exists():
                 reasons.append(
                     f"AGENT_CONTEXT.json was written on another machine for {recorded} - "
-                    "run Refresh-AgentContext.cmd (sanitize-machine-state.ps1 clears copied state)"
+                    f"run {pack_entry_point('Refresh-AgentContext')} "
+                    "(sanitize-machine-state.ps1 clears copied state)"
                 )
                 stale = True
 
@@ -285,8 +297,9 @@ def build_session_start_markdown(freshness: dict[str, Any]) -> str:
     if freshness.get("stale"):
         verdict = "**Context: STALE** - re-read before substantial work."
         remediation = (
-            f"Run `Update-AgentStack.cmd \"{canonical}\"` or offer to run "
-            f"`Refresh-AgentContext.cmd` for this project (agent runs it after approval)."
+            f"Run `{pack_entry_point('Update-AgentStack')} \"{canonical}\"` or offer to run "
+            f"`{pack_entry_point('Refresh-AgentContext')}` for this project "
+            "(agent runs it after approval)."
         )
         refresh_note = (
             f"\nFull brief: `{refresh_path}`\n" if refresh_path else "\n"
@@ -368,8 +381,9 @@ def get_refresh_brief(project_root: str | None = None) -> dict[str, Any]:
         body = refresh_path.read_text(encoding="utf-8-sig")
     else:
         body = (
-            f"No refresh brief at {refresh_path} yet. Run Refresh-AgentContext.cmd or "
-            f"Update-AgentStack.cmd for: {freshness['canonicalProjectRoot']}"
+            f"No refresh brief at {refresh_path} yet. "
+            f"Run {pack_entry_point('Refresh-AgentContext')} or "
+            f"{pack_entry_point('Update-AgentStack')} for: {freshness['canonicalProjectRoot']}"
         )
     return {
         "path": str(refresh_path),
@@ -382,110 +396,130 @@ def get_refresh_brief(project_root: str | None = None) -> dict[str, Any]:
 def _self_test() -> int:
     import tempfile
 
+    saved_env = {
+        k: os.environ.get(k)
+        for k in (
+            "AGENT_STARTER_PACK_INSTALL_ROOT",
+            "AGENT_STARTER_PACK_ROOT",
+            "AGENT_STARTER_PACK_STATE_ROOT",
+        )
+    }
     failures: list[str] = []
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp) / "proj"
-        docs = root / "docs"
-        docs.mkdir(parents=True)
-        pack = Path(tmp) / "pack"
-        (pack / "pack" / "audit").mkdir(parents=True)
-        (pack / "pack" / "audit" / "manifest.json").write_text(
-            '{"version": "2.0.0-test"}', encoding="utf-8"
-        )
-        os.environ["AGENT_STARTER_PACK_ROOT"] = str(pack)
-        (root / "AGENTS.md").write_text("# app\n", encoding="utf-8")
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "proj"
+            docs = root / "docs"
+            docs.mkdir(parents=True)
+            pack = Path(tmp) / "pack"
+            (pack / "pack" / "audit").mkdir(parents=True)
+            (pack / "pack" / "audit" / "manifest.json").write_text(
+                '{"version": "2.0.0-test"}', encoding="utf-8"
+            )
+            # Guard proof jobs set AGENT_STARTER_PACK_INSTALL_ROOT to an empty sandbox so mutations
+            # never reach the profile. An empty redirect has no manifest, so version comparison is
+            # skipped and this self-test falsely passes on the host while failing inside the job.
+            os.environ["AGENT_STARTER_PACK_ROOT"] = str(pack)
+            os.environ["AGENT_STARTER_PACK_INSTALL_ROOT"] = str(pack)
+            os.environ.pop("AGENT_STARTER_PACK_STATE_ROOT", None)
+            (root / "AGENTS.md").write_text("# app\n", encoding="utf-8")
 
-        r = check_freshness(str(root))
-        if not r["stale"]:
-            failures.append("missing context should be stale")
-        if r["workspaceMatchesCanonical"] is not True:
-            failures.append("workspace should match canonical in flat project")
+            r = check_freshness(str(root))
+            if not r["stale"]:
+                failures.append("missing context should be stale")
+            if r["workspaceMatchesCanonical"] is not True:
+                failures.append("workspace should match canonical in flat project")
 
-        (docs / "AGENT_CONTEXT.json").write_text(
-            json.dumps(
-                {
-                    "schemaVersion": 2,
-                    "auditEngineVersion": "1.0.0-old",
-                    "canonicalProjectRoot": str(root),
-                    "requiredReads": [str(root / "AGENTS.md")],
-                    "layers": {"installedPack": "ok"},
-                }
-            ),
-            encoding="utf-8",
-        )
-        r2 = check_freshness(str(root))
-        if not r2["stale"]:
-            failures.append("old stamp should be stale")
-        if r2["stampedEngineVersion"] != "1.0.0-old":
-            failures.append("stamped version mismatch")
+            (docs / "AGENT_CONTEXT.json").write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 2,
+                        "auditEngineVersion": "1.0.0-old",
+                        "canonicalProjectRoot": str(root),
+                        "requiredReads": [str(root / "AGENTS.md")],
+                        "layers": {"installedPack": "ok"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            r2 = check_freshness(str(root))
+            if not r2["stale"]:
+                failures.append("old stamp should be stale")
+            if r2["stampedEngineVersion"] != "1.0.0-old":
+                failures.append("stamped version mismatch")
 
-        brief = get_refresh_brief(str(root))
-        if brief["exists"]:
-            failures.append("brief should not exist yet")
-        (docs / "AGENT_REFRESH.md").write_text("# refresh\n", encoding="utf-8")
-        brief2 = get_refresh_brief(str(root))
-        if not brief2["exists"] or "# refresh" not in brief2["body"]:
-            failures.append("brief read failed")
+            brief = get_refresh_brief(str(root))
+            if brief["exists"]:
+                failures.append("brief should not exist yet")
+            (docs / "AGENT_REFRESH.md").write_text("# refresh\n", encoding="utf-8")
+            brief2 = get_refresh_brief(str(root))
+            if not brief2["exists"] or "# refresh" not in brief2["body"]:
+                failures.append("brief read failed")
 
-        session = get_session_brief(str(root))
-        if not session.get("stale"):
-            failures.append("old stamp session brief should be stale")
-        if session.get("permission") != "inject":
-            failures.append("stale session brief permission should be inject")
-        if not session.get("openerLine"):
-            failures.append("session brief missing openerLine")
+            session = get_session_brief(str(root))
+            if not session.get("stale"):
+                failures.append("old stamp session brief should be stale")
+            if session.get("permission") != "inject":
+                failures.append("stale session brief permission should be inject")
+            if not session.get("openerLine"):
+                failures.append("session brief missing openerLine")
 
-        written = write_session_start(str(root))
-        if not written.is_file():
-            failures.append("write_session_start did not create file")
-        text = written.read_text(encoding="utf-8")
-        if "STALE" not in text:
-            failures.append("session start markdown should show STALE")
+            written = write_session_start(str(root))
+            if not written.is_file():
+                failures.append("write_session_start did not create file")
+            text = written.read_text(encoding="utf-8")
+            if "STALE" not in text:
+                failures.append("session start markdown should show STALE")
 
-        (docs / "AGENT_CONTEXT.json").write_text(
-            json.dumps(
-                {
-                    "schemaVersion": 2,
-                    "auditEngineVersion": "2.0.0-test",
-                    "packVersion": "1.0.0-test",
-                    "canonicalProjectRoot": str(root),
-                    "requiredReads": [str(root / "AGENTS.md")],
-                    "layers": {"installedPack": "ok"},
-                }
-            ),
-            encoding="utf-8",
-        )
-        fresh_brief = get_session_brief(str(root))
-        if fresh_brief.get("stale"):
-            failures.append("matching stamp should be fresh")
-        if fresh_brief.get("permission") != "none":
-            failures.append("fresh session brief permission should be none")
+            (docs / "AGENT_CONTEXT.json").write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 2,
+                        "auditEngineVersion": "2.0.0-test",
+                        "packVersion": "1.0.0-test",
+                        "canonicalProjectRoot": str(root),
+                        "requiredReads": [str(root / "AGENTS.md")],
+                        "layers": {"installedPack": "ok"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            fresh_brief = get_session_brief(str(root))
+            if fresh_brief.get("stale"):
+                failures.append("matching stamp should be fresh")
+            if fresh_brief.get("permission") != "none":
+                failures.append("fresh session brief permission should be none")
 
-        # A folder copied from another machine: the stamp's engine version matches, so only the
-        # recorded root reveals that none of its paths exist here. This has to read as stale and say
-        # why, rather than following the foreign root and reporting the file as missing.
-        foreign = "/nonexistent-machine/SomeoneElse/AgentStarterPack"
-        (docs / "AGENT_CONTEXT.json").write_text(
-            json.dumps(
-                {
-                    "schemaVersion": 2,
-                    "auditEngineVersion": "2.0.0-test",
-                    "packVersion": "1.0.0-test",
-                    "projectRoot": foreign,
-                    "canonicalProjectRoot": foreign,
-                    "requiredReads": [foreign + "/AGENTS.md"],
-                    "layers": {"installedPack": "ok"},
-                }
-            ),
-            encoding="utf-8",
-        )
-        r_foreign = check_freshness(str(root))
-        if not r_foreign["stale"]:
-            failures.append("context from another machine should be stale")
-        if not any("another machine" in reason for reason in r_foreign["reasons"]):
-            failures.append(f"foreign context reason should name the cause: {r_foreign['reasons']}")
-        if r_foreign["contextPath"] != str(docs / "AGENT_CONTEXT.json"):
-            failures.append("foreign canonical root should not redirect the context path")
+            # A folder copied from another machine: the stamp's engine version matches, so only the
+            # recorded root reveals that none of its paths exist here. This has to read as stale and say
+            # why, rather than following the foreign root and reporting the file as missing.
+            foreign = "/nonexistent-machine/SomeoneElse/AgentStarterPack"
+            (docs / "AGENT_CONTEXT.json").write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 2,
+                        "auditEngineVersion": "2.0.0-test",
+                        "packVersion": "1.0.0-test",
+                        "projectRoot": foreign,
+                        "canonicalProjectRoot": foreign,
+                        "requiredReads": [foreign + "/AGENTS.md"],
+                        "layers": {"installedPack": "ok"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            r_foreign = check_freshness(str(root))
+            if not r_foreign["stale"]:
+                failures.append("context from another machine should be stale")
+            if not any("another machine" in reason for reason in r_foreign["reasons"]):
+                failures.append(f"foreign context reason should name the cause: {r_foreign['reasons']}")
+            if r_foreign["contextPath"] != str(docs / "AGENT_CONTEXT.json"):
+                failures.append("foreign canonical root should not redirect the context path")
+    finally:
+        for k, v in saved_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
     if failures:
         for f in failures:

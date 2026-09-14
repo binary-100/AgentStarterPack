@@ -38,13 +38,115 @@ function Get-InstalledPack {
 }
 
 function Get-Manifest([string]$PackRoot) {
-    $path = Join-Path $PackRoot 'pack\audit\manifest.json'
+    $path = Join-Path $PackRoot 'pack/audit/manifest.json'
     if (-not (Test-Path -LiteralPath $path)) { throw "Missing manifest: $path" }
     Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
 }
 
 function Get-Sha256([string]$Path) {
     Get-PackFileSha256 -Path $Path
+}
+
+$script:SyncDriftEvents = @()
+
+function Get-SyncDriftEventKey([string]$Path) {
+    if (-not $Path) { return $null }
+    return ([System.IO.Path]::GetFullPath($Path)).ToLowerInvariant()
+}
+
+function Register-SyncDriftEvent([string]$Label, [string]$A, [string]$B, [string]$HashA, [string]$HashB) {
+    $keyPath = if ($B) { $B } else { $A }
+    $script:SyncDriftEvents += [pscustomobject]@{
+        Label = $Label
+        PathA = $A
+        PathB = $B
+        HashA = $HashA
+        HashB = $HashB
+        Key   = Get-SyncDriftEventKey $keyPath
+    }
+}
+
+function Get-SyncDriftSessionPath([string]$SourceRoot) {
+    $stateRoot = Get-AgentStateRoot $SourceRoot
+    if (-not (Test-Path -LiteralPath $stateRoot)) {
+        New-Item -ItemType Directory -Path $stateRoot -Force | Out-Null
+    }
+    Join-Path $stateRoot 'sync-drift-session.json'
+}
+
+function Read-SyncDriftSession([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return $null }
+    try {
+        return (Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json)
+    } catch {
+        return $null
+    }
+}
+
+function Write-SyncDriftSession([string]$Path, $LastRun) {
+    $payload = [ordered]@{ lastRun = $LastRun }
+    Write-Utf8NoBom $Path (($payload | ConvertTo-Json -Depth 6 -Compress))
+}
+
+function Clear-SyncDriftSession([string]$Path) {
+    if (Test-Path -LiteralPath $Path) {
+        Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function ConvertTo-SyncDriftStringList($Value) {
+    if ($null -eq $Value) { return @() }
+    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+        return @($Value | ForEach-Object { "$_".ToLowerInvariant() } | Where-Object { $_ })
+    }
+    $one = "$Value".ToLowerInvariant()
+    if ($one) { return @($one) }
+    return @()
+}
+
+function Get-RecurringSyncDriftEvents($PreviousRun, $CurrentEvents) {
+    if (-not $PreviousRun) { return @() }
+    $prev = ConvertTo-SyncDriftStringList $PreviousRun.keys
+    if ($prev.Count -eq 0) { return @() }
+    $recurring = @()
+    foreach ($ev in @($CurrentEvents)) {
+        if (-not $ev.Key) { continue }
+        $key = "$($ev.Key)".ToLowerInvariant()
+        if ($prev -contains $key) { $recurring += $ev }
+    }
+    return $recurring
+}
+
+function Write-RecurringSyncDriftAdvice($RecurringEvents) {
+    # return @() from a function assigns $null; @($null).Count is 1 in PowerShell.
+    $events = @($RecurringEvents | Where-Object { $_ })
+    if ($events.Count -eq 0) { return }
+    Write-Host ''
+    Write-Host '[RECURRING DRIFT] The same path drifted on a second verify-only run in this session.'
+    Write-Host '  This is not ordinary staleness - something is still writing to the installed or profile copy.'
+    foreach ($ev in $events) {
+        Write-Host "  - $($ev.Label)"
+        if ($ev.PathB) { Write-Host "    B: $($ev.PathB)" }
+        elseif ($ev.PathA) { Write-Host "    A: $($ev.PathA)" }
+    }
+    $lockPath = Join-Path (Get-PackTempDir) 'guard-proofs.lock'
+    if (Test-Path -LiteralPath $lockPath) {
+        try {
+            $lock = Get-Content -LiteralPath $lockPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $lockPid = [int]$lock.pid
+            if ($lockPid -gt 0 -and (Get-Process -Id $lockPid -ErrorAction SilentlyContinue)) {
+                Write-Host "  Active guard proof run (PID $lockPid since $($lock.started)) - lock: $lockPath"
+                Write-Host '  Stop that process before syncing again; escaped registry mutations sync to the profile during proof runs.'
+            } else {
+                Write-Host "  Stale guard-proofs.lock at $lockPath (PID $($lock.pid) not running) - remove the lock file."
+            }
+        } catch {
+            Write-Host "  guard-proofs.lock present at $lockPath - inspect manually."
+        }
+    } else {
+        Write-Host '  No guard-proofs.lock - look for other live writers (background verify-guard-proofs.ps1, editor saves, parallel agents).'
+    }
+    Write-Host '  Do not run sync again blindly; find and stop the writer first.'
 }
 
 function Test-Drift([string]$Label, [string]$A, [string]$B) {
@@ -55,12 +157,14 @@ function Test-Drift([string]$Label, [string]$A, [string]$B) {
         Write-Host "[DRIFT] $Label - missing file"
         Write-Host "  A: $A"
         Write-Host "  B: $B"
+        Register-SyncDriftEvent $Label $A $B $ha $hb
         return $true
     }
     if ($ha -ne $hb) {
         Write-Host "[DRIFT] $Label"
         Write-Host "  A: $A"
         Write-Host "  B: $B"
+        Register-SyncDriftEvent $Label $A $B $ha $hb
         return $true
     }
     return $false
@@ -135,7 +239,7 @@ if (-not $ProjectRoot -and $PushFromProject) {
     }
     if (-not $ProjectRoot) {
         $def = ($manifest.referenceProject.defaultRepoRoot -replace '/', '\').Trim()
-        if ($def) { $ProjectRoot = Join-Path $env:USERPROFILE $def }
+        if ($def) { $ProjectRoot = Join-Path (Get-PackHomeDir) $def }
     }
 }
 if ($ProjectRoot) { $ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path }
@@ -171,21 +275,21 @@ if ($PushFromProject) {
 # Doc version cites first: this rewrites files that are themselves mirrored (START_HERE.md,
 # AUDIT_SYSTEM.md). Running it after the mirror copied the pre-sync text, so the very next verify
 # reported drift on a tree that had just been synced.
-$docSync = Join-Path $Source 'pack\scripts\sync-doc-versions.ps1'
+$docSync = Join-Path $Source 'pack/scripts/sync-doc-versions.ps1'
 $docSyncRan = $false
 if (-not $VerifyOnly -and (Test-Path -LiteralPath $docSync) -and
-    (Test-Path -LiteralPath (Join-Path $Source 'docs\AUDIT.config.json'))) {
+    (Test-Path -LiteralPath (Join-Path $Source 'docs/AUDIT.config.json'))) {
     Write-Host 'Syncing maintainer doc versions...'
     Invoke-PackScript -PassOutput -NoProfile -ScriptPath $docSync -ProjectRoot $Source
     if ($LASTEXITCODE -ne 0) {
-        Write-Host '[WARN] sync-doc-versions reported stale cites - run Sync-DocVersions.cmd or fix manually'
+        Write-Host "[WARN] sync-doc-versions reported stale cites - run $(Get-PackEntryPoint 'Sync-DocVersions') or fix manually"
     }
     $docSyncRan = $true
 }
 
-$portableSync = Join-Path $Source 'pack\scripts\sync-portable-docs.ps1'
+$portableSync = Join-Path $Source 'pack/scripts/sync-portable-docs.ps1'
 if ((Test-Path -LiteralPath $portableSync) -and
-    (Test-Path -LiteralPath (Join-Path $Source 'docs\AUDIT.config.json'))) {
+    (Test-Path -LiteralPath (Join-Path $Source 'docs/AUDIT.config.json'))) {
     if ($VerifyOnly) {
         Invoke-PackScript -PassOutput -NoProfile -ScriptPath $portableSync -PackRoot $Source -VerifyOnly 2>&1 | Out-Host
         if ($LASTEXITCODE -ne 0) { $drift++ }
@@ -272,7 +376,7 @@ if (-not $SkipProfileMirror) {
 
 # Project layout required files exist
 if ($ProjectRoot) {
-    $layout = if (Test-Path -LiteralPath (Join-Path $ProjectRoot 'app\docs\AUDIT.md')) {
+    $layout = if (Test-Path -LiteralPath (Join-Path $ProjectRoot 'app/docs/AUDIT.md')) {
         $manifest.projectRequired.appLayout
     } else {
         $manifest.projectRequired.flatLayout
@@ -288,7 +392,19 @@ if ($ProjectRoot) {
 
 Write-Host ''
 if ($VerifyOnly) {
+    $driftSessionPath = Get-SyncDriftSessionPath $Source
     if ($drift -gt 0) {
+        $previousRun = $null
+        $existingSession = Read-SyncDriftSession $driftSessionPath
+        if ($existingSession) { $previousRun = $existingSession.lastRun }
+        $recurring = @(Get-RecurringSyncDriftEvents $previousRun $script:SyncDriftEvents)
+        Write-RecurringSyncDriftAdvice $recurring
+        $lastRun = [ordered]@{
+            at     = (Get-Date).ToString('o')
+            keys   = [object[]]@($script:SyncDriftEvents | ForEach-Object { $_.Key } | Where-Object { $_ })
+            labels = [object[]]@($script:SyncDriftEvents | ForEach-Object { $_.Label })
+        }
+        Write-SyncDriftSession $driftSessionPath $lastRun
         if ($AutoFix) {
             $target = if ($PackInstalled) { 'source pack -> installed + user' } else { 'source pack only - not installed on this machine' }
             Write-Host "Audit sync: $drift drift(s) - applying AutoFix ($target) ..."
@@ -301,6 +417,7 @@ if ($VerifyOnly) {
         Write-Host ('Audit sync: ' + $drift + ' issue(s). Run: sync-audit-system.ps1 (no -VerifyOnly) or -AutoFix')
         exit 1
     }
+    Clear-SyncDriftSession $driftSessionPath
     if ($SkipProfileMirror) {
         Write-Host 'Audit sync: OK (pack source only - not installed on this machine; run install.ps1 to integrate)'
     } else {

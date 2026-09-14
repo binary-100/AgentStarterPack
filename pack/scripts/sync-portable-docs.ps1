@@ -33,9 +33,9 @@ function Strip-YamlFrontmatter([string]$Text) {
 }
 
 function Build-PortableExports([string]$Root) {
-    $rulesDir = Join-Path $Root 'pack\rules'
-    $skillsDir = Join-Path $Root 'pack\skills'
-    $outDir = Join-Path $Root 'pack\docs\portable'
+    $rulesDir = Join-Path $Root 'pack/rules'
+    $skillsDir = Join-Path $Root 'pack/skills'
+    $outDir = Join-Path $Root 'pack/docs/portable'
     $skillsOut = Join-Path $outDir 'skills'
 
     $version = 'unknown'
@@ -53,10 +53,11 @@ function Build-PortableExports([string]$Root) {
         '',
         'Regenerate: ``pack\scripts\sync-portable-docs.ps1`` (also runs during ``sync-audit-system.ps1`` on the pack maintainer repo).',
         '',
-        '| Load path | Tool |',
-        '|-----------|------|',
-        '| ``%USERPROFILE%\.cursor\rules\*.mdc`` | Cursor (after ``install.ps1``) |',
-        '| This file | Claude, Copilot, Windsurf, CLI - paste or attach at session start |',
+        '| Load path | Tool | Loads? |',
+        '|-----------|------|--------|',
+        '| ``<project>\.cursor\rules\*.mdc`` | Cursor - deliver with ``sync-project-rules.ps1 -ProjectRoot <project>`` | Yes |',
+        '| ``%USERPROFILE%\.cursor\rules\*.mdc`` | Reference copy written by ``install.ps1`` | No - no editor documents reading a home rules folder |',
+        '| This file | Claude, Copilot, Windsurf, CLI - paste or attach at session start | Yes, when pasted |',
         '',
         "Pack version: $version",
         "Rule files: $($ruleFiles.Count)",
@@ -164,6 +165,35 @@ if ($VerifyOnly) {
         Write-Host "[FAIL] missing $readmePath"
         $fail++
     }
+
+    # WQ-456: the pack repo now carries synced copies of the generic rules in its own .cursor/rules,
+    # because that folder is loaded and %USERPROFILE%\.cursor\rules is not. Those copies are what
+    # actually governs an agent working in this repo, so drift between them and pack/rules has to fail
+    # certification. It did not: the first release of this change was audited clean while two rules had
+    # already diverged, which is the same shape as the defect being fixed - a verify that covers the
+    # export nobody loads and skips the copy that binds. Only checked where the copies exist, so an
+    # installed pack (no .cursor/) and a project that has not synced are both left alone.
+    $selfRules = Join-Path $PackRoot '.cursor/rules'
+    $packRulesSrc = Join-Path $PackRoot 'pack/rules'
+    if ((Test-Path -LiteralPath $selfRules) -and (Test-Path -LiteralPath $packRulesSrc)) {
+        $drifted = @()
+        $synced = 0
+        foreach ($src in @(Get-ChildItem -LiteralPath $packRulesSrc -Filter '*.mdc' -File -ErrorAction SilentlyContinue)) {
+            $dst = Join-Path $selfRules $src.Name
+            if (-not (Test-Path -LiteralPath $dst)) { continue }
+            $synced++
+            if ((Get-Content -LiteralPath $dst -Raw -Encoding UTF8) -ne (Get-Content -LiteralPath $src.FullName -Raw -Encoding UTF8)) {
+                $drifted += $src.Name
+            }
+        }
+        if ($drifted.Count -gt 0) {
+            Write-Host "[FAIL] this repo's loaded rules drifted from pack/rules ($($drifted -join ', ')) - run sync-project-rules.ps1 -ProjectRoot `"$PackRoot`""
+            $fail++
+        } elseif ($synced -gt 0) {
+            Write-Host "[OK] $synced loaded rule(s) in .cursor/rules match pack/rules"
+        }
+    }
+
     if ($fail -gt 0) { exit 1 }
     Write-Host "Portable exports OK ($($built.RuleCount) rules, $($built.Skills.Count) skills)"
     exit 0

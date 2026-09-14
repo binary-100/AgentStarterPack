@@ -31,7 +31,16 @@ From day one, every project should have:
 | Layer | Status | Detail |
 |-------|--------|--------|
 | **PowerShell language (5.1 floor, 7+ supported)** | **Cross-host on Windows; PS 7 runs on Linux/macOS too** | Every pack `.ps1` declares `#Requires -Version 5.1` (no 7-only syntax). The full behavior suite passes on **Windows PowerShell 5.1** and **PowerShell 7** (`verify-audit-behavior.ps1 -DualShell`). On your dev machine, **`pwsh` is a fine primary host** — the pack does not require 5.1 for interactive work. |
-| **Pack entry points and install layout** | **Cross-host via `.sh` + `pwsh`** | Windows: `.cmd`/`.bat` wrappers. macOS/Linux: **`install.sh`**, **`Refresh-AgentContext.sh`**, **`Bootstrap-Project.sh`**, **`Check-Requirements.sh`**, **`run_audit.sh`** (thin `pwsh -File` delegates). Remaining `.cmd` files are Windows-only until needed. |
+| **Pack entry points and install layout** | **Cross-host via `.sh` + `pwsh`** | Windows: `.cmd`/`.bat` wrappers. macOS/Linux: **`install.sh`**, **`Refresh-AgentContext.sh`**, **`Bootstrap-Project.sh`**, **`Check-Requirements.sh`**, **`run_audit.sh`** and the rest of the registry in `pack-paths.ps1` (thin `pwsh -File` delegates). Start them as **`bash install.sh User`** — see below. |
+
+**Start a `.sh` entry point with `bash <file>`, not `./<file>`.** The execute bit is recorded by git and
+by nothing else this folder travels through: a folder copy, an unzipped archive, and exFAT or FAT media
+all deliver mode 644, and a Windows checkout has no bit to carry in the first place. `./install.sh` on
+such a copy stops at `Permission denied` (exit 126), and it is the one command with no way back —
+the chmod that would fix it (`Set-PackExecutableBit`) runs *inside* `install.ps1`, past the file that
+will not start. `bash` runs a file it is handed at any mode, and everything after the install is
+self-healing because install chmods every `.sh` it writes. Behavior **step 67** holds the instruction
+form in the install docs; **step 62** holds the committed modes for anyone arriving by `git clone`.
 
 | Supported today | Not supported yet |
 |-----------------|-------------------|
@@ -70,7 +79,7 @@ Install-AgentStarterPack.cmd
 
 Run it from wherever the pack folder lives — any drive, a clone, or a USB stick. Pack scripts resolve the pack they were launched from, so no fixed location is required.
 
-**The pack folder travels; the install does not.** Install writes into `%USERPROFILE%\.cursor\` on the machine you run it on, because that is the only place Cursor reads global rules and skills from. So each machine needs its own install — that copy is machine-local and disposable, and the pack folder stays the source of truth.
+**The pack folder travels; the install does not.** Install writes into `%USERPROFILE%\.cursor\` on the machine you run it on. That is where Cursor reads **skills** from — `~/.cursor/skills/` is a documented global load path. It is **not** where any editor reads **rules** from: Cursor documents four rule locations (project `.cursor/rules/`, User Rules, Team Rules, `AGENTS.md`) and a home-folder rules directory is not one of them, so the profile rule copy is best-effort and binds nothing by itself (WQ-456). Rules reach an agent through a project's `.cursor/rules/` and `AGENTS.md` — see **Global rules without Cursor** below. Each machine still needs its own install; that copy is machine-local and disposable, and the pack folder stays the source of truth.
 
 ### Carrying the pack on a USB stick
 
@@ -244,7 +253,14 @@ There is still **no universal auto-installer** for every IDE — bootstrap gives
 
 ### Global rules without Cursor (`install.ps1`)
 
-Cursor loads always-on rules from `%USERPROFILE%\.cursor\rules\` after install. **Other tools do not.**
+**`install.ps1` copies the rules to `%USERPROFILE%\.cursor\rules\`, and no editor is documented as reading that folder** — not even Cursor, whose four rule locations are project `.cursor/rules/`, User Rules, Team Rules and `AGENTS.md` (WQ-456). Treat the profile copy as best-effort: it is a convenient place to read the canonical text from, not a mechanism that makes a rule apply.
+
+**What does load, in every AI editor:** a project's own `.cursor/rules/*.mdc` and its `AGENTS.md`. Deliver
+them per project with `sync-project-rules.ps1 -ProjectRoot <project>` (or `Bootstrap-Project.cmd`, which
+does it for you) and verify with the same script plus `-VerifyOnly`. `Refresh-AgentContext.cmd` reports a
+`loadedRules` layer of `stale` when no always-on rule reached that folder, and names the always-on rule
+files as required reading whenever they change — the only way a rule change reaches a chat that is
+already open, since editors build rule context at session start and never reload it.
 
 The pack ships plain-markdown exports (WQ-003 Phase 2):
 

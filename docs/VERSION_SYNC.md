@@ -56,3 +56,32 @@ followed by the version **in parentheses**:
 That last row is not hypothetical: the pack's former session document carried its engine cite that way, so it
 drifted a full four bumps while verify stayed green. Adding a file to `auditVersionScanFiles` does
 nothing on its own if the cite inside it is written in an unrecognised form.
+
+## Historical regions — the cites a bump must never touch
+
+Some documents hold both kinds of claim. `docs/WORK_QUEUE.md` says which engine is **current** in
+its header table, and every **Done-log** row says which engine **shipped** that item. The first must
+move on a bump; the second is a statement about the past.
+
+Declare where the past begins:
+
+```json
+"historicalRegions": [
+  { "file": "docs/WORK_QUEUE.md", "fromHeading": "## Done log" }
+]
+```
+
+Nothing below that heading is rewritten — not by the line scan, and not by `extraReplacements`,
+which are whole-file regexes and so the likeliest to reach backwards.
+
+Three rules follow from this:
+
+- **Never bump a version cite with a find/replace across a whole file.** Run `Sync-DocVersions.cmd`.
+ The four known corruptions of this repo's Done log were all hand replaces, twice in one session.
+- **A declared heading that does not exist is a failure**, not a warning: the file is being synced end
+ to end while the config claims part of it is protected. `--verify` reports it in `missingRegions`.
+- **`verify-work-queue.ps1` checks the declaration itself**, so deleting the entry cannot quietly
+ remove the protection, and compares the Done log's cited versions against git `HEAD` — that set may
+ only grow. A version that was cited at `HEAD` and is not cited now means a bump reached backwards.
+
+Generated projects inherit this: `scanGlobs: ["docs/*.md"]` sweeps up their work queue too.

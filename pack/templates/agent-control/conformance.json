@@ -1,0 +1,76 @@
+{
+  "_what": "Shared conformance vectors for agent-control adapters (WQ-480). Every host's adapter must produce these verdicts from these inputs.",
+  "_why": "One policy file stops two adapters DISAGREEING about the data. It does not stop them disagreeing about the semantics - which rule wins, what counts as an ask, whether prose about a command is a request to run it. Those are the decisions that made this control usable rather than muted, and an adapter that got them subtly wrong would look installed and pass its own tests. So the semantics live here as data too, and each adapter is measured against the same cases instead of trusted.",
+  "_how_to_use": "pack/scripts/verify-audit-behavior.ps1 step 83 runs the Cursor PowerShell adapters against every case. An adapter for another host - an OpenCode plugin, a CLI wrapper - is not finished until it passes this same file. That is the difference between porting a control and rewriting one.",
+  "_verdict_vocabulary": {
+    "flag:offload": "The ask names a command the agent is obliged to run itself.",
+    "flag:settled": "The ask re-raises a decision the owner already made and recorded.",
+    "clean": "Nothing to act on. The turn stands exactly as written.",
+    "allow": "Pre-approve this command without asking.",
+    "no-opinion": "Say nothing and leave normal review in place."
+  },
+  "response_cases": [
+    {
+      "name": "an ask naming a pre-approved command is an offload",
+      "text": "Done.\n\n## What I need from you\n\n1. Run `run_audit.cmd` in D:\\Proj because I could not.\n",
+      "expect": "flag:offload"
+    },
+    {
+      "name": "an ask re-raising a settled decision is not merely an offload",
+      "text": "Shipped.\n\n## What I need from you\n\n- Decide where to publish this, then git push it.\n",
+      "expect": "flag:settled"
+    },
+    {
+      "name": "an ask for a profile write is legitimately the owner's",
+      "text": "Ready.\n\n## What I need from you\n\n1. Run install.ps1 -Scope User to update your profile.\n",
+      "expect": "clean"
+    },
+    {
+      "name": "prose naming commands is not a request to run them",
+      "text": "I ran run_audit.cmd and pack\\scripts\\verify-audit-system.ps1; both exited 0. The changelog explains why run_tests.bat is not an audit step.\n",
+      "expect": "clean"
+    },
+    {
+      "name": "stating a settled decision is not re-raising it",
+      "text": "Recorded that publish tasks require StarterPack-Airlock on the host Desktop, so default copies do not set up remotes.\n",
+      "expect": "clean"
+    },
+    {
+      "name": "an ask section with nothing actionable stays clean",
+      "text": "All green.\n\n## What I need from you\n\n- Nothing; this is a status note.\n",
+      "expect": "clean"
+    }
+  ],
+  "shell_cases": [
+    {
+      "name": "a verify gate the agent is obliged to run itself",
+      "command": "powershell -File D:\\Proj\\pack\\scripts\\verify-audit-system.ps1",
+      "expect": "allow"
+    },
+    {
+      "name": "an audit entry point",
+      "command": "cmd /c run_audit.cmd",
+      "expect": "allow"
+    },
+    {
+      "name": "a profile write is the owner's decision",
+      "command": "powershell -File D:\\Proj\\install.ps1 -Scope User",
+      "expect": "no-opinion"
+    },
+    {
+      "name": "refuse wins even when an allow pattern also matches",
+      "command": "powershell -File D:\\Proj\\pack\\scripts\\sync-audit-system.ps1 -PushFromProject",
+      "expect": "no-opinion"
+    },
+    {
+      "name": "a chained command cannot inherit an allow",
+      "command": "cmd /c run_audit.cmd ; Remove-Item -Recurse D:\\Proj",
+      "expect": "no-opinion"
+    },
+    {
+      "name": "an unrelated command gets no opinion, not a refusal",
+      "command": "git status",
+      "expect": "no-opinion"
+    }
+  ]
+}

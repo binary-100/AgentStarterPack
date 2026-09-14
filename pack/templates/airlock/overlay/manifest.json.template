@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "keyId": "{{PUBLISHER_KEY_ID}}",
+  "repoDir": "repo",
+  "overlayDir": "overlay",
+  "requiredReads": [
+    "overlay/docs/WORK_QUEUE.md",
+    "overlay/docs/PUBLISH.md"
+  ]
+}

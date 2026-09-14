@@ -9,9 +9,15 @@ param(
 $ErrorActionPreference = "SilentlyContinue"
 
 if (-not $TerminalsDir) {
+    # Resolved inline rather than through pack-paths.ps1: this script and cleanup-orphan-processes.ps1
+    # are called by the MCP server on a hot path and are deliberately dependency-free. $env:USERPROFILE
+    # is $null off Windows, and with $ErrorActionPreference SilentlyContinue that did not throw - the
+    # Join-Path simply produced nothing and the candidate list silently lost the user's terminals
+    # directory, so the script reported "no terminals found" instead of failing.
+    $homeDir = if ($env:USERPROFILE) { $env:USERPROFILE } elseif ($env:HOME) { $env:HOME } else { [Environment]::GetFolderPath('UserProfile') }
     $candidates = @(
-        Join-Path $env:USERPROFILE ".cursor\projects\*\terminals"
-        Join-Path (Get-Location) ".cursor\terminals"
+        Join-Path $homeDir ".cursor/projects/*/terminals"
+        Join-Path (Get-Location) ".cursor/terminals"
     )
     foreach ($pattern in $candidates) {
         $found = Get-ChildItem -Path $pattern -Filter "*.txt" -ErrorAction SilentlyContinue | Select-Object -First 1

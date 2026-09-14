@@ -22,7 +22,7 @@ if (-not (Test-Path $PackRoot)) {
 
 # Write-Utf8NoBom and Get-PackShellInfo: the installer used its own inline byte-writer, which is how
 # four copies of the same encoding fix ended up in the pack. Also brings the install-root override.
-. (Join-Path $PackRoot 'scripts\pack-paths.ps1')
+. (Join-Path $PackRoot 'scripts/pack-paths.ps1')
 
 # AGENT_STARTER_PACK_INSTALL_ROOT redirects the destination. Every other script honoured it through
 # pack-paths.ps1; this one hardcoded %USERPROFILE%\.cursor, so a test asking for a scratch destination
@@ -34,7 +34,7 @@ if ($installOverride) {
     # redirecting into the real profile.
     $UserCursor = Get-AgentStarterPackUserRoot
 } else {
-    $UserCursor = Join-Path $env:USERPROFILE ".cursor"
+    $UserCursor = Join-Path (Get-PackHomeDir) ".cursor"
     $CanonicalRoot = Join-Path $UserCursor "AgentStarterPack"
 }
 $LegacyCanonical = Join-Path $UserCursor "agent-starter-pack"
@@ -45,25 +45,58 @@ function Copy-Tree($src, $dst, [string[]]$SkipNames = @(), [string[]]$SkipDirNam
     if (-not (Test-Path $dst)) {
         New-Item -ItemType Directory -Path $dst -Force | Out-Null
     }
-    Get-ChildItem -Path $src -Recurse -File -Force | ForEach-Object {
+    # Enumerate tolerantly, then say what could not be read (WQ-461). Every filter below runs *per
+    # file*, after the walk, so none of them can stop Get-ChildItem entering a directory - which
+    # means an unreadable folder failed the entire install on a path no install ever needed. The
+    # real trigger: deleting a repository can leave a .git directory behind that the editor holds
+    # open, and `.git\` is already in SkipDirNames. Get-RelativeFileSet below has enumerated with
+    # -ErrorAction SilentlyContinue all along; this did not.
+    #
+    # Captured rather than discarded, because the two cases are not the same: an unreadable folder
+    # that is on the skip list is expected and silent, while any other one means files are missing
+    # from the install and a silent success there would be a lie.
+    $walkErrors = @()
+    $found = @(Get-ChildItem -Path $src -Recurse -File -Force -ErrorAction SilentlyContinue -ErrorVariable +walkErrors)
+    foreach ($walkError in $walkErrors) {
+        $badPath = [string]$walkError.TargetObject
+        if (-not $badPath) { continue }
+        $onSkipList = $false
+        try {
+            $badSegments = @(Split-PackPathKey (Get-PackRelPathKey -Path $badPath -Root $src))
+            foreach ($skipDir in $SkipDirNames) {
+                $skipKey = ConvertTo-PackPathKey $skipDir
+                if ($skipKey -and $badSegments -contains $skipKey) { $onSkipList = $true; break }
+            }
+        } catch { $onSkipList = $false }
+        if (-not $onSkipList) {
+            Write-Host "[warn] could not read $badPath - anything under it is NOT installed"
+        }
+    }
+    $found | ForEach-Object {
         if ($SkipNames -contains $_.Name) { return }
         if ($SkipExtensions -contains $_.Extension) { return }
         foreach ($pattern in $SkipNamePatterns) {
             if ($_.Name -like $pattern) { return }
         }
-        $rel = $_.FullName.Substring($src.Length).TrimStart("\")
+        # One spelling for both sides of every comparison below. The manifest lists forward slashes,
+        # Windows produces backslashes and Linux produces forward slashes; matching raw paths against
+        # `\`-shaped patterns worked on Windows by coincidence and excluded nothing anywhere else,
+        # which put maintainer-only and machine-local files into an installed profile off Windows.
+        $rel = Get-PackRelPathKey -Path $_.FullName -Root $src
         # Exact relative paths, so excluding a root doc cannot also exclude a same-named file
-        # somewhere under pack\. A listed folder excludes everything under it: docs\handoffs
+        # somewhere under pack/. A listed folder excludes everything under it: docs/handoffs
         # accumulates a file per work slice, and naming them one by one guarantees the next one ships.
-        if ($SkipRelPaths -contains $rel) { return }
         $inSkippedDir = $false
         foreach ($skipRel in $SkipRelPaths) {
-            if ($rel -like "$skipRel\*") { $inSkippedDir = $true; break }
+            if (Test-PackPathKeyUnder -PathKey $rel -PrefixKey $skipRel) { $inSkippedDir = $true; break }
         }
         if ($inSkippedDir) { return }
+        # Segments, not wildcards: __pycache__ sits under pack/scripts rather than at the root, and a
+        # `*.git*` pattern would also swallow a file called x.gitignore.
+        $segments = @(Split-PackPathKey $rel)
         foreach ($skipDir in $SkipDirNames) {
-            # Nested matches count too: __pycache__ sits under pack\scripts, not at the root.
-            if ($rel -like "$skipDir*" -or $rel -like "*\$skipDir*") { return }
+            $skipKey = ConvertTo-PackPathKey $skipDir
+            if ($skipKey -and $segments -contains $skipKey) { return }
         }
         $target = Join-Path $dst $rel
         $dir = Split-Path $target -Parent
@@ -79,7 +112,7 @@ function Get-RelativeFileSet([string]$Root) {
     if (-not (Test-Path $Root)) { return $set }
     $full = (Resolve-Path -LiteralPath $Root).Path
     Get-ChildItem -LiteralPath $full -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object {
-        $set[$_.FullName.Substring($full.Length).TrimStart('\')] = $true
+        $set[(Get-PackRelPathKey -Path $_.FullName -Root $full)] = $true
     }
     return $set
 }
@@ -94,14 +127,17 @@ function Get-StaleInstalledFiles([string]$SourceRoot, [string]$InstalledRoot, [s
     $sourceFiles = Get-RelativeFileSet $SourceRoot
     foreach ($rel in (Get-RelativeFileSet $InstalledRoot).Keys) {
         if ($rel -eq 'install-manifest.json') { continue }
-        # Scratch and bytecode are pruned elsewhere and may be in use by a concurrent run.
-        if ($rel -like '.tmp\*' -or $rel -like '__pycache__\*' -or $rel -like '*\__pycache__\*') { continue }
+        # Scratch and bytecode are pruned elsewhere and may be in use by a concurrent run. Asked as
+        # path-key questions: `-like '.tmp\*'` only ever matched because Windows produced backslashes,
+        # and it matches nothing at all once the keys are normalised.
+        if (Test-PackPathKeyUnder -PathKey $rel -PrefixKey '.tmp') { continue }
+        if (Test-PackPathHasSegment -Path $rel -Segment @('__pycache__')) { continue }
         if (-not $sourceFiles.ContainsKey($rel)) { [void]$stale.Add((Join-Path $InstalledRoot $rel)) }
     }
     if ($PreviousManifest) {
         foreach ($pair in @(
-                @{ recorded = $PreviousManifest.rules; source = (Join-Path $SourceRoot 'pack\rules'); dest = $RulesDir },
-                @{ recorded = $PreviousManifest.skills; source = (Join-Path $SourceRoot 'pack\skills'); dest = $SkillsDir })) {
+                @{ recorded = $PreviousManifest.rules; source = (Join-Path $SourceRoot 'pack/rules'); dest = $RulesDir },
+                @{ recorded = $PreviousManifest.skills; source = (Join-Path $SourceRoot 'pack/skills'); dest = $SkillsDir })) {
             if (-not $pair.recorded -or -not $pair.dest) { continue }
             foreach ($rel in $pair.recorded) {
                 if (Test-Path -LiteralPath (Join-Path $pair.source $rel)) { continue }
@@ -115,7 +151,7 @@ function Get-StaleInstalledFiles([string]$SourceRoot, [string]$InstalledRoot, [s
 
 function Merge-McpJson {
     $mcpPath = Join-Path $UserCursor "mcp.json"
-    $serverPy = Join-Path $CanonicalRoot "mcp\agent_hygiene_server.py"
+    $serverPy = Join-Path $CanonicalRoot "mcp/agent_hygiene_server.py"
     $pyCmd = "py"
     if (-not (Get-Command py -ErrorAction SilentlyContinue)) {
         $pyCmd = "python"
@@ -153,7 +189,7 @@ function Merge-McpJson {
 function Merge-SessionHooks {
     $hooksDir = Join-Path $UserCursor 'hooks'
     $hooksPath = Join-Path $UserCursor 'hooks.json'
-    $srcScript = Join-Path $PSScriptRoot 'pack\templates\cursor\hooks\session-freshness.ps1'
+    $srcScript = Join-Path $PSScriptRoot 'pack/templates/cursor/hooks/session-freshness.ps1'
     if (-not (Test-Path -LiteralPath $srcScript)) {
         Write-Warning "Session hook template missing: $srcScript"
         return
@@ -196,7 +232,7 @@ Write-Host "Agent Starter Pack v$Version - install ($Scope)`n"
 # Preflight before copying anything: a machine without Python gets a named requirement and an
 # install command here, instead of a cryptic failure the first time an audit shells out to py -3.
 if (-not $SkipPreflight) {
-    $preflight = Join-Path $PackRoot 'scripts\check-requirements.ps1'
+    $preflight = Join-Path $PackRoot 'scripts/check-requirements.ps1'
     if (Test-Path $preflight) {
         Invoke-PackScript -PassOutput -NoProfile -ScriptPath $preflight -Quiet
         if ($LASTEXITCODE -ne 0) {
@@ -224,21 +260,70 @@ if ((Test-Path $LegacyCanonical) -and -not (Test-Path $CanonicalRoot)) {
 # specs are written for whoever picks up the pack next, and a user who installed it has no use for
 # a stale one. .zip is excluded for the same reason - a release archive in the checkout is a build
 # artifact, not something to carry into every profile.
-$maintainerOnly = @()
-$mirrorManifest = Join-Path $PSScriptRoot 'pack\audit\manifest.json'
-if (Test-Path -LiteralPath $mirrorManifest) {
-    try {
-        $mm = Get-Content -LiteralPath $mirrorManifest -Raw | ConvertFrom-Json
-        $maintainerOnly = @($mm.maintainerOnlyPaths | Where-Object { $_ }) | ForEach-Object { $_ -replace '/', '\' }
-    } catch {
-        Write-Warning "Could not read maintainerOnlyPaths from the manifest - shipping the full tree: $_"
+    # machineLocalPaths is the same idea one step further (WQ-425). Those files record *a* machine - the
+    # checkout's own path, a context stamp, an install record - and installing from a folder that travelled
+    # here would plant another machine's state in this profile. export.ps1 has stripped them since 2.22.54
+    # and this script never did, which is the WQ-439 asymmetry at the other channel: one manifest list,
+    # two consumers, only one reading it.
+    $maintainerOnly = @()
+    $mirrorManifest = Join-Path $PSScriptRoot 'pack/audit/manifest.json'
+    if (Test-Path -LiteralPath $mirrorManifest) {
+        try {
+            $mm = Get-Content -LiteralPath $mirrorManifest -Raw | ConvertFrom-Json
+            # No separator translation here: Copy-Tree compares path keys, so the manifest's own
+            # forward slashes are already the canonical spelling on every OS.
+            $maintainerOnly = @($mm.maintainerOnlyPaths | Where-Object { $_ } | ForEach-Object { ConvertTo-PackPathKey $_ })
+            $maintainerOnly += @($mm.machineLocalPaths | Where-Object { $_ } | ForEach-Object { ConvertTo-PackPathKey $_ })
+            $maintainerOnly += @($mm.repoOnlyPaths | Where-Object { $_ } | ForEach-Object { ConvertTo-PackPathKey $_ })
+            $maintainerOnly = @($maintainerOnly | Where-Object { $_ } | Select-Object -Unique)
+        } catch {
+            Write-Warning "Could not read maintainerOnlyPaths, machineLocalPaths, or repoOnlyPaths from the manifest - shipping the full tree: $_"
+        }
     }
-}
 Copy-Tree $PSScriptRoot $CanonicalRoot `
     -SkipDirNames @('.git\', '.tmp\', '__pycache__\', '.pytest_cache\') `
     -SkipExtensions @('.pyc', '.pyo', '.zip') -SkipNamePatterns @('.audit_*') `
     -SkipRelPaths $maintainerOnly
 Write-Host "Canonical: $CanonicalRoot"
+
+# --- Make the delivered shell entry points actually runnable (WQ-454) ---
+# Two properties of a .sh file survive git and survive nothing else this pack travels through: the
+# execute bit and LF line endings. A folder copy, an unzipped archive, and exFAT or FAT media carry
+# neither, and Windows has no execute bit to copy in the first place. So the installer repairs both
+# at the destination rather than trusting the transport - which is what makes `bash install.sh` a
+# complete answer for a recipient who never used git.
+$installedSh = @(Get-ChildItem -LiteralPath $CanonicalRoot -Recurse -File -Filter '*.sh' -ErrorAction SilentlyContinue |
+        ForEach-Object { $_.FullName })
+
+# Endings before the bit: a CRLF file that is executable still fails, and it fails less legibly.
+# `#!/usr/bin/env bash\r` makes the interpreter path itself wrong, so bash answers
+# "$'\r': command not found" and names no file. Bytes, not Get-Content, because the reader strips
+# line endings and so cannot see the thing being tested.
+$crlfFixed = 0
+foreach ($shPath in $installedSh) {
+    try {
+        if (-not ([System.IO.File]::ReadAllBytes($shPath) -contains 13)) { continue }
+        Write-Utf8NoBom -Path $shPath -Text ([System.IO.File]::ReadAllText($shPath) -replace "`r`n", "`n" -replace "`r", "`n")
+        $crlfFixed++
+    } catch {
+        Write-Warning "Could not normalize line endings in $shPath - $($_.Exception.Message)"
+    }
+}
+if ($crlfFixed -gt 0) { Write-Host "Line endings: repaired $crlfFixed installed .sh file(s) to LF" }
+
+Set-PackExecutableBit -Path $installedSh
+
+# And the folder the installer was run from. Install fixes what it writes, which leaves the source
+# copy still unrunnable - so a recipient who unzips, installs, and then follows any doc that says
+# `./run_audit.sh` from the pack folder gets "Permission denied" from a pack that just installed
+# cleanly. A no-op on Windows, and never fatal: the source may sit on read-only media.
+try {
+    Set-PackExecutableBit -Path @(Get-ChildItem -LiteralPath $PSScriptRoot -Recurse -File -Filter '*.sh' -ErrorAction SilentlyContinue |
+            Where-Object { -not (Test-PackPathHasSegment -Path $_.FullName -Segment @('.git', '.tmp')) } |
+            ForEach-Object { $_.FullName })
+} catch {
+    Write-Warning "Could not set the execute bit on the source folder's .sh files - $($_.Exception.Message)"
+}
 
 if ($Scope -eq "User" -or $Scope -eq "Both") {
     $userSkills = Join-Path $UserCursor "skills"
@@ -265,8 +350,8 @@ if ($Scope -eq "User" -or $Scope -eq "Both") {
 }
 
 if ($Scope -eq "Project" -or $Scope -eq "Both") {
-    $projSkills = Join-Path $ProjectRoot ".cursor\skills"
-    $projRules = Join-Path $ProjectRoot ".cursor\rules"
+    $projSkills = Join-Path $ProjectRoot ".cursor/skills"
+    $projRules = Join-Path $ProjectRoot ".cursor/rules"
     Copy-Tree (Join-Path $PackRoot "skills") $projSkills -SkipDirNames @('agent-code-audit\')
     Copy-Tree (Join-Path $PackRoot "rules") $projRules
     Write-Host "Project skills: $projSkills (agent-code-audit excluded - use user pack skill)"
@@ -274,7 +359,7 @@ if ($Scope -eq "Project" -or $Scope -eq "Both") {
 }
 
 if ($RegisterMcp -or $Scope -eq "User" -or $Scope -eq "Both") {
-    if (Test-Path (Join-Path $CanonicalRoot "mcp\agent_hygiene_server.py")) {
+    if (Test-Path (Join-Path $CanonicalRoot "mcp/agent_hygiene_server.py")) {
         Merge-McpJson
     }
 }
@@ -284,10 +369,10 @@ if ($InstallSessionHooks) {
 }
 
 if ($InstallMcpDeps) {
-    $req = Join-Path $CanonicalRoot "mcp\requirements.txt"
+    $req = Join-Path $CanonicalRoot "mcp/requirements.txt"
     if (Test-Path $req) {
         Write-Host "Installing MCP Python deps..."
-        & py -3 -m pip install --user -r $req --quiet
+        Invoke-PackPython -m pip install --user -r $req --quiet
     }
 }
 
@@ -338,7 +423,7 @@ $manifest = @{
 
 Set-Content -Path $manifestPath -Value $manifest
 
-$syncScript = Join-Path $CanonicalRoot "pack\scripts\sync-audit-system.ps1"
+$syncScript = Join-Path $CanonicalRoot "pack/scripts/sync-audit-system.ps1"
 if (Test-Path $syncScript) {
     Write-Host "Syncing audit system..."
     # These steps run Python out of the installed tree, which would otherwise leave __pycache__
@@ -359,10 +444,10 @@ Get-ChildItem $CanonicalRoot -Recurse -Force -Directory -Filter '__pycache__' -E
 
 Write-Host ''
 Write-Host 'Done. Verify:'
-Write-Host "  & `"$CanonicalRoot\pack\scripts\verify-audit-system.ps1`""
-Write-Host "  & `"$CanonicalRoot\pack\scripts\verify-audit-behavior.ps1`""
-Write-Host "  & `"$CanonicalRoot\pack\scripts\sync-audit-system.ps1`" -VerifyOnly"
-Write-Host "  & `"$CanonicalRoot\pack\scripts\doctor.ps1`""
+Write-Host "  & `"$CanonicalRoot/pack/scripts/verify-audit-system.ps1`""
+Write-Host "  & `"$CanonicalRoot/pack/scripts/verify-audit-behavior.ps1`""
+Write-Host "  & `"$CanonicalRoot/pack/scripts/sync-audit-system.ps1`" -VerifyOnly"
+Write-Host "  & `"$CanonicalRoot/pack/scripts/doctor.ps1`""
 Write-Host 'MCP tools after Cursor restart: agent_hygiene_full_check, scan_orphan_agent_processes,'
 Write-Host '  cleanup_orphan_agent_processes, fix_stale_terminal_logs, kill_terminal_process'
 if (-not $NoPause) {

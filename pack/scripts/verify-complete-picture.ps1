@@ -13,6 +13,9 @@ param(
     [switch]$AllowMissing
 )
 
+. (Join-Path $PSScriptRoot 'pack-paths.ps1')
+. (Join-Path $PSScriptRoot 'verify-lib.ps1')
+
 $ErrorActionPreference = 'Stop'
 
 function Write-Ok($m) { if (-not $AuditMode) { Write-Host "[OK] $m" } }
@@ -32,35 +35,26 @@ $fix = 0
 $improve = 0
 $ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
 
-function Get-SectionBody([string]$content, [string]$startHdr, [string[]]$endHdrs) {
-    $start = $content.IndexOf($startHdr)
-    if ($start -lt 0) { return '' }
-    $slice = $content.Substring($start + $startHdr.Length)
-    $endPos = $slice.Length
-    foreach ($eh in $endHdrs) {
-        if ($eh -eq '---') {
-            $m = [regex]::Match($slice, '(?m)^\s*---\s*$')
-        } else {
-            $m = [regex]::Match($slice, '(?m)^\s*' + [regex]::Escape($eh))
-        }
-        if ($m.Success -and $m.Index -lt $endPos) { $endPos = $m.Index }
-    }
-    return $slice.Substring(0, $endPos)
-}
 
 function Get-WqIdsFromSection([string]$body) {
     @([regex]::Matches($body, '\|\s*(WQ-\d+)\s*\|') | ForEach-Object { $_.Groups[1].Value })
 }
 
+function New-WqIdHashSet([string[]]$Ids) {
+    $set = New-Object 'System.Collections.Generic.HashSet[String]'
+    foreach ($id in @($Ids)) {
+        if ($id) { [void]$set.Add($id) }
+    }
+    return ,$set
+}
+
 function Test-ProductTruthRoadmapAlignment {
     if (-not (Test-Path -LiteralPath $wqPath)) { return }
-    $roadmapPath = Join-Path $ProjectRoot 'docs\ROADMAP.md'
+    $roadmapPath = Join-Path $ProjectRoot 'docs/ROADMAP.md'
     if (-not (Test-Path -LiteralPath $roadmapPath)) { return }
     $wqRawAlign = Get-Content -LiteralPath $wqPath -Raw -Encoding UTF8
-    $doneBodyAlign = Get-SectionBody $wqRawAlign '## Done log' @('## Cross-references')
-    $doneIdSet = [System.Collections.Generic.HashSet[string]]::new(
-        [string[]](Get-WqIdsFromSection $doneBodyAlign)
-    )
+    $doneBodyAlign = Get-PackSectionBody $wqRawAlign '## Done log' @('## Cross-references')
+    $doneIdSet = New-WqIdHashSet (Get-WqIdsFromSection $doneBodyAlign)
     if ($doneIdSet.Count -eq 0) { return }
     $roadmapRaw = Get-Content -LiteralPath $roadmapPath -Raw -Encoding UTF8
     foreach ($doneId in $doneIdSet) {
@@ -78,6 +72,55 @@ function Test-ProductTruthRoadmapAlignment {
             }
         }
     }
+}
+
+function Test-WorkQueueHeaderNextAlignment {
+    if (-not $isPackRepo) { return }
+    if (-not (Test-Path -LiteralPath $wqPath)) { return }
+    $wqRawHdr = Get-Content -LiteralPath $wqPath -Raw -Encoding UTF8
+    $headerNext = ''
+    if ($wqRawHdr -match '(?m)\|\s*\*\*Next active ID\*\*\s*\|\s*\*\*(WQ-\d+)\*\*') {
+        $headerNext = $Matches[1]
+    } elseif ($wqRawHdr -match '(?m)\|\s*\*\*Next active ID\*\*\s*\|\s*\*\(none') {
+        $headerNext = '(none)'
+    } else {
+        Write-Info 'WORK_QUEUE header has no parseable Next active ID row'
+        return
+    }
+    $activeBodyHdr = Get-PackSectionBody $wqRawHdr '## Active queue' @(
+        '## Inbox', '## Engineering backlog', '## Parked', '## Done log', '## Cross-references'
+    )
+    $rowNext = [regex]::Match($activeBodyHdr, '\|\s*(WQ-\d+)\s*\|[^|]*\|\s*\*\*Next\*\*').Groups[1].Value
+    if ($headerNext -eq '(none)' -and -not $rowNext) {
+        Write-Ok 'WORK_QUEUE header Next active ID (none) matches empty Active **Next**'
+        return
+    }
+    if ($headerNext -match '^WQ-' -and $rowNext -and $headerNext -eq $rowNext) {
+        Write-Ok "WORK_QUEUE header Next active ID matches Active **Next** ($headerNext)"
+        return
+    }
+    $msg = if ($headerNext -eq '(none)' -and $rowNext) {
+        "WORK_QUEUE header says Next active ID (none) but Active queue has **Next** $rowNext"
+    } elseif ($headerNext -match '^WQ-' -and -not $rowNext) {
+        "WORK_QUEUE header says Next active ID $headerNext but Active queue has no **Next** row"
+    } else {
+        "WORK_QUEUE header Next active ID ($headerNext) != Active **Next** row ($rowNext)"
+    }
+    if ($AuditMode) { Emit-Audit 'FIX' $msg } else { Write-Fail $msg }
+}
+
+function Invoke-ProductTruthPathsVerify {
+    $ptScript = Join-Path $PSScriptRoot 'verify-product-truth-paths.ps1'
+    if (-not (Test-Path -LiteralPath $ptScript)) {
+        Write-Fail 'verify-product-truth-paths.ps1 missing'
+        return
+    }
+    $ptArgs = @('-ProjectRoot', $ProjectRoot)
+    if ($AllowMissing) { $ptArgs += '-AllowMissing' }
+    if ($AuditMode) { $ptArgs += '-AuditMode' }
+    Invoke-PackScript -PassOutput -NoProfile -ScriptPath $ptScript -ArgumentList $ptArgs | Out-Host
+    if ($AuditMode) { return }
+    if ($LASTEXITCODE -ne 0) { $script:fail++ }
 }
 
 $pendingPatterns = @(
@@ -129,15 +172,15 @@ $handoffSources = [System.Collections.Generic.List[string]]::new()
 foreach ($f in Get-ChildItem -LiteralPath $ProjectRoot -Filter 'HANDOFF*.md' -File -ErrorAction SilentlyContinue) {
     [void]$handoffSources.Add($f.FullName)
 }
-$wqPath = Join-Path $ProjectRoot 'docs\WORK_QUEUE.md'
+$wqPath = Join-Path $ProjectRoot 'docs/WORK_QUEUE.md'
 if (Test-Path -LiteralPath $wqPath) { [void]$handoffSources.Add($wqPath) }
-$handoffsDir = Join-Path $ProjectRoot 'docs\handoffs'
+$handoffsDir = Join-Path $ProjectRoot 'docs/handoffs'
 if (Test-Path -LiteralPath $handoffsDir) {
     Get-ChildItem -LiteralPath $handoffsDir -Filter '*.md' -Recurse -File -ErrorAction SilentlyContinue |
         ForEach-Object { [void]$handoffSources.Add($_.FullName) }
 }
 $isPackRepo = (Test-Path -LiteralPath (Join-Path $ProjectRoot 'install.ps1')) -and
-    (Test-Path -LiteralPath (Join-Path $ProjectRoot 'pack\audit\manifest.json'))
+    (Test-Path -LiteralPath (Join-Path $ProjectRoot 'pack/audit/manifest.json'))
 if ($isPackRepo) {
     # Curated on purpose, unlike the manifest-derived lists elsewhere: these are the documents that
     # make claims about handoff state, so they are the ones worth scanning for claims that contradict
@@ -171,7 +214,7 @@ if ($isPackRepo) {
         $installRaw = Get-Content -LiteralPath $installTxtPath -Raw -Encoding UTF8
         if ($installRaw -match 'QUICK INSTALL \(v(\d+\.\d+\.\d+)\)') {
             if ($Matches[1] -ne $canonicalPack) {
-                Write-Fail "INSTALL.txt title ($($Matches[1])) != VERSION ($canonicalPack) - run Sync-DocVersions.cmd"
+                Write-Fail "INSTALL.txt title ($($Matches[1])) != VERSION ($canonicalPack) - run $(Get-PackEntryPoint 'Sync-DocVersions')"
             } else {
                 Write-Ok 'INSTALL.txt title version aligns with VERSION'
             }
@@ -203,7 +246,7 @@ foreach ($src in $uniqueSources) {
     $raw = Get-Content -LiteralPath $src -Raw -Encoding UTF8
     $hits = @([regex]::Matches($raw, $patternRe, 'IgnoreCase'))
     if ($hits.Count -gt 0) {
-        $rel = $src.Substring($ProjectRoot.Length).TrimStart('\')
+        $rel = Get-PackRelPathKey -Path $src -Root $ProjectRoot
         $msg = "pending-work keywords: $rel ($($hits.Count) match(es))"
         if ($AuditMode) { Emit-Audit 'INFO' $msg } else { Write-Info $msg }
     }
@@ -220,16 +263,16 @@ Test-ProductTruthRoadmapAlignment
 # have such a file were the ones getting the least checking.
 if (Test-Path -LiteralPath $wqPath) {
     $wqRaw = Get-Content -LiteralPath $wqPath -Raw -Encoding UTF8
-    $activeBody = Get-SectionBody $wqRaw '## Active queue' @(
+    $activeBody = Get-PackSectionBody $wqRaw '## Active queue' @(
         '## Inbox', '## Engineering backlog', '## Parked', '## Done log', '## Cross-references'
     )
-    $doneBody = Get-SectionBody $wqRaw '## Done log' @('## Cross-references')
+    $doneBody = Get-PackSectionBody $wqRaw '## Done log' @('## Cross-references')
     $activeNext = [regex]::Match($activeBody, '\|\s*(WQ-\d+)\s*\|[^|]*\|\s*\*\*Next\*\*').Groups[1].Value
 
     # One Next, and it must not already be finished. With a single status claim the failure mode is no
     # longer disagreement between documents but self-contradiction inside this one.
     $activeIds = @(Get-WqIdsFromSection $activeBody) | Select-Object -Unique
-    $doneIds = [System.Collections.Generic.HashSet[string]]::new([string[]](Get-WqIdsFromSection $doneBody))
+    $doneIds = New-WqIdHashSet (Get-WqIdsFromSection $doneBody)
     $bothIds = @($activeIds | Where-Object { $doneIds.Contains($_) })
     if ($bothIds) {
         $msg = "WORK_QUEUE lists in both Active and Done: $($bothIds -join ', ')"
@@ -250,10 +293,8 @@ if (Test-Path -LiteralPath $wqPath) {
 
 if (Test-Path -LiteralPath $wqPath) {
     $wqRawAlign = Get-Content -LiteralPath $wqPath -Raw -Encoding UTF8
-    $doneBodyAlign = Get-SectionBody $wqRawAlign '## Done log' @('## Cross-references')
-    $doneIdSet = [System.Collections.Generic.HashSet[string]]::new(
-        [string[]](Get-WqIdsFromSection $doneBodyAlign)
-    )
+    $doneBodyAlign = Get-PackSectionBody $wqRawAlign '## Done log' @('## Cross-references')
+    $doneIdSet = New-WqIdHashSet (Get-WqIdsFromSection $doneBodyAlign)
     foreach ($rule in $shippedWqContradictions) {
         if (-not $doneIdSet.Contains($rule.WqId)) { continue }
         foreach ($src in $uniqueSources) {
@@ -291,6 +332,25 @@ if (Test-Path -LiteralPath $wqPath) {
         }
     }
 }
+
+Test-WorkQueueHeaderNextAlignment
+Invoke-ProductTruthPathsVerify
+
+function Invoke-SessionHandoffVerify {
+    $shScript = Join-Path $PSScriptRoot 'verify-session-handoff.ps1'
+    if (-not (Test-Path -LiteralPath $shScript)) {
+        Write-Fail 'verify-session-handoff.ps1 missing'
+        return
+    }
+    $shArgs = @('-ProjectRoot', $ProjectRoot)
+    if ($AllowMissing) { $shArgs += '-AllowMissing' }
+    if ($AuditMode) { $shArgs += '-AuditMode' }
+    Invoke-PackScript -PassOutput -NoProfile -ScriptPath $shScript -ArgumentList $shArgs | Out-Host
+    if ($AuditMode) { return }
+    if ($LASTEXITCODE -ne 0) { $script:fail++ }
+}
+
+Invoke-SessionHandoffVerify
 
 if ($AuditMode) {
     Write-Host "Summary: fix=$fix improve=$improve"

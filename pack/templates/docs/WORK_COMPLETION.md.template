@@ -28,6 +28,8 @@ This file is the **project overlay** — paths and test entry only. Do not dupli
 
 Canonical procedure: `%USERPROFILE%\.cursor\AgentStarterPack\pack\docs\WORK_COMPLETION.md` § Step 3.
 
+Optional mechanical claims (doc vs code): copy `pack/templates/docs/product_truth_verify.json.example` to `docs/.product_truth_verify.json` and edit per slice.
+
 Replace `{{PROJECT_ROOT}}` with your machine path if this template was not customized at bootstrap.
 
 ---

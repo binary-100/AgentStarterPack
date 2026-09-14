@@ -13,7 +13,7 @@ function Get-StarterPackRoot {
     . (Join-Path $PSScriptRoot 'pack-paths.ps1')
     $found = Get-AgentStarterPackRoot
     if ($found) { return $found }
-    throw "Agent Starter Pack not found. Run Install-AgentStarterPack.cmd first."
+    throw "Agent Starter Pack not found. Run $(Get-PackEntryPoint 'install') first."
 }
 
 function Merge-McpEntry {
@@ -40,14 +40,14 @@ function Merge-McpEntry {
             New-Item -ItemType Directory -Path $dir -Force | Out-Null
         }
     }
-    ($root | ConvertTo-Json -Depth 6) | Set-Content -Path $ConfigPath -Encoding UTF8
+    Write-Utf8NoBom $ConfigPath (($root | ConvertTo-Json -Depth 6))
     Write-Host "[ok] MCP registered: $ConfigPath"
 }
 
 $starterRoot = Get-StarterPackRoot
-$serverPy = Join-Path $starterRoot "mcp\agent_hygiene_server.py"
+$serverPy = Join-Path $starterRoot "mcp/agent_hygiene_server.py"
 if (-not (Test-Path $serverPy)) {
-    Write-Error "agent_hygiene_server.py not found. Run Install-AgentStarterPack.cmd first."
+    Write-Error "agent_hygiene_server.py not found. Run $(Get-PackEntryPoint 'install') first."
 }
 
 $pyCmd = if (Get-Command py -ErrorAction SilentlyContinue) { "py" } else { "python" }
@@ -57,7 +57,7 @@ $entry = @{
 }
 
 if ($InstallDeps) {
-    $req = Join-Path $starterRoot "mcp\requirements.txt"
+    $req = Join-Path $starterRoot "mcp/requirements.txt"
     if (Test-Path $req) {
         Write-Host "Installing MCP Python deps..."
         & $pyCmd -3 -m pip install -r $req --quiet
@@ -65,7 +65,7 @@ if ($InstallDeps) {
 }
 
 if ($Tool -eq "Claude" -or $Tool -eq "All") {
-    $claudeConfig = Join-Path $env:APPDATA "Claude\claude_desktop_config.json"
+    $claudeConfig = Join-Path $env:APPDATA "Claude/claude_desktop_config.json"
     Merge-McpEntry -ConfigPath $claudeConfig -Entry $entry
     Write-Host "Restart Claude Desktop to load MCP."
 }

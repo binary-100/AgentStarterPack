@@ -92,8 +92,8 @@ try {
         # folder on purpose; this file is excluded from the legacy-pack-folder-name static check for the
         # same reason pack-paths.ps1 is - it is the code that owns that list, not a stale reference to it.
         $winHeuristics = @(
-            (Join-Path $env:USERPROFILE 'OneDrive\Desktop\AgentStarterPack')
-            (Join-Path $env:USERPROFILE 'OneDrive\Desktop\CursorAgentStarterPack')
+            (Join-Path $env:USERPROFILE 'OneDrive/Desktop/AgentStarterPack')
+            (Join-Path $env:USERPROFILE 'OneDrive/Desktop/CursorAgentStarterPack')
         )
         $desktop = [Environment]::GetFolderPath('Desktop')
         if ($desktop) {

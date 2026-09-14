@@ -67,7 +67,7 @@ if (Test-Path -LiteralPath $aiPath) {
     } else { Write-Ok 'AI_INSTRUCTIONS.md cites AGENT_SESSION_START' }
 }
 
-$localRules = Join-Path $ProjectRoot 'docs\portable\GENERIC_RULES.md'
+$localRules = Join-Path $ProjectRoot 'docs/portable/GENERIC_RULES.md'
 if (-not (Test-Path -LiteralPath $localRules)) {
     Write-Fail 'missing docs/portable/GENERIC_RULES.md (run refresh or repair-agent-docs.ps1)'
 } else { Write-Ok 'present: docs/portable/GENERIC_RULES.md' }
@@ -108,7 +108,7 @@ if ($portableOnly -or ($targets -contains 'Portable' -and -not $hasEditorTarget)
             Write-Fail "Portable-only bootstrap has orphan $($orphan.Label): $($orphan.Path)"
         }
     }
-    if (-not (Test-Path -LiteralPath (Join-Path $ProjectRoot '.cursor\rules\audit.mdc'))) {
+    if (-not (Test-Path -LiteralPath (Join-Path $ProjectRoot '.cursor/rules/audit.mdc'))) {
         Write-Fail 'missing .cursor/rules/audit.mdc (required for audit wiring on all targets)'
     } else { Write-Ok 'audit.mdc present (required on all targets)' }
     if ($script:fail -eq 0) { Write-Ok 'Portable-only bootstrap profile' }
@@ -116,7 +116,7 @@ if ($portableOnly -or ($targets -contains 'Portable' -and -not $hasEditorTarget)
     if ($targets -contains 'Claude' -and -not (Test-Path -LiteralPath (Join-Path $ProjectRoot 'CLAUDE.md'))) {
         Write-Fail 'targets include Claude but CLAUDE.md is missing'
     }
-    if ($targets -contains 'Copilot' -and -not (Test-Path -LiteralPath (Join-Path $ProjectRoot '.github\copilot-instructions.md'))) {
+    if ($targets -contains 'Copilot' -and -not (Test-Path -LiteralPath (Join-Path $ProjectRoot '.github/copilot-instructions.md'))) {
         Write-Fail 'targets include Copilot but .github/copilot-instructions.md is missing'
     }
     if ($targets -contains 'Windsurf' -and -not (Test-Path -LiteralPath (Join-Path $ProjectRoot '.windsurfrules'))) {

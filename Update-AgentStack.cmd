@@ -1,6 +1,6 @@
 @echo off
 REM One entry after pack upgrade: optional install + project refresh + open-chat reminder.
-REM Usage: Update-AgentStack.cmd [ProjectRoot] [-Install] [-SkipProjectSync] [-NoClipboard]
+REM Usage: Update-AgentStack.cmd [ProjectRoot] [-Install] [-SkipProjectSync] [-NoClipboard] [-VerifyOnly]
 setlocal
 set "PACK=%~dp0"
 if "%PACK:~-1%"=="\" set "PACK=%PACK:~0,-1%"

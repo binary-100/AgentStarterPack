@@ -8,7 +8,10 @@ Portable **audit protocol**, **terminal/build hygiene**, and **new-project boots
 
 ## Quick install
 
-**Double-click:** `Install-AgentStarterPack.cmd`
+| Host | Command |
+|------|---------|
+| Windows | `Install-AgentStarterPack.cmd` |
+| macOS / Linux | `bash install.sh User` ? use `bash`, never `./` |
 
 Then verify:
 
@@ -84,7 +87,7 @@ or in Cursor just type **refresh pack context**.
 | File | Meaning |
 |------|---------|
 | Root **`VERSION`** | Starter pack release (**1.8.0**) |
-| **`pack/audit/manifest.json`** | Audit engine version (**2.22.65**) |
+| **`pack/audit/manifest.json`** | Audit engine version (**2.22.123**) |
 
 Pack history: **[CHANGELOG.md](CHANGELOG.md)**  
 Audit engine history: **[pack/docs/AUDIT_SYSTEM_CHANGELOG.md](pack/docs/AUDIT_SYSTEM_CHANGELOG.md)**

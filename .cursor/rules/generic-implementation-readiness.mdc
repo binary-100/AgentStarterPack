@@ -1,0 +1,58 @@
+---
+description: Phase 0 readiness table before Phase 1 code on multi-zone or multi-tree features — one green gate is not implementable
+alwaysApply: true
+---
+
+# Implementation readiness (all projects)
+
+## When Phase 0 applies
+
+Use **Phase 0** with **`generic-phased-feature-design.mdc`** when the work is a **multi-step feature or refactor** **and** any trigger below is true:
+
+| Trigger | Illustrative shapes (not exhaustive) |
+|---------|--------------------------------------|
+| Runtime split across two roots or trees | Dev checkout vs publish repo; app vs infra repo |
+| Separate deploy or publish lane | Staging tree, release bundle, export-only handout |
+| Sync or copy between trees before ship | Merge working tree into release dir before push |
+| Proof mode differs by zone | Content fingerprint vs VCS HEAD; offline vs online verify |
+| Full proof blocked on external input | Missing credential, hardware, or host-only path — mark **Blocked**, not silent skip |
+
+If **none** of the triggers apply, phased design alone is enough — **do not** invent a readiness table for ordinary single-tree features.
+
+## Phase 0 — before Phase 1 code or "design complete"
+
+1. Add **`## Implementation readiness`** to the feature plan (`docs/*_PLAN.md`, `docs/ROADMAP.md` phased section, or equivalent).
+2. Use the table template in **`pack/docs/PHASED_FEATURE_DESIGN.md`** (appendix).
+3. Each row: **Track | Check | Evidence required | Status**.
+4. **Status** is exactly one of: **Done** (cite log path, exit code, or artifact), **Not done**, or **Blocked** (owner + re-open when).
+5. **Batch** expensive gates across rows — see **`generic-execution-strategy.mdc`**. One suite run covering ten subjects beats ten serial reruns.
+
+## Required before claiming ready
+
+| Claim | Requirement |
+|-------|-------------|
+| "Design holds" / "simulations pass" | Every **required** readiness row is **Done** or **Blocked** with owner — not **Not done** |
+| "Through Phase N" (N ≥ 1) | Phase 0 complete when triggers applied |
+| Start Phase 1 **implementation code** | Same as above |
+
+**Required** rows are those the plan marks required, or every row when the plan does not distinguish optional tracks.
+
+## Forbidden
+
+- Reporting success on **one green gate** (layout sim, one grep, one partial suite) while cross-cutting tracks — consumers, policy, sync, end-to-end ship path — are absent from the table or still **Not done**.
+- Equating **"simulations pass"** with **implementable**.
+- Starting Phase 1 code while required rows are **Not done** unless the plan records them **Blocked** with owner.
+- If the user asks **"what could we be missing?"** on readiness work — the Phase 0 table was incomplete; loop back and fill rows. Do not ask them to rephrase.
+
+## Relationship to other rules
+
+| Rule | Division |
+|------|----------|
+| `generic-phased-feature-design.mdc` | Phase order **0 → N**; Phase 0 = readiness, Phase 1+ = build |
+| `generic-deep-task-execution.mdc` | Readiness triggers also invoke the implementation-readiness contract |
+| `generic-execution-strategy.mdc` | Batch readiness gates; never batch away required rows |
+| Feature plan in project docs | **Concrete rows and evidence** — never in this generic rule |
+
+## Pack maintenance
+
+Canonical copy: `pack/rules/generic-implementation-readiness.mdc`. Delivered into a project's `.cursor/rules/` by **`sync-project-rules.ps1`** and into **`pack/docs/portable/GENERIC_RULES.md`** by **`sync-portable-docs.ps1`**. Edit **`pack/rules/`** only — not synced copies under `.cursor/rules/`.

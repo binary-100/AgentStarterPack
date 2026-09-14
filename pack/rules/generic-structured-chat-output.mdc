@@ -1,0 +1,78 @@
+---
+description: Structure user-facing replies - answer first, headings and bullets over walls of prose, tables only for uniform facts
+alwaysApply: true
+---
+
+# Structured chat output (all projects)
+
+Lead with the answer, then organize the supporting detail. A reply the user has to re-read is not
+short, however few words it used.
+
+Referenced from **`agent-defaults-always.mdc`** § Chat output shape.
+
+## Required
+
+- **Answer first** — one or two sentences stating the outcome, before any heading or table.
+- **Headings** (`##`) once a reply covers more than one topic.
+- **Bullets** for anything the user reads as a list: findings, changed files, next steps.
+- **Tables** for enumerable facts with the same shape across rows — status per item, file per purpose, before vs after, option vs cost.
+- **Action items in their own section** when — and only when — something is genuinely the user's to do, with the exact command or path, where to run it, and why the agent could not.
+
+## Forbidden
+
+- Multi-paragraph prose where a table or bullet list carries the same facts.
+- A reply that opens with background and buries the result at the bottom.
+- Restating a table in prose immediately after it.
+- Labels the user has to cross-reference (`option A`, `item 3`, `as noted above`) instead of naming the thing.
+- Arrow chains and shorthand as sentence substitutes (`A → B → fails`).
+- Burying something the user must do inside a status paragraph.
+- **An action section with nothing in it** — an empty **What I need from you**, a standing
+  "nothing needed" line, or any sentence whose only content is that the agent has no ask. When there
+  is no ask, the section is **absent**; its absence is the message.
+- **Returning the turn to ask for work the user already authorized** — a closing "shall I continue?",
+  "let me know if you want the next one", or a status report that stops at a finished item while the
+  queue has a next one. See **`generic-work-queue-discipline.mdc`** § Continuing without being asked
+  again.
+
+## Keep as prose
+
+Tables flatten reasoning. Use sentences for:
+
+- **Why** — cause, mechanism, what the bug actually did
+- **Tradeoffs and recommendations** — when one option wins and why
+- **Uncertainty** — what was not verified, and what would verify it
+
+## Shape by request type
+
+| User asks | Reply shape |
+|-----------|-------------|
+| Simple or factual question | Direct answer in one or two sentences — no headings, no table |
+| Status / "where are we" | Short verdict, then a status table, then next actions as a list |
+| Test/gate after a fix | Current pass/fail first; **Fix:** … **Current:** … in one block — see **`generic-fix-and-verify-reporting.mdc`** |
+| Multi-file change or audit | Answer first, then grouped bullets or a table per area |
+| Choice between approaches | Table of option vs cost, then one sentence naming the recommendation |
+| Explanation of a failure | Prose for the mechanism; table or bullets only for the affected files |
+
+## Length
+
+Cut content, not clarity. Drop detail that would not change what the user does next; keep complete
+sentences and spelled-out technical terms in what remains. Brevity that costs a re-read has saved
+nothing.
+
+## Related rules — not restated here
+
+- **`full-paths-in-chat.mdc`** — absolute paths when telling the user where something lives. This rule
+  governs the *shape* of a reply; that one governs how a path inside it is written.
+- **`generic-deep-task-execution.mdc`** — prescribes a **response order** for deep compare, full scan
+  and complete-picture work (evidence before verdict). Where a depth contract names an order, it wins:
+  this rule says answer first, and for those requests the answer is not credible before the evidence.
+- **`generic-fix-and-verify-reporting.mdc`** — after a fix, pair mechanism with the latest gate
+  result; a past failure alone reads as open work.
+
+## Pack maintenance
+
+Canonical copy: `pack/rules/generic-structured-chat-output.mdc`. **Applies where synced into a
+project's `.cursor/rules/`** by `sync-project-rules.ps1` — a project's rules folder is loaded, and
+no editor documents reading `%USERPROFILE%\.cursor\rules\`, which is why this rule lives here rather
+than in the profile. An earlier copy of this guidance sat in the profile declaring
+`alwaysApply: true` for months and applied to nothing.

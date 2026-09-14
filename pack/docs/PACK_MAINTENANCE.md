@@ -13,7 +13,7 @@ Last updated: **2026-08-27**
 | **Agent Starter Pack** (`pack/`) | Generic rules, skills, audit engine, bootstrap templates | Put product-specific logic here |
 | **Each app repo** | Product rules, `AGENTS.md`, `AUDIT.config.json`, domain docs | Edit generic rules locally — sync from pack instead |
 
-The pack is **portable** (flash drive, new machine): copy the folder, run `Install-AgentStarterPack.cmd`, agents get the same global rules everywhere.
+The pack is **portable** (flash drive, new machine): copy the folder, run `Install-AgentStarterPack.cmd`, agents get the same skills and MCP wiring everywhere. **Rules are per project**, not global — see below.
 
 ---
 
@@ -35,7 +35,11 @@ The pack is **portable** (flash drive, new machine): copy the folder, run `Insta
 
 ## Generic rules (pack-owned)
 
-These files in `pack/rules/` are copied by `install.ps1` to `%USERPROFILE%\.cursor\rules\`:
+**Where a rule has to land to apply.** No AI editor documents reading a home-folder rules directory — Cursor's four rule locations are project `.cursor/rules/`, User Rules, Team Rules and `AGENTS.md` (WQ-456). So the copy `install.ps1` makes in `%USERPROFILE%\.cursor\rules\` is best-effort reference text, and **a rule binds only where `sync-project-rules.ps1` has put it in a project's `.cursor/rules/`**. Skills are different: `~/.cursor/skills/` **is** a documented global load path, so the profile install is the real mechanism for those.
+
+Editors also build rule context at session start and never reload it, so a rule change cannot reach an open chat except through `Refresh-AgentContext.cmd`, which names the always-on rule files as required reading when they move.
+
+These files in `pack/rules/` are copied by `install.ps1` to `%USERPROFILE%\.cursor\rules\` (best-effort) and by `sync-project-rules.ps1` into each project's `.cursor/rules/` (where they apply):
 
 - `agent-defaults-always.mdc`
 - `full-paths-in-chat.mdc`

@@ -52,14 +52,18 @@ Implement phases **in order** — see `pack/docs/PHASED_FEATURE_DESIGN.md`.
 
 ### Artifact × tool
 
-| Artifact / capability | Cursor | Claude Desktop | GitHub Copilot | Windsurf | Generic CLI / other |
-|------------------------|--------|----------------|----------------|----------|---------------------|
-| **`AGENTS.md`** | ✅ | ✅ | ✅ | ✅ | ✅ — primary project entry |
-| **`AI_INSTRUCTIONS.md`** | ✅ | ✅ | ✅ | ✅ | ✅ — universal hub (2.22.8+) |
-| **Bootstrap `-Targets`** | ✅ `Cursor`, `All` | ✅ `Claude`, `All` | ✅ `Copilot`, `All` | ✅ `Windsurf`, `All` | ✅ `Portable` (no editor files) |
-| **Per-tool entry files** | `.cursor/rules/*.mdc` | `CLAUDE.md` | `.github/copilot-instructions.md` | `.windsurfrules` | N/A |
-| **Global always-on rules** | ✅ `%USERPROFILE%\.cursor\rules\` via `install.ps1` | ❌ | ❌ | ❌ | ❌ |
-| **Skills (`agent-code-audit`, etc.)** | ✅ `.cursor/skills/` | ❌ | ❌ | ❌ | ⚠️ Content in pack; no auto-load |
+| Artifact / capability | Cursor | OpenCode | Claude Desktop | GitHub Copilot | Windsurf | Generic CLI / other |
+|------------------------|--------|----------|----------------|----------------|----------|---------------------|
+| **`AGENTS.md`** | ✅ | ✅ **native, and first in precedence** | ✅ | ✅ | ✅ | ✅ — primary project entry |
+| **`AI_INSTRUCTIONS.md`** | ✅ | ✅ (via `instructions`) | ✅ | ✅ | ✅ | ✅ — universal hub (2.22.8+) |
+| **Bootstrap `-Targets`** | ✅ `Cursor`, `All` | ✅ `OpenCode`, `All` (2.22.122+) | ✅ `Claude`, `All` | ✅ `Copilot`, `All` | ✅ `Windsurf`, `All` | ✅ `Portable` (no editor files) |
+| **Per-tool entry files** | `.cursor/rules/*.mdc` | `opencode.json` + `AGENTS.md` | `CLAUDE.md` | `.github/copilot-instructions.md` | `.windsurfrules` | N/A |
+| **Global always-on rules** | ❌ none — `%USERPROFILE%\.cursor\rules\` is not a documented Cursor rule location (WQ-456); use project `.cursor/rules/` | ✅ **`~/.config/opencode/AGENTS.md`** — a real global load path, which is more than Cursor offers | ❌ | ❌ | ❌ | ❌ |
+| **Loads the pack's rule files as-is** | ✅ `.cursor/rules/` | ✅ **`instructions` globs** can name `.cursor/rules/*.mdc` directly — no conversion, no second copy | ❌ paste/export only | ❌ | ❌ | ❌ |
+| **Declarative command pre-approval** | ⚠️ `beforeShellExecution` hook script (WQ-476) | ✅ **native `permission.bash` glob→effect map** — compiled from `.agent-control/policy.json` and **confirmed adopted by the binary** (1.18.30, WQ-480) | ❌ | ❌ | ❌ | ❌ |
+| **Hand a finished turn back to the agent** | ✅ `stop` hook → `followup_message` (WQ-476, proven 2026-09-11) | ⚠️ plugin `stop` hook can prevent stopping and send a prompt — **TypeScript, and unverifiable on this host** (no JS runtime; WQ-479 Phase 3) | ❌ | ❌ | ❌ | ❌ |
+| **Decides from the host-neutral policy** | ✅ hooks compile the globs to regex at runtime | ✅ `permission.bash` compiled at bootstrap | ❌ no adapter yet | ❌ | ❌ | ❌ |
+| **Skills (`agent-code-audit`, etc.)** | ✅ `.cursor/skills/` | ✅ `.opencode/skills/`, and reads `~/.claude/skills/` | ❌ | ❌ | ❌ | ⚠️ Content in pack; no auto-load |
 | **MCP agent-hygiene** | ✅ `mcp.json` under `.cursor\` | ⚠️ `register-tool-adapters.ps1 -InstallMcp` / `register-portable-mcp.ps1` | ❌ | ❌ | ❌ |
 | **`run_audit.cmd` / scripts** | ✅ | ✅ | ✅ | ✅ | ✅ — PowerShell/Python CLI |
 | **Audit skill invocation** | ✅ Cursor skill | ⚠️ Via `AGENTS.md` / `AI_INSTRUCTIONS.md` text | ⚠️ Same | ⚠️ Same | ⚠️ Same |
@@ -76,9 +80,58 @@ Implement phases **in order** — see `pack/docs/PHASED_FEATURE_DESIGN.md`.
 | **`repair-agent-docs.ps1` on refresh** | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **`docs/ROADMAP.md`** | ✅ apps | ✅ apps | ✅ apps | ✅ apps | ✅ apps |
 
+### The Cursor-shaped assumption, named (WQ-479, 2026-09-11)
+
+**This matrix was written as "Cursor plus fallbacks", and that framing hid a real finding: on the two
+capabilities this pack cares most about, OpenCode is better provisioned than Cursor.** It has a global
+rules path that actually loads (`~/.config/opencode/AGENTS.md`), where Cursor's profile folder loads
+nothing — a fact WQ-456 spent a release proving the hard way. And it pre-approves commands
+**declaratively**, where WQ-476 had to write a hook script to get the same behaviour.
+
+**The lesson is about build order, not about editors.** The offload control (WQ-476/477) was designed,
+built and certified against Cursor's hook surface without anyone asking whether the mechanism ports.
+It happens to port well, because the *decision list* is a JSON file and only the *plumbing* is
+Cursor-specific — but that was luck rather than design. The general rule, now recorded here: **when a
+control is built on a host-specific mechanism, the data it decides from belongs in a host-neutral
+file, and only the plumbing may be host-specific.**
+
+### Acting on it, and the part luck did not cover (WQ-480, 2026-09-11)
+
+The maintainer's objection to the paragraph above was that it describes a fix without applying one:
+*"I fear we are changing one specific design for another instead of creating a tool that will work on
+all AI inference engines/models."* He was right. The decision list was neutral in *format* and
+Cursor-shaped in three ways that would each have forced a second implementation:
+
+| Was | Now | Why it mattered |
+|---|---|---|
+| Lived in `pack/templates/cursor/hooks/preapproved.json` | `.agent-control/policy.json`, found by walking up | Shared data inside one host's folder becomes that host's data |
+| Patterns were **regexes** | Patterns are **globs** | A glob compiles to a regex losslessly; a regex does not compile to a glob at all, and OpenCode takes globs |
+| Semantics lived only in PowerShell | `conformance.json` vectors | One policy stops adapters disagreeing about data, not about which rule wins |
+
+**A second adapter is not finished when it reads the policy — it is finished when it passes
+`conformance.json`.** That file is the difference between porting a control and rewriting one, and it
+exists because the subtle failure here is not an adapter that crashes; it is an adapter that looks
+installed and quietly decides differently.
+
+**What is deliberately still missing:** the OpenCode plugin that hands a finished turn back. Its
+`stop` hook is TypeScript, this host has no JavaScript runtime, and `opencode run` needs provider
+credentials — so a plugin shipped from here would be unverifiable. The pack has a standing answer for
+that situation and it is the one applied: ship what the host can confirm, and say plainly what it
+cannot. The permission half **was** confirmed — `opencode debug agent build` on 1.18.30 resolves all
+33 compiled rules, `*run_audit.cmd*` as `allow` and `*install.ps1*` as `ask`.
+
 ### Gap summary (remaining — not model-specific)
 
-1. **Global auto-load** — only Cursor reads `%USERPROFILE%\.cursor\rules\`; other hosts need project files or paste (mitigated by project-local `docs/portable/` copy on refresh).
+0. **OpenCode is installed here now, and the docs were wrong about the schema.** OpenCode 1.18.30
+   (winget `SST.opencode`) runs on this host, which retires the "unverified" caveat this item used to
+   carry. Worth keeping as a warning: **neither documented shape was right.** The v1 `permission`
+   object and the v2 per-agent `permissions` array both appear in current docs, while
+   `opencode debug agent build` resolves rules as `{permission, pattern, action}` and accepts
+   authoring as `permission.<action>` = a bare effect **or** a glob→effect object. Waiting for the
+   binary instead of shipping from the documentation is the only reason the compiled block works.
+   **Still open:** the plugin `stop` handback (WQ-479 Phase 3) — TypeScript, no JS runtime here, and
+   `opencode run` needs provider credentials.
+1. **Global auto-load — Cursor has none for rules; OpenCode does.** `%USERPROFILE%\.cursor\rules\` is not a documented Cursor rule location, so the profile copy binds nothing anywhere (WQ-456); every host needs project files. Rules go to a project's `.cursor/rules/` and `AGENTS.md` via `sync-project-rules.ps1`; `Refresh-AgentContext.cmd` reports `loadedRules: stale` when they did not arrive. Skills are the exception — `~/.cursor/skills/` **is** a documented global load path.
 2. **Skills auto-load** — Cursor-native; non-Cursor agents read `docs/portable/skills/*.md` when auditing (documented in `AI_INSTRUCTIONS.md`).
 3. **MCP registration** — Cursor + optional Claude; Copilot/Windsurf have no MCP path in pack.
 4. **OS entry points** — `.cmd` + `powershell.exe` + `py -3` remain Windows-first; PS 7 runs the `.ps1` bodies cross-host but full macOS/Linux parity is **WQ-304**.

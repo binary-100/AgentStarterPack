@@ -2,6 +2,8 @@
 param(
     [switch]$FixHints,
     [string]$ProjectRoot = "",
+    # Airlock Zone B: optional second behavior pass against StarterPack-Airlock repo/ (B10).
+    [string]$PublishRoot = '',
     # The behavior suite is the pack engine's own test suite: it bootstraps and audits probe
     # projects inside the pack folder. A downstream project's audit has no business running it
     # (and step 23 would re-enter this script), so those callers pass -SkipBehavior and prove the
@@ -82,14 +84,28 @@ $forbiddenPatterns = @(
 Write-Host "Audit system verification`n"
 . (Join-Path $PSScriptRoot 'pack-paths.ps1')
 
+. (Join-Path $PSScriptRoot 'verify-lib.ps1')
+
 function Get-PackRoots {
-    Get-AgentStarterPackCandidates | Where-Object { Test-Path (Join-Path $_ 'pack\audit\manifest.json') }
+    # Discovery is broad by design; verification is not. Only the pack under test and this machine's
+    # installed copy are in scope - a backup on a Desktop or a removable disk is neither, and failing
+    # this checkout's audit over one is unactionable from where the message lands (WQ-463).
+    $found = @(Get-AgentStarterPackCandidates | Where-Object { Test-Path (Join-Path $_ 'pack/audit/manifest.json') })
+    $scoped = @(Get-PackVerifyRoot -Candidate $found -SourceRoot (Get-SourceAgentStarterPack) `
+            -InstalledRoot (Get-InstalledAgentStarterPack))
+    # Named, not silently dropped: "why is my other copy not checked" must have an answer on screen.
+    $skipped = @($found | Where-Object { $scoped -notcontains $_ })
+    if ($skipped.Count -gt 0) {
+        Write-Host ("Other pack copies found and not verified (backups, not this machine's delivery): " +
+            ($skipped -join '; '))
+    }
+    return $scoped
 }
 
 foreach ($root in (Get-PackRoots)) {
     if (-not $root -or -not (Test-Path $root)) { continue }
     Write-Host "Pack: $root"
-    $manifestPath = Join-Path $root 'pack\audit\manifest.json'
+    $manifestPath = Join-Path $root 'pack/audit/manifest.json'
     if (-not (Test-Path $manifestPath)) {
         Fail "Missing pack/audit/manifest.json under $root"
         continue
@@ -97,14 +113,14 @@ foreach ($root in (Get-PackRoots)) {
     $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
     $ver = $manifest.version
     Write-Host "  manifest version: $ver"
-    $sysMd = Join-Path $root 'pack\docs\AUDIT_SYSTEM.md'
+    $sysMd = Join-Path $root 'pack/docs/AUDIT_SYSTEM.md'
     if (Test-Path $sysMd) {
         $sysText = Get-Content $sysMd -Raw
         if ($sysText -notmatch "starter pack $([regex]::Escape($ver))") {
             Fail "AUDIT_SYSTEM.md header must mention starter pack $ver (run sync-doc-versions.ps1)"
         } else { Ok 'AUDIT_SYSTEM.md version matches manifest' }
     }
-    $chg = Join-Path $root 'pack\docs\AUDIT_SYSTEM_CHANGELOG.md'
+    $chg = Join-Path $root 'pack/docs/AUDIT_SYSTEM_CHANGELOG.md'
     if (Test-Path $chg) {
         $chgText = Get-Content $chg -Raw
         if ($chgText -notmatch "## $([regex]::Escape($ver)) ") {
@@ -141,13 +157,13 @@ if (-not $profileIntegrated) {
     Warn "Pack not installed for this profile - run install.ps1 to integrate it with agents on this machine (pack itself verified above)"
 }
 
-if (Test-Path (Join-Path $userCursor 'rules\code-audit-checklist.mdc')) {
+if (Test-Path (Join-Path $userCursor 'rules/code-audit-checklist.mdc')) {
     Fail 'Delete: .cursor\rules\code-audit-checklist.mdc'
 }
 Get-ChildItem (Join-Path $userCursor 'rules') -Filter '*audit-overlay*' -ErrorAction SilentlyContinue | ForEach-Object {
     Fail "Delete overlay: $($_.FullName)"
 }
-$skill = Join-Path $userCursor 'skills\agent-code-audit\SKILL.md'
+$skill = Join-Path $userCursor 'skills/agent-code-audit/SKILL.md'
 if (Test-Path $skill) {
     $c = Get-Content $skill -Raw
     foreach ($pat in $forbiddenPatterns) {
@@ -157,7 +173,7 @@ if (Test-Path $skill) {
 } elseif ($profileIntegrated) {
     Warn "Skill not installed: $skill"
 }
-$defaults = Join-Path $userCursor 'rules\agent-defaults-always.mdc'
+$defaults = Join-Path $userCursor 'rules/agent-defaults-always.mdc'
 if (Test-Path $defaults) {
     $c = Get-Content $defaults -Raw
     foreach ($pat in $forbiddenPatterns) {
@@ -165,7 +181,7 @@ if (Test-Path $defaults) {
     }
     if ($c -match 'AUDIT\.md') { Ok 'agent-defaults points to AUDIT.md' }
 }
-$protocol = Join-Path $userCursor 'rules\audit-protocol.mdc'
+$protocol = Join-Path $userCursor 'rules/audit-protocol.mdc'
 if (Test-Path $protocol) {
     $c = Get-Content $protocol -Raw
     if ($c -notmatch 'SkipTests|skip tests') { Fail 'audit-protocol.mdc missing -SkipTests rule' }
@@ -174,7 +190,7 @@ if (Test-Path $protocol) {
 } elseif ($profileIntegrated) {
     Warn 'audit-protocol.mdc not installed'
 }
-$loopBack = Join-Path $userCursor 'rules\loop-back-protocol.mdc'
+$loopBack = Join-Path $userCursor 'rules/loop-back-protocol.mdc'
 if (Test-Path $loopBack) {
     $c = Get-Content $loopBack -Raw
     if ($c -notmatch 'all projects|every project') { Fail 'loop-back-protocol.mdc missing all-projects scope' }
@@ -186,36 +202,36 @@ Write-Host ''
 
 if ($ProjectRoot -and (Test-Path $ProjectRoot)) {
     Write-Host "Project: $ProjectRoot"
-    $appAudit = Join-Path $ProjectRoot 'app\docs\AUDIT.md'
-    $flatAudit = Join-Path $ProjectRoot 'docs\AUDIT.md'
+    $appAudit = Join-Path $ProjectRoot 'app/docs/AUDIT.md'
+    $flatAudit = Join-Path $ProjectRoot 'docs/AUDIT.md'
     if (Test-Path $appAudit) { Ok "AUDIT.md: $appAudit" }
     elseif (Test-Path $flatAudit) { Ok "AUDIT.md: $flatAudit" }
     else { Fail 'No docs/AUDIT.md (app or flat layout)' }
-    $appCfg = Join-Path $ProjectRoot 'app\docs\AUDIT.config.json'
-    $flatCfg = Join-Path $ProjectRoot 'docs\AUDIT.config.json'
+    $appCfg = Join-Path $ProjectRoot 'app/docs/AUDIT.config.json'
+    $flatCfg = Join-Path $ProjectRoot 'docs/AUDIT.config.json'
     if (Test-Path $appCfg) { Ok 'AUDIT.config.json' } elseif (Test-Path $flatCfg) { Ok 'AUDIT.config.json' }
     else { Fail 'Missing docs/AUDIT.config.json' }
-    $coreCandidates = @(Join-Path $ProjectRoot 'pack\scripts\run_audit_core.ps1')
+    $coreCandidates = @(Join-Path $ProjectRoot 'pack/scripts/run_audit_core.ps1')
     $resolvedPack = Get-AgentStarterPackRoot
-    if ($resolvedPack) { $coreCandidates += (Join-Path $resolvedPack 'pack\scripts\run_audit_core.ps1') }
-    $coreCandidates += (Join-Path (Get-InstalledAgentStarterPack) 'pack\scripts\run_audit_core.ps1')
+    if ($resolvedPack) { $coreCandidates += (Join-Path $resolvedPack 'pack/scripts/run_audit_core.ps1') }
+    $coreCandidates += (Join-Path (Get-InstalledAgentStarterPack) 'pack/scripts/run_audit_core.ps1')
     $core = $coreCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
     if ($core) { Ok "run_audit_core.ps1: $core" }
     else { Fail 'Missing run_audit_core.ps1 - run install.ps1, or set AGENT_STARTER_PACK_ROOT to a pack folder' }
     foreach ($or in @('code-audit-checklist.mdc', 'generic-code-audit-checklist.mdc', 'product-audit-overlay.mdc')) {
-        foreach ($base in @("$ProjectRoot\.cursor\rules", "$ProjectRoot\app\.cursor\rules")) {
+        foreach ($base in @("$ProjectRoot/.cursor/rules", "$ProjectRoot/app/.cursor/rules")) {
             $p = Join-Path $base $or
             if (Test-Path $p) { Fail "Old project rule: $p" }
         }
     }
-    if (Test-Path (Join-Path $ProjectRoot 'app\.cursor\skills\agent-code-audit\SKILL.md')) {
+    if (Test-Path (Join-Path $ProjectRoot 'app/.cursor/skills/agent-code-audit/SKILL.md')) {
         Warn 'Project copy of agent-code-audit skill (prefer pack skill only)'
     }
     Write-Host ''
 }
 
 $sync = Join-Path $PSScriptRoot 'sync-audit-system.ps1'
-if (-not (Test-Path $sync)) { $sync = Join-Path (Get-PackRoots | Select-Object -First 1) 'pack\scripts\sync-audit-system.ps1' }
+if (-not (Test-Path $sync)) { $sync = Join-Path (Get-PackRoots | Select-Object -First 1) 'pack/scripts/sync-audit-system.ps1' }
 if (Test-Path $sync) {
     Write-Host 'Sync drift check:'
     $syncArgs = @('-VerifyOnly')
@@ -232,17 +248,47 @@ if (Test-Path $sync) {
 
 $behavior = Join-Path $PSScriptRoot 'verify-audit-behavior.ps1'
 if (-not (Test-Path $behavior)) {
-    $behavior = Join-Path (Get-PackRoots | Select-Object -First 1) 'pack\scripts\verify-audit-behavior.ps1'
+    $behavior = Join-Path (Get-PackRoots | Select-Object -First 1) 'pack/scripts/verify-audit-behavior.ps1'
 }
 if ($SkipBehavior) {
     Write-Host 'Behavior self-test: skipped (-SkipBehavior; pack maintainer check - run verify-audit-behavior.ps1 from the pack folder)'
     Write-Host ''
 } elseif (Test-Path $behavior) {
     Write-Host 'Behavior self-test:'
-    Invoke-PackScript -PassOutput -NoProfile -ScriptPath $behavior 2>&1 | Out-Host
+    # Tee, not capture-then-print: the suite runs for minutes and a human watching it is entitled to
+    # see the steps as they go. The copy exists for the stray-line check below, which is the only
+    # place that can see both the exit code and everything the child wrote (WQ-472).
+    Invoke-PackScript -PassOutput -NoProfile -ScriptPath $behavior 2>&1 | Tee-Object -Variable behaviorOut | Out-Host
     $behaviorExit = $LASTEXITCODE
     if ($behaviorExit -ne 0) {
         Fail 'Behavior self-test failed (see [FAIL] lines above) - run verify-audit-behavior.ps1 from the pack folder'
+    } else {
+        $stray = @(Get-PackStrayFailureLine -Output $behaviorOut -ExitCode $behaviorExit)
+        if ($stray.Count -gt 0) {
+            Fail ("Behavior self-test passed while printing $($stray.Count) [FAIL] line(s) - a marked line must mean a real failure, " +
+                "so an expected-fail arm has to capture its child instead of letting it print (WQ-472): " +
+                (($stray | Select-Object -First 3) -join ' | '))
+        }
+        if ($PublishRoot -and (Test-Path -LiteralPath $PublishRoot)) {
+            $pubRoot = (Resolve-Path -LiteralPath $PublishRoot).Path
+            Write-Host ''
+            Write-Host "Behavior self-test (Zone B publish root): $pubRoot"
+            Invoke-PackScript -PassOutput -NoProfile -ScriptPath $behavior -PackRoot $pubRoot 2>&1 |
+                Tee-Object -Variable publishBehaviorOut | Out-Host
+            $publishExit = $LASTEXITCODE
+            if ($publishExit -ne 0) {
+                Fail 'Zone B publish-root behavior failed (see [FAIL] lines above) - run verify-audit-behavior.ps1 -PackRoot on Airlock repo/'
+            } else {
+                $pubStray = @(Get-PackStrayFailureLine -Output $publishBehaviorOut -ExitCode $publishExit)
+                if ($pubStray.Count -gt 0) {
+                    Fail ("Zone B behavior passed while printing $($pubStray.Count) [FAIL] line(s): " +
+                        (($pubStray | Select-Object -First 3) -join ' | '))
+                }
+                Ok 'Zone B publish-root behavior self-test passed'
+            }
+        } elseif ($PublishRoot) {
+            Warn "PublishRoot not found on disk: $PublishRoot (Zone B behavior pass skipped)"
+        }
     }
     Write-Host ''
 }

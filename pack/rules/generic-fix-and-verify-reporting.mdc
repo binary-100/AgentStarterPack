@@ -1,0 +1,65 @@
+---
+description: Report fix and current verification together — never leave a past failure looking open
+alwaysApply: true
+---
+
+# Fix-and-verify reporting (all sessions)
+
+When a test, build, verify script, audit gate, CI check, or orchestrated run fails and is then fixed,
+report **what changed** and **what the latest run shows** in the same breath. The reader must never
+have to guess whether the failure is still their problem.
+
+Referenced from **`agent-defaults-always.mdc`** § Fixes the agent runs and **`generic-structured-chat-output.mdc`**.
+
+## Required
+
+- **Current verdict first** — pass or fail on the **latest** run that matters for the question.
+- **If a fix landed in this workstream** — pair it with the current verdict in one unit:
+  - **Fix:** what was wrong and what changed (file, mechanism, or config — one line each is enough).
+  - **Current:** pass/fail with evidence (exit code, log path, count, gate name).
+- **When a background or scheduled run finishes** — the agent reads the log and reports fix + current;
+  do not tell the user to open logs or search for `SUMMARY` unless the agent cannot read them.
+- **When still failing** — current failure only, with evidence and the next corrective step the agent
+  will run. Prior attempts belong in prose only when they explain *why* the current fix differs.
+
+## Forbidden
+
+- A **past failure alone** — `exit 1`, `guard=1`, "baseline failed step N" — with no fix + current
+  verdict. That reads as open work.
+- **Historical replay** when the latest run passes — no run-by-run diary of every failed attempt;
+  fix summary + current pass is enough.
+- **Splitting fix and closure across turns** — fix in one message, "check the log in the morning" in
+  another, with no current verdict in the same session.
+- **Asking the user to verify** what the agent can run and read (`run X yourself`, `paste SUMMARY
+  here`) when execution is in scope — see **`agent-defaults-always.mdc`** § Fixes the agent runs.
+
+## Shape (chat)
+
+One line or bullet per item is enough:
+
+```text
+Guard proofs: step 35 self-test ignored empty install sandbox → fixed in pack/scripts/agent_context_freshness.py. Current: full registry 82/82 exit 0 (log path).
+```
+
+Tables are optional; use them only when several gates share the same columns.
+
+## Applies to
+
+Any verifiable outcome: shell exit codes, pytest/CI, `verify-*.ps1`, `run_audit.cmd`, semantic
+finalize, guard-proof registry, orchestrator `SUMMARY` lines, MCP/background task completion
+notifications, and handoff **Evidence** rows after a fix.
+
+## Related rules
+
+| Rule | Division |
+|------|----------|
+| **`generic-structured-chat-output.mdc`** | Answer first; shape of the reply |
+| **`agent-defaults-always.mdc`** | Agent runs the fix and the re-verify |
+| **`loop-back-protocol.mdc`** | User says still broken — loop back, then fix + current again |
+| **`generic-work-queue-discipline.mdc`** | Done log evidence cites the passing gate, not the first red run |
+
+## Pack maintenance
+
+Canonical copy: `pack/rules/generic-fix-and-verify-reporting.mdc`. Delivered into a project's
+`.cursor/rules/` by **`sync-project-rules.ps1`**, and into **`pack/docs/portable/GENERIC_RULES.md`**
+by **`sync-portable-docs.ps1`** for non-Cursor hosts.

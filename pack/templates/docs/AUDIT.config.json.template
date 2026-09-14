@@ -12,12 +12,15 @@
 
   "tests": {
     "script": "run_tests.bat",
+    "scriptPosix": "run_tests.sh",
     "env": {}
   },
 
   "requiredPaths": {
     "app": [
       "run_tests.bat",
+      "run_tests.sh",
+      "scripts/run_tests.ps1",
       "run_audit.cmd",
       "docs/AUDIT.md",
       "docs/AUDIT.config.json",
@@ -157,7 +160,7 @@
           "generic-code-audit-checklist.mdc"
         ],
         "forbidDuplicateSkill": "agent-code-audit",
-        "agentsMdRequiredPhrases": ["run_audit.cmd", "run_tests.bat"],
+        "agentsMdRequiredPhrases": [["run_audit.cmd", "run_audit.sh", "run_audit.ps1"], ["run_tests.bat", "run_tests.sh", "run_tests.ps1"]],
         "gitignoreAuditArtifacts": [
           "docs/.audit_agent_manifest.json",
           "docs/.audit_semantic_report.json",

@@ -25,8 +25,13 @@ $alive = @{}
 Get-Process | ForEach-Object { $alive[$_.Id] = $true }
 
 $killedParents = New-Object System.Collections.Generic.HashSet[int]
+# Inline, not via pack-paths.ps1: the MCP server calls this on a hot path and it stays dependency-free.
+# $env:USERPROFILE is $null off Windows, and SilentlyContinue turned that into an empty root list
+# rather than an error - so the scan found no terminals and reported no orphans, which looks identical
+# to a clean machine.
+$homeDir = if ($env:USERPROFILE) { $env:USERPROFILE } elseif ($env:HOME) { $env:HOME } else { [Environment]::GetFolderPath('UserProfile') }
 $roots = @(
-    Join-Path $env:USERPROFILE ".cursor\projects\*\terminals"
+    Join-Path $homeDir ".cursor/projects/*/terminals"
 )
 foreach ($pattern in $roots) {
     Get-ChildItem -Path $pattern -Filter "*.txt" -ErrorAction SilentlyContinue | ForEach-Object {

@@ -80,8 +80,8 @@ For agents:
 
 | Agent state | What it needs |
 |-------------|---------------|
-| New chat or session | Nothing - it reads the updated rules and skills on start |
-| Chat already in progress | Has the old rule text in context; tell it to re-read `%USERPROFILE%\.cursor\rules` and `pack/docs/START_HERE.md` (the command prints this line when rules changed) |
+| New chat or session | Reads updated **skills** automatically, and updated **rules** from the project's `.cursor/rules/` - run `sync-project-rules.ps1 -ProjectRoot <project>` first, because the profile copy does not load (WQ-456) |
+| Chat already in progress | Has the old rule text in context and no editor reloads rules mid-session. Run `Refresh-AgentContext.cmd`: it names the always-on rule files as required reading, which is the only channel that reaches an open chat |
 | MCP tools | Restart Cursor when a server was added |
 
 ### MCP tools need one Python package

@@ -1,0 +1,35 @@
+"""Scaffolding smoke test for {{PROJECT_NAME}}.
+
+Bootstrap wrote the files listed below; this test fails if one of them goes missing. It exists so a
+freshly generated project starts with a suite that proves something: the audit earns its test-pass
+proof by running the test command, and a runner that finds no tests must not be able to report
+success. Replace or extend this as the project grows real tests.
+"""
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+REQUIRED = [
+    "AGENTS.md",
+    "run_audit.cmd",
+    "run_tests.bat",
+    "run_tests.sh",
+    "scripts/run_tests.ps1",
+    "docs/AUDIT.md",
+    "docs/AUDIT.config.json",
+]
+
+
+def main() -> int:
+    missing = [rel for rel in REQUIRED if not (ROOT / rel).exists()]
+    if missing:
+        print("FAIL: project scaffolding is incomplete: " + ", ".join(missing))
+        return 1
+    print("OK: project scaffolding present ({} files)".format(len(REQUIRED)))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

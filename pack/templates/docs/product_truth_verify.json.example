@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "claims": [
+    {
+      "id": "portable-mode-documented",
+      "doc": "docs/PRODUCT_REFERENCE.md",
+      "docPattern": "(?i)portable",
+      "codeGlob": "*.py",
+      "codePattern": "install_mode",
+      "minCodeMatches": 1
+    },
+    {
+      "id": "shipped-slice-not-deferred",
+      "doc": "docs/KNOWN_LIMITATIONS.md",
+      "docMustNotMatch": "WQ-001[^\\n]{0,120}not built",
+      "whenDoneWq": "WQ-001"
+    }
+  ]
+}

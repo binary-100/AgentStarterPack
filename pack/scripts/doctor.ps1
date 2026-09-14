@@ -50,28 +50,57 @@ if ($UserScope -or (-not $UserScope -and -not $ProjectScope)) {
     if (-not $userCursor) { $userCursor = Get-DefaultCursorUserRoot }
     if (-not $userCursor) {
         Write-Miss 'cannot resolve Cursor user root (~/.cursor)'
-        $userCursor = Join-Path $env:USERPROFILE '.cursor'
+        $userCursor = Join-Path (Get-PackHomeDir) '.cursor'
     }
     # Enumerated from the pack, never listed by hand: the hardcoded list checked 5 of the 9 rules
     # install.ps1 copies, so four could go missing from the profile and doctor still said [OK].
-    $packSkillsDir = Join-Path $packRoot 'pack\skills'
-    $packRulesDir = Join-Path $packRoot 'pack\rules'
+    $packSkillsDir = Join-Path $packRoot 'pack/skills'
+    $packRulesDir = Join-Path $packRoot 'pack/rules'
     if (Test-Path $packSkillsDir) {
         Get-ChildItem $packSkillsDir -Directory | Sort-Object Name | ForEach-Object {
-            Test-PathReport "skill $($_.Name)" (Join-Path $userCursor "skills\$($_.Name)\SKILL.md")
+            Test-PathReport "skill $($_.Name)" (Join-Path $userCursor "skills/$($_.Name)/SKILL.md")
         }
     } else {
         Write-Warn "pack\skills not found beside doctor.ps1 - cannot verify installed skills"
     }
     if (Test-Path $packRulesDir) {
         Get-ChildItem $packRulesDir -Filter *.mdc | Sort-Object Name | ForEach-Object {
-            Test-PathReport "rule $($_.BaseName)" (Join-Path $userCursor "rules\$($_.Name)")
+            Test-PathReport "rule $($_.BaseName)" (Join-Path $userCursor "rules/$($_.Name)")
+        }
+        # WQ-456: the lines above prove the profile copy arrived, and that is all they prove. No AI
+        # editor documents reading a home-folder rules directory, so a green run here says nothing
+        # about whether any rule applies - which is how nine alwaysApply:true rules stayed inert for
+        # months behind an all-[OK] doctor. Say so, rather than letting the [OK] imply more.
+        Write-Host "  note: the rule lines above confirm the profile copy only. No editor documents"
+        Write-Host "        reading $userCursor\rules - rules apply from a project's .cursor\rules\."
+
+        # The inverse question, which nothing asked before (WQ-460). The loop above walks pack/rules
+        # and asks "did it arrive?", so a file the pack never shipped is invisible to it. One such
+        # file sat in the profile for months declaring alwaysApply:true, claiming to be referenced
+        # from an always-on rule and to be canonical - all three false, since that folder does not
+        # load and nothing referenced it. It is worse than a missing rule: a missing rule is silent,
+        # while this one reads as authoritative to anyone who opens it, including an agent told to
+        # go read the rules.
+        #
+        # -Prune cannot help, by design: it only removes what a previous install recorded shipping,
+        # and an orphan is by definition absent from that record. So it has to be reported.
+        $profileRulesDir = Join-Path $userCursor 'rules'
+        $shipped = @(Get-ChildItem $packRulesDir -Filter *.mdc | ForEach-Object { $_.Name })
+        $orphanAlwaysOn = @(Get-PackOrphanAlwaysOnRule -ProfileRulesDir $profileRulesDir -ShippedRuleNames $shipped)
+        if ($orphanAlwaysOn.Count -gt 0) {
+            foreach ($orphan in $orphanAlwaysOn) {
+                Write-Warn ("inert rule: $($orphan.FullName) declares alwaysApply:true but the pack " +
+                    "does not ship it and this folder is not a load path, so it applies to nothing. " +
+                    "Move its content to pack/rules/ (then sync-project-rules.ps1) or delete the file")
+            }
+        } else {
+            Write-Ok "no orphan always-on rule in $profileRulesDir"
         }
     } else {
         Write-Warn "pack\rules not found beside doctor.ps1 - cannot verify installed rules"
     }
     Test-PathReport "canonical pack" (Join-Path $installedRoot "pack")
-    Test-PathReport "MCP server" (Join-Path $installedRoot "mcp\agent_hygiene_server.py")
+    Test-PathReport "MCP server" (Join-Path $installedRoot "mcp/agent_hygiene_server.py")
     Write-Host ""
 
     $mcpPath = Join-Path $userCursor 'mcp.json'
@@ -112,7 +141,7 @@ if ($UserScope -or (-not $UserScope -and -not $ProjectScope)) {
     }
 
     if (-not $SkipSmoke -and $pyProbe) {
-        $server = Join-Path $installedRoot "mcp\agent_hygiene_server.py"
+        $server = Join-Path $installedRoot "mcp/agent_hygiene_server.py"
         if (Test-Path $server) {
             $mcpDir = (Split-Path $server -Parent) -replace "'", "''"
             $pyCode = @"
@@ -138,19 +167,33 @@ print('smoke_ok' if 'terminals' in r else 'smoke_fail')
 
 if ($ProjectScope -or (-not $UserScope -and -not $ProjectScope)) {
     $root = if ($ProjectRoot) { $ProjectRoot } else { (Get-Location).Path }
-    $isPackRepo = (Test-Path (Join-Path $root '.cursor\rules\starter-pack-repo.mdc')) -or
-        ((Test-Path (Join-Path $root 'pack\audit\manifest.json')) -and (Test-Path (Join-Path $root 'install.ps1')))
+    $isPackRepo = (Test-Path (Join-Path $root '.cursor/rules/starter-pack-repo.mdc')) -or
+        ((Test-Path (Join-Path $root 'pack/audit/manifest.json')) -and (Test-Path (Join-Path $root 'install.ps1')))
     Write-Host "Project scope ($root):"
     if ($isPackRepo) {
-        Test-PathReport "rule starter-pack-repo" "$root\.cursor\rules\starter-pack-repo.mdc"
-        Write-Ok "rule audit-protocol (user-global, not duplicated in pack repo)"
-        Write-Ok "rule generic-terminal (user-global, not duplicated in pack repo)"
-    } else {
-        Test-PathReport "rule audit-protocol" "$root\.cursor\rules\audit-protocol.mdc"
-        Test-PathReport "rule generic-terminal" "$root\.cursor\rules\generic-terminal-and-build-hygiene.mdc"
+        Test-PathReport "rule starter-pack-repo" "$root/.cursor/rules/starter-pack-repo.mdc"
     }
-    Test-PathReport "rule audit (project)" "$root\.cursor\rules\audit.mdc"
-    Test-PathReport "docs AUDIT.md" "$root\docs\AUDIT.md"
+    # WQ-456: these two used to pass in the pack repo on the grounds that they were "user-global, not
+    # duplicated here". Both halves were wrong - the profile copy is not a load path, so the rules were
+    # not applying anywhere, and they are now synced into this repo like any other project's.
+    Test-PathReport "rule audit-protocol" "$root/.cursor/rules/audit-protocol.mdc"
+    Test-PathReport "rule generic-terminal" "$root/.cursor/rules/generic-terminal-and-build-hygiene.mdc"
+
+    # The only rules check that means anything: how many always-on rules sit in the folder an editor
+    # reads. Presence in the profile proves delivery; this proves the rules are somewhere that binds.
+    $projRulesDir = Join-Path $root '.cursor/rules'
+    $alwaysOn = @(Get-ChildItem -LiteralPath $projRulesDir -Filter '*.mdc' -File -ErrorAction SilentlyContinue |
+        Where-Object {
+            ((Get-Content -LiteralPath $_.FullName -TotalCount 12 -ErrorAction SilentlyContinue) -join "`n") -match
+                '(?m)^\s*alwaysApply:\s*true\s*$'
+        })
+    if ($alwaysOn.Count -eq 0) {
+        Write-Warn "no alwaysApply rule in $projRulesDir - nothing the pack says binds in this project. Run: sync-project-rules.ps1 -ProjectRoot `"$root`""
+    } else {
+        Write-Ok "$($alwaysOn.Count) always-on rule(s) in the load path ($projRulesDir)"
+    }
+    Test-PathReport "rule audit (project)" "$root/.cursor/rules/audit.mdc"
+    Test-PathReport "docs AUDIT.md" "$root/docs/AUDIT.md"
     Write-Host ""
 }
 

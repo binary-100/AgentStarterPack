@@ -6,6 +6,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,8 @@ DOC_VERSION_SYNC = ROOT / "pack" / "scripts" / "doc_version_sync.py"
 INSTALL_LAUNCHER = ROOT / "install_launcher.py"
 MCP_SERVER = ROOT / "mcp" / "agent_hygiene_server.py"
 FRESHNESS = ROOT / "pack" / "scripts" / "agent_context_freshness.py"
+ENTRY_POINTS = ROOT / "pack" / "scripts" / "pack_entry_points.py"
+PACK_PATHS = ROOT / "pack" / "scripts" / "pack-paths.ps1"
 
 
 def test_audit_code_checks_self_test() -> None:
@@ -188,6 +191,163 @@ def test_static_pattern_inert_glob_is_reported_when_required() -> None:
         assert loud and "matched no files" in loud[0], loud
         unbalanced = mod.scan_static_patterns(root, [dict(base, glob="*.{md,ps1")])
         assert unbalanced and "unbalanced braces" in unbalanced[0], unbalanced
+
+
+def test_version_sync_leaves_the_historical_region_alone() -> None:
+    """A bump must move the current-state cites and not one word of the Done log (WQ-437).
+
+    The work queue is the one file that mixes both kinds of claim: the header says which engine is
+    current, every Done-log row says which engine shipped that item. Four historical cites were
+    rewritten in two days - twice in one session - because the bump procedure was a blanket replace
+    and the documented protection was "split at the Done-log heading by hand".
+
+    The planted Done-log row deliberately uses the phrasing the sync engine *does* match ("starter
+    pack X.Y.Z"), so this fails if the boundary is missing rather than only if the patterns change.
+    """
+    mod = _load_doc_version_sync()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "docs").mkdir()
+        (root / "pack" / "audit").mkdir(parents=True)
+        (root / "VERSION").write_text("1.8.0\n", encoding="utf-8")
+        (root / "pack" / "audit" / "manifest.json").write_text(
+            json.dumps({"version": "2.22.99"}), encoding="utf-8"
+        )
+        (root / "docs" / "VERSION_SYNC.json").write_text(
+            json.dumps(
+                {
+                    "canonical": {"txtFile": "VERSION", "txtPattern": r"^(\d+\.\d+\.\d+)"},
+                    "historicalRegions": [
+                        {"file": "docs/WORK_QUEUE.md", "fromHeading": "## Done log"}
+                    ],
+                    "maintainerDocSync": {
+                        "enabled": True,
+                        "auditManifestPath": "pack/audit/manifest.json",
+                        "auditVersionScanFiles": ["docs/WORK_QUEUE.md"],
+                        "auditContextKeywords": ["manifest.json", "audit engine", "starter pack"],
+                        "extraReplacements": [
+                            {
+                                "file": "docs/WORK_QUEUE.md",
+                                "pattern": r"\| \*\*Audit engine\*\* \| \d+\.\d+\.\d+ \|",
+                                "replace": "| **Audit engine** | {auditVersion} |",
+                                "versionKind": "audit",
+                            }
+                        ],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        queue = (
+            "# Work queue\n\n"
+            "| **Audit engine** | 2.22.70 |\n\n"
+            "Current engine is starter pack 2.22.70 for this checkout.\n\n"
+            "Prose may mention the Done log without being it.\n\n"
+            "## Done log\n\n"
+            "| WQ-438 | Something shipped | 2026-09-01 | Evidence; starter pack 2.22.70 |\n"
+        )
+        wq = root / "docs" / "WORK_QUEUE.md"
+        wq.write_text(queue, encoding="utf-8")
+
+        result = mod.sync_documentation_versions(root)
+        after = wq.read_text(encoding="utf-8")
+
+        assert result["missingRegions"] == [], result
+        assert "docs/WORK_QUEUE.md" in result["frozenRegions"], result
+        assert "| **Audit engine** | 2.22.99 |" in after, after
+        assert "Current engine is starter pack 2.22.99" in after, after
+        # The whole point: the row below the heading still says what it always said.
+        assert "WQ-438 | Something shipped | 2026-09-01 | Evidence; starter pack 2.22.70" in after, after
+
+        # And the boundary must not be able to vanish quietly. Without the heading the file is
+        # rewritten end to end while the config still claims part of it is protected, so that has
+        # to be a failure rather than a note - a protection that stopped existing is the bug.
+        wq.write_text(queue.replace("## Done log", "## Shipped"), encoding="utf-8")
+        loud = mod.sync_documentation_versions(root)
+        assert loud["missingRegions"], loud
+        assert loud["ok"] is False, loud
+
+
+def test_historical_heading_split_ignores_prose_that_quotes_it() -> None:
+    """Only a heading may move the boundary, not a sentence naming it.
+
+    An unanchored search for a heading string has already cost this codebase a release: the shared
+    section parser matched the words "Done log" inside a work-queue row and read the rest of the
+    file as that section.
+    """
+    mod = _load_doc_version_sync()
+    text = "# Top\n\nSee the Done log below for history.\n\n## Done log\n\nrow\n"
+    head, tail = mod.split_at_historical_heading(text, "## Done log")
+    assert "See the Done log below" in head, head
+    assert tail.startswith("## Done log"), tail
+    assert "row" in tail, tail
+    # Absent heading: everything stays mutable and the caller can tell, because tail is empty.
+    head2, tail2 = mod.split_at_historical_heading("# Top\n\nno heading here\n", "## Done log")
+    assert tail2 == "", tail2
+    assert head2.endswith("no heading here\n"), head2
+
+
+def test_runner_coverage_follows_delegation_but_still_refuses_stubs() -> None:
+    """Both directions of the test-runner coverage check, in one place.
+
+    The entry points became thin wrappers when the pack went cross-platform, so the check has to
+    follow a wrapper to the implementation - it does not, the pack's own posix runner reads as a
+    runner that tests nothing. Widening what counts as delegation is only safe while a *mention*
+    still does not count: coverage is a substring search, so a comment pointing at the real suite,
+    or an echo above `exit 0`, would otherwise satisfy it and an instant-pass runner - the one
+    defect this check exists to catch - would sail through.
+    """
+    mod = _load_audit_code_checks()
+    cfg = {"tests": {"script": "run_tests.bat", "scriptPosix": "run_tests.sh"}}
+    cases = [
+        # (name, files, expect_flagged)
+        (
+            "delegates through a pwsh-named helper",
+            {
+                "run_tests.sh": 'pack_pwsh_file "$ROOT/scripts/run_tests.ps1" "$@"\n',
+                "scripts/run_tests.ps1": "Invoke-PackPython 'tests/test_thing.py'\n",
+            },
+            False,
+        ),
+        (
+            "delegates with exec pwsh -File",
+            {
+                "run_tests.sh": 'exec pwsh -NoProfile -File "$ROOT/scripts/run_tests.ps1"\n',
+                "scripts/run_tests.ps1": "& python tests/test_thing.py\n",
+            },
+            False,
+        ),
+        (
+            "names the tests only in a comment",
+            {"run_tests.sh": "# real suite: scripts/run_tests.ps1 (test_thing.py)\nexit 0\n"},
+            True,
+        ),
+        (
+            "echoes a path it never runs",
+            {"run_tests.sh": 'echo "would run tests/test_thing.py"\nexit 0\n'},
+            True,
+        ),
+        (
+            "delegate that itself runs nothing",
+            {
+                "run_tests.sh": 'exec pwsh -File "$ROOT/scripts/run_tests.ps1"\n',
+                "scripts/run_tests.ps1": "Write-Host 'ok'\nexit 0\n",
+            },
+            True,
+        ),
+    ]
+    for name, files, expect_flagged in cases:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "tests").mkdir()
+            (root / "tests" / "test_thing.py").write_text("print('hi')\n", encoding="utf-8")
+            for rel, body in files.items():
+                target = root / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(body, encoding="utf-8")
+            fixes = mod.check_test_runner_coverage(root, cfg)
+            flagged = any("run_tests.sh" in f for f in fixes)
+            assert flagged == expect_flagged, f"{name}: flagged={flagged}, fixes={fixes}"
 
 
 def test_section_n_semantic_check_is_opt_in() -> None:
@@ -450,6 +610,64 @@ def test_freshness_trigger_phrases_match_the_rules() -> None:
     ).lower()
     missing = [p for p in mod.TRIGGER_PHRASES if p not in documented]
     assert not missing, f"trigger phrases absent from the portable instructions: {missing}"
+
+
+def test_entry_points_spell_per_host_and_refuse_the_unregistered() -> None:
+    """The Python speller must differ per host, and must not invent an unregistered entry point.
+
+    A speller that returned its input, or the Windows name everywhere, is the WQ-449 defect itself
+    and would satisfy any assertion that only checks a string came back - so this compares the two
+    spellings against each other rather than against a hardcoded list.
+    """
+    spec = importlib.util.spec_from_file_location("pack_entry_points", ENTRY_POINTS)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    assert mod.PACK_ENTRY_POINTS, "the registry is empty, so nothing below proves anything"
+    for name in mod.PACK_ENTRY_POINTS:
+        win = mod.pack_entry_point(name, windows=True)
+        posix = mod.pack_entry_point(name, windows=False)
+        assert win != posix, f"{name} spells the same on both hosts"
+        assert win.endswith((".cmd", ".bat")), f"{name} windows spelling is {win}"
+        assert posix.startswith("./") and posix.endswith(".sh"), f"{name} posix spelling is {posix}"
+        assert "/" not in win, f"{name} windows spelling keeps a posix separator: {win}"
+        assert "\\" not in posix, f"{name} posix spelling keeps a windows separator: {posix}"
+
+    try:
+        mod.pack_entry_point("not-an-entry-point")
+    except KeyError:
+        pass
+    else:  # pragma: no cover - only reached when the guard is gone
+        raise AssertionError("an unregistered entry point was accepted")
+
+
+def test_entry_point_registries_agree_across_languages() -> None:
+    """Two copies of the registry are only safe while something compares them.
+
+    pack_entry_points.py duplicates $script:PackEntryPoints from pack-paths.ps1 on purpose (see that
+    module's docstring). This reads the PowerShell literal directly rather than running pwsh, so the
+    test still runs where pwsh is absent.
+    """
+    spec = importlib.util.spec_from_file_location("pack_entry_points", ENTRY_POINTS)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    text = PACK_PATHS.read_text(encoding="utf-8-sig")
+    block = text.split("$script:PackEntryPoints = [ordered]@{", 1)
+    assert len(block) == 2, "could not find the PowerShell entry-point registry"
+    ps_pairs = dict(
+        re.findall(r"win\s*=\s*'([^']+)'\s*;?\s*\n?\s*posix\s*=\s*'([^']+)'", block[1])
+    )
+    assert ps_pairs, "parsed no entries out of the PowerShell registry"
+
+    py_pairs = {v["win"]: v["posix"] for v in mod.PACK_ENTRY_POINTS.values()}
+    assert py_pairs == ps_pairs, (
+        "the PowerShell and Python entry-point registries disagree: "
+        f"only in ps={sorted(set(ps_pairs.items()) - set(py_pairs.items()))}, "
+        f"only in py={sorted(set(py_pairs.items()) - set(ps_pairs.items()))}"
+    )
 
 
 def main() -> int:

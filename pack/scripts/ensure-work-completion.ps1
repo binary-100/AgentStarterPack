@@ -25,6 +25,14 @@ if (-not $PackRoot -or -not (Test-Path -LiteralPath $PackRoot)) {
 $ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
 if (-not $ProjectName) { $ProjectName = Split-Path $ProjectRoot -Leaf }
 
+# Pack trees (maintainer working copy and Zone B repo/ after B09 sync) never get generated handoffs
+# or WORK_COMPLETION overlays. Maintainer SESSION lives in the working copy only; sync strips
+# maintainer-only paths including docs/handoffs. Generating SESSION here writes absolute paths (WQ-438).
+if (Test-AgentStarterPackRoot $ProjectRoot) {
+    Write-Host '[skip] pack root - no generated handoffs or WORK_COMPLETION overlay (maintainer-only; see manifest maintainer-only path list)'
+    exit 0
+}
+
 $docsDir = Join-Path $ProjectRoot 'docs'
 foreach ($sub in @('handoffs', 'handoffs\active', 'handoff_archive')) {
     $p = Join-Path $ProjectRoot ("docs\" + ($sub -replace '/', '\'))
@@ -34,8 +42,8 @@ foreach ($sub in @('handoffs', 'handoffs\active', 'handoff_archive')) {
     }
 }
 
-$readmeTpl = Join-Path $PackRoot 'pack\templates\docs\handoffs\README.md.template'
-$readmeDst = Join-Path $ProjectRoot 'docs\handoffs\README.md'
+$readmeTpl = Join-Path $PackRoot 'pack/templates/docs/handoffs/README.md.template'
+$readmeDst = Join-Path $ProjectRoot 'docs/handoffs/README.md'
 if ((Test-Path -LiteralPath $readmeTpl) -and -not (Test-Path -LiteralPath $readmeDst)) {
     # Substitute and write like the WORK_COMPLETION path below: a plain Copy-Item leaves
     # {{PROJECT_NAME}} in the title of every generated project and keeps whatever BOM the
@@ -47,23 +55,25 @@ if ((Test-Path -LiteralPath $readmeTpl) -and -not (Test-Path -LiteralPath $readm
     Write-Host "[ok] created docs/handoffs/README.md from template"
 }
 
-$dest = Join-Path $ProjectRoot 'docs\WORK_COMPLETION.md'
+$sessionTpl = Join-Path $PackRoot 'pack/templates/docs/handoffs/SESSION.md.template'
+$sessionDst = Join-Path $ProjectRoot 'docs/handoffs/SESSION.md'
+if ((Test-Path -LiteralPath $sessionTpl) -and -not (Test-Path -LiteralPath $sessionDst)) {
+    $sessionDate = (Get-Date).ToString('yyyy-MM-dd')
+    $sessionText = Get-Content -LiteralPath $sessionTpl -Raw -Encoding UTF8
+    $sessionText = $sessionText.Replace('{{PROJECT_NAME}}', $ProjectName)
+    $sessionText = $sessionText.Replace('{{PROJECT_ROOT}}', $ProjectRoot)
+    $sessionText = $sessionText.Replace('{{SESSION_DATE}}', $sessionDate)
+    Write-Utf8NoBom -Path $sessionDst -Text $sessionText
+    Write-Host "[ok] created docs/handoffs/SESSION.md from template"
+}
+
+$dest = Join-Path $ProjectRoot 'docs/WORK_COMPLETION.md'
 if (Test-Path -LiteralPath $dest) {
     Write-Host "[skip] WORK_COMPLETION exists: $dest"
     exit 0
 }
 
-# A pack root gets no generated overlay. The template exists to give a *project* a post-ship checklist
-# naming its own absolute paths; the pack already ships the canonical document at
-# pack/docs/WORK_COMPLETION.md, and generating a second copy here only produced a file holding this
-# machine's user profile path in seven places - which was then committed and mirrored into installs
-# (2.22.56). The pack folder travels, so nothing generated with an absolute path belongs in it.
-if (Test-AgentStarterPackRoot $ProjectRoot) {
-    Write-Host '[skip] pack root - canonical checklist is pack/docs/WORK_COMPLETION.md (no generated overlay)'
-    exit 0
-}
-
-$template = Join-Path $PackRoot 'pack\templates\docs\WORK_COMPLETION.md.template'
+$template = Join-Path $PackRoot 'pack/templates/docs/WORK_COMPLETION.md.template'
 if (-not (Test-Path -LiteralPath $template)) {
     Write-Host '[warn] WORK_COMPLETION template not found - skip'
     exit 0

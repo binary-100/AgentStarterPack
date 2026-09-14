@@ -1,31 +1,6 @@
 @echo off
-REM Copy to project root as run_tests.bat - adjust PYTHONPATH and test glob.
-
+REM Thin wrapper. The implementation is scripts\run_tests.ps1, shared with run_tests.sh, so both
+REM platforms run the same suite instead of two runners that drift apart.
 cd /d "%~dp0"
-set "PYTHONPATH=."
-set "FAILED=0"
-
-REM --- Build pipeline: version + documentation sync (before tests) ---
-echo Syncing version and documentation...
-py -3 scripts\apply_version.py sync
-if errorlevel 1 (
-    echo Version/doc sync failed.
-    exit /b 1
-)
-
-echo Test suite (PYTHONPATH=%CD%)
-echo.
-
-for %%F in (tests\test_*.py) do (
-    echo === %%F ===
-    py -3 "%%F"
-    if errorlevel 1 set FAILED=1
-    echo.
-)
-
-if %FAILED% neq 0 (
-    echo One or more tests failed.
-    exit /b 1
-)
-echo All tests passed.
-exit /b 0
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\run_tests.ps1" %*
+exit /b %ERRORLEVEL%

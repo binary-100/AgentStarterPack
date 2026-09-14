@@ -26,17 +26,17 @@ if (-not $PackRoot -or -not (Test-Path -LiteralPath $PackRoot)) {
 }
 
 $ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
-$dest = Join-Path $ProjectRoot 'docs\WORK_QUEUE.md'
+$dest = Join-Path $ProjectRoot 'docs/WORK_QUEUE.md'
 if (Test-Path -LiteralPath $dest) {
     Write-Host "[skip] WORK_QUEUE exists: $dest"
     exit 0
 }
 
-$template = Join-Path $PackRoot 'pack\templates\docs\WORK_QUEUE.md.template'
+$template = Join-Path $PackRoot 'pack/templates/docs/WORK_QUEUE.md.template'
 if (-not (Test-Path -LiteralPath $template)) {
     $fallbackRoot = Get-SourceAgentStarterPack
     if ($fallbackRoot) {
-        $alt = Join-Path $fallbackRoot 'pack\templates\docs\WORK_QUEUE.md.template'
+        $alt = Join-Path $fallbackRoot 'pack/templates/docs/WORK_QUEUE.md.template'
         if (Test-Path -LiteralPath $alt) { $template = $alt }
     }
 }

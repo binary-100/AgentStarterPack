@@ -42,7 +42,7 @@ if ($ProjectRoot) {
 }
 
 if ($WriteSessionStart) {
-    $out = & py -3 $freshPy @rootArg --write-session-start 2>&1 | Out-String
+    $out = Invoke-PackPython $freshPy @rootArg --write-session-start 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) {
         Write-Host $out
         exit $LASTEXITCODE
@@ -52,7 +52,7 @@ if ($WriteSessionStart) {
 }
 
 if ($PrintOpener) {
-    $json = & py -3 $freshPy @rootArg --session-brief 2>&1 | Out-String
+    $json = Invoke-PackPython $freshPy @rootArg --session-brief 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) {
         Write-Host $json
         exit $LASTEXITCODE
@@ -63,12 +63,12 @@ if ($PrintOpener) {
 }
 
 if ($SessionBrief) {
-    & py -3 $freshPy @rootArg --session-brief
+    Invoke-PackPython $freshPy @rootArg --session-brief
     exit $LASTEXITCODE
 }
 
 if ($Check) {
-    & py -3 $freshPy @rootArg --check
+    Invoke-PackPython $freshPy @rootArg --check
     exit $LASTEXITCODE
 }
 

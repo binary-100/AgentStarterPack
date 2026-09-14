@@ -1,0 +1,73 @@
+{
+  "_what": "Host-neutral agent control policy (WQ-480). ONE source of truth for two questions: which commands the agent is obliged to run itself rather than hand over, and which decisions the owner has already made. Every host-specific control compiles from this file; none of them owns a copy.",
+  "_why_globs": "Patterns are GLOBS, not regexes, and that is the whole portability decision. A glob compiles to a regex losslessly (escape, then * -> .*, ? -> .); a regex cannot be compiled to a glob at all. Authoring in regex is what would have locked this policy to the PowerShell hooks that happened to be written first - and OpenCode's native permission layer takes globs, matched against the whole command string. Author once in the form that travels; let each adapter compile.",
+  "_compiles_to": {
+    "cursor": "pack/templates/cursor/hooks/shell-preapprove.ps1 and offload-detect.ps1 compile these globs to regex at runtime. No generated file, so there is nothing to go stale.",
+    "opencode": "bootstrap-project.ps1 compiles shell.allow / shell.refuse into opencode.json -> permission.bash as a glob->effect map, which is that host's native mechanism. verify-agent-policy.ps1 reports drift between this file and any generated block."
+  },
+  "_effect_mapping": "allow -> allow. refuse -> ASK, never deny. Refuse here means 'this control has no opinion, let normal review happen' - it is the owner's call, not a prohibition. Compiling refuse to deny would take away the approval the owner is entitled to give.",
+  "shell": {
+    "_allow_note": "Each entry is something the agent-defaults rule ('Fixes the agent runs - do not offload') already obliges the agent to run in-session. That is the entire basis for pre-approving them: the rule says the agent must not hand these over, so a reviewer stopping them manufactures the excuse the rule forbids. Add a project's own test and build entry points here.",
+    "allow": [
+      "*pack/scripts/verify-*.ps1*",
+      "*pack\\scripts\\verify-*.ps1*",
+      "*pack/scripts/sync-*.ps1*",
+      "*pack\\scripts\\sync-*.ps1*",
+      "*doctor.ps1*",
+      "*cleanup-orphan-processes.ps1*",
+      "*run_audit.cmd*",
+      "*run_audit_tests.bat*",
+      "*run_tests.bat*",
+      "*scripts/finalize_audit.cmd*",
+      "*scripts\\finalize_audit.cmd*",
+      "*scripts/verify_semantic_audit.cmd*",
+      "*scripts\\verify_semantic_audit.cmd*",
+      "*fill_pack_semantic_report.py*",
+      "*Stop-Process -Id *",
+      "*Refresh-AgentContext.cmd*",
+      "*Update-AgentStack.cmd*"
+    ],
+    "_refuse_note": "Refuse wins over allow, always. These are either the owner's decision (profile writes, publishing), destructive, or capable of carrying a second command. A prefix match on the allow list must never override an entry here.",
+    "refuse": [
+      "*install.ps1*",
+      "*-PushFromProject*",
+      "*-PullFromInstalled*",
+      "*git push*",
+      "*Remove-Item*",
+      "*rmdir*",
+      "*Invoke-WebRequest*",
+      "*Invoke-RestMethod*",
+      "*curl *",
+      "*wget *",
+      "*Set-ExecutionPolicy*",
+      "*reg add*",
+      "*New-ItemProperty*",
+      "*Set-ItemProperty*",
+      "*shutdown*",
+      "*Restart-Computer*"
+    ]
+  },
+  "_settled_note": "WQ-477. An ask that re-raises a decision the owner already made is the same defect as offloading a runnable command, and worse in one way: offloading spends a turn, while re-asking tells the owner their answer did not stick. Each entry names where the decision is recorded so a control can point at the record rather than assert. Add an entry when a decision has been restated more than once; remove one only when the decision genuinely changes.",
+  "settled": [
+    {
+      "pattern": "*publish*",
+      "decision": "Publishing, git, and CI require StarterPack-Airlock on the host Desktop with a valid publisher key. Default pack copies are git-free.",
+      "recorded": "docs/WORK_QUEUE.md - WQ-465 (Parked, marked DECIDED)"
+    },
+    {
+      "pattern": "*remote with Actions*",
+      "decision": "Publishing, git, and CI require StarterPack-Airlock on the host Desktop with a valid publisher key. Default pack copies are git-free.",
+      "recorded": "docs/WORK_QUEUE.md - WQ-465 (Parked, marked DECIDED)"
+    },
+    {
+      "pattern": "*choose a host*",
+      "decision": "Publishing, git, and CI require StarterPack-Airlock on the host Desktop with a valid publisher key. Default pack copies are git-free.",
+      "recorded": "docs/WORK_QUEUE.md - WQ-465 (Parked, marked DECIDED)"
+    },
+    {
+      "pattern": "*git push*",
+      "decision": "Publishing, git, and CI require StarterPack-Airlock on the host Desktop with a valid publisher key. Default pack copies are git-free.",
+      "recorded": "docs/WORK_QUEUE.md - WQ-465 (Parked, marked DECIDED)"
+    }
+  ]
+}

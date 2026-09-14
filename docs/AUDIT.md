@@ -4,6 +4,8 @@ When you ask for **an audit** of this repo, that means **everything** — one pa
 
 Pair with **`docs/AUDIT.config.json`**.
 
+**Dual-zone publish (StarterPack-Airlock):** working copy = Zone A (`tree:` proof); Airlock `repo/` = Zone B (`commit+tree:`). See **`docs/AUDIT_AIRLOCK_COVERAGE.md`** and **`docs/STARTERPACK_AIRLOCK_PLAN.md`**.
+
 **Application audit example:** `pack/templates/docs/AUDIT.app.reference.md` and `pack/audit/behavior-fixture/docs/AUDIT.md` (not this pack meta-audit).
 
 ## Coverage contract
@@ -42,6 +44,7 @@ Re-run full **`run_audit.cmd`** if git HEAD or source tree changed since step 1.
 ### D. Python audit engine
 - `pack/scripts/audit_code_checks.py` — manifest JSON, semantic gates, domain map
 - `pack/scripts/audit_common.py`, `audit_version_docs.py`, `audit_install_wiring.py` — shared primitives, Section M version cites, and the checks that read outside the repo (installed copy, `mcp.json`, reference templates)
+- `pack/scripts/pack_entry_points.py` — host-correct spelling for the pack's entry points; the Python twin of `Get-PackEntryPoint` in `pack-paths.ps1`, compared against it by behavior step 65
 
 ### E. PowerShell audit engine
 - `pack/scripts/run_audit_core.ps1`, `sync-audit-system.ps1`, `verify-audit-system.ps1`, `verify-audit-behavior.ps1`
@@ -93,6 +96,7 @@ Semantic gate: list **every path above** in `modulesReviewed[]` for section I.
 | `install_launcher.py` | F |
 | `audit_code_checks.py` | D |
 | `audit_common.py` | D |
+| `pack_entry_points.py` | D |
 | `audit_version_docs.py` | D |
 | `audit_install_wiring.py` | D |
 | `doc_version_sync.py` | D |

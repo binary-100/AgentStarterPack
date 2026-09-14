@@ -1,0 +1,8 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "AI_INSTRUCTIONS.md",
+    "docs/portable/GENERIC_RULES.md",
+    ".cursor/rules/*.mdc"
+  ]{{OPENCODE_PERMISSION_BLOCK}}
+}

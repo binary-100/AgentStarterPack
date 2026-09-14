@@ -1,8 +1,2583 @@
-# Audit system changelog
+## 2.22.123 (2026-09-11)
 
-Decisions already made — **do not re-debate**. Before changing audit design, read this + `AUDIT_SYSTEM.md` + `AGENT_WORKFLOW.md`.
+**WQ-480 — the fear was the finding.** Authorizing the OpenCode install, the maintainer attached a
+warning: *"I fear we are changing one specific design for another instead of creating a tool that
+will work on all AI inference engines/models."* He was right, and specifically so. 2.22.122 had
+**named** the rule — decision data belongs in a host-neutral file, only plumbing may be
+host-specific — and then shipped an OpenCode config next to a Cursor config without applying it.
 
-Bump **`pack/audit/manifest.json`** `"version"` when you change synced audit files. Add an entry here in the same commit/sync.
+**Three things were Cursor-shaped, and each would have forced a second implementation.**
+
+| Was | Now | Why it would have cost an implementation |
+|---|---|---|
+| `pack/templates/cursor/hooks/preapproved.json` | `.agent-control/policy.json`, found by walking **up** the tree | Shared data inside one host's folder becomes that host's data, and the next adapter copies it rather than reading it |
+| Patterns were **regexes** | Patterns are **globs** | A glob compiles to a regex losslessly; a regex does not compile to a glob **at all**. OpenCode takes globs, so regex authoring locks the policy to whichever adapter was written first |
+| Semantics lived only in PowerShell | `conformance.json` vectors, run by step 83 | One file stops adapters disagreeing about *data*, not about which rule wins or what counts as an ask |
+
+The third is the one that would have been missed. A shared list feels like enough, and it is not: the
+judgements that make this control usable rather than muted — refuse beats allow, only the ask section
+counts, prose naming a command is not a request to run it — were PowerShell control flow. A second
+adapter that got them subtly wrong would not crash; it would look installed and quietly decide
+differently, which is this pack's signature failure shape. **So an adapter is not finished when it
+reads the policy. It is finished when it passes the vectors.**
+
+**Verified by the host, not from the documentation — and the distinction earned its keep.** OpenCode
+**1.18.30** installed here via winget `SST.opencode`. `opencode debug agent build` in a bootstrapped
+project resolves **all 33 compiled rules**, `*run_audit.cmd*` as `allow` and `*install.ps1*` as `ask`.
+**Neither documented schema was correct:** current docs describe a v1 `permission` object and a v2
+per-agent `permissions` array, while the binary resolves `{permission, pattern, action}` and accepts
+authoring as `permission.<action>` = a bare effect **or** a glob→effect map. A block written from the
+docs — which is what shipping in 2.22.122 would have meant — would have been a phantom control.
+
+**Two deliberate asymmetries.** Refuse compiles to **`ask`, never `deny`**: refuse means *this control
+has no opinion, let normal review happen*, so compiling it to `deny` would remove the approval the
+owner is entitled to give. And allow is emitted **before** refuse, so the narrower rule binds last —
+copied from how the binary orders its own built-ins (`*` allow first, specific `ask` rules after)
+rather than from an assumption about precedence.
+
+**Step 83: 12 arms → 20**, and it now runs the hooks from a **staged project tree** instead of where
+they ship, so the upward walk that finds the policy is exercised rather than the fallback. Re-proven
+under its own mutation (`-Only 83`: baseline green, step reported a failure under mutation).
+
+**Found by running rather than reading, again.** The prover's parameter is `-Only`, not `-Steps`; the
+wrong name silently began proving all 82 mutations and was killed after 25 minutes, leaving an orphan
+child chain to clean up. The repo was intact because the prover works on a copy — but the lesson is
+the familiar one: a wrong argument that produces *plausible silence* costs more than one that errors.
+
+**Not shipped, and named:** the OpenCode plugin `stop` handback. It is TypeScript, this host has no
+JavaScript runtime (no node, npm or bun — OpenCode ships its own and exposes no generic runner), and
+`opencode run` needs provider credentials. It could be shown to **load** but never to **fire**, and
+WQ-476 set this pack's bar at proving a hook fires. Shipping it would lower that bar quietly, which is
+worse than leaving the row open with its blocker stated.
+
+---
+
+## 2.22.122 (2026-09-11)
+
+Two maintainer questions, both of which found real gaps rather than session failures.
+
+**WQ-478 — nothing in this engine asked how work should be *shaped*, only whether enough of it was
+done.** He had measured it himself: a validation list ran **over a week**, concurrency helped a
+little, **batching helped far more**, and he asked why that had never come up. The answer indicts the
+rule set. All fourteen prior always-on rules ask *did you do enough?* — depth contracts, completion
+checklists, a registry of 82 mutations. **None asked *what is the cheapest correct way to do this?***,
+and `generic-deep-task-execution.mdc` pushes the other way on purpose: run every step, with tools, in
+this turn. **An agent optimizes for what is checked**, so exhaustive serial work was the predictable
+output — the slowest correct answer available.
+
+**Parallelism is visible; batching is not.** Several calls in one message is a thing you can see.
+Batching stays invisible until someone measures, because **the repeated cost is usually the gate
+rather than the work** — and this engine is the textbook case: `verify-guard-proofs.ps1` costs a full
+suite run *per entry*, so five steps proven one at a time cost five suite runs and five proven in one
+lane cost one. `generic-execution-strategy.mdc` ships as the fifteenth always-on rule, with a test
+for each shape (*does any item need another's output? if not, it is not serial work*) and a
+requirement to name the choice in the first tool-using turn, so a reader can object before the cost is
+paid instead of after. The clause that keeps it honest: **batching changes the shape, never the
+amount.** "I batched, so I checked a subset" is forbidden — a batch that drops items is a shortcut
+wearing the word — and depth wins on any conflict.
+
+**WQ-479 — the pack is tool-neutral everywhere except its newest controls, and he is moving to
+OpenCode.** The honest split: the audit engine, verify scripts, bootstrap, work queue and handoff
+discipline are PowerShell and Python and do not care what editor runs them, and the generic rules
+already export as plain markdown. **What is host-specific is WQ-476/477** — `.cursor/hooks.json` plus
+PowerShell, designed and certified against one editor's hook surface without anyone asking whether
+the mechanism ports.
+
+**It ports, but by luck rather than design, and the reason is the reusable part:** the *decision list*
+lives in a host-neutral JSON file and only the *plumbing* is Cursor-specific. Recorded as a rule for
+the next control: **when a control is built on a host-specific mechanism, the data it decides from
+belongs in a host-neutral file, and only the plumbing may be host-specific.**
+
+**Measured, and it inverts the matrix's framing: on the two capabilities this pack most depends on,
+OpenCode is better provisioned than Cursor.** It has a global always-on rules path that actually
+loads (`~/.config/opencode/AGENTS.md`), where Cursor's profile folder loads nothing — which WQ-456
+spent a release proving. Its `instructions` globs can name `.cursor/rules/*.mdc` **directly**, so the
+rules need no conversion and no duplicate copy. It pre-approves commands **declaratively** through
+`permission` rules, which is what WQ-476 needed a hook script to achieve. The parity matrix had
+claimed *no host has a global rules path* — false, and it was written as "Cursor plus fallbacks" in a
+way that hid the finding.
+
+**`-Targets OpenCode` ships and Phase 3 deliberately does not.** Bootstrap writes `opencode.json`
+with the `instructions` globs, confirmed by two independent doc sources. The `permission` block and
+the plugin `stop` handback are **not** shipped: the schema differs between the v1 `permission` object
+and the v2 per-agent `permissions` array, and the pack folder has no OpenCode to run
+`opencode debug config` against. **Shipping a config that cannot be verified is how a phantom control
+gets built**, and this engine already carries that lesson at the cost of a release.
+
+## 2.22.121 (2026-09-11)
+
+**WQ-477: a decision the maintainer had stated three times was still being asked, and the reason was
+in a file rather than in anyone's memory.** He settled it on **2026-08-27** — publishing and git
+require StarterPack-Airlock on the host Desktop — restated it on **2026-09-03**, and restated it
+again on **2026-09-11** after an agent ended a turn asking him to set up publish in the default path.
+
+**The cause is the part worth keeping.** `docs/WORK_QUEUE.md` recorded WQ-465 as *"You decide to
+publish as an open decision"* and WQ-455 as *blocked on WQ-465 as if publish were undecided*. An agent reading the queue
+therefore re-derived the ask **correctly**, from the record, every session. Three restatements in
+chat could not outvote one line in a file, because a new session reads the file and not the history.
+**A settled decision recorded as an open one is not a stale note; it is an instruction to ask again.**
+
+**A second cause, recorded because the shape will recur.** The decision used to be carried by a rule,
+`.cursor/rules/no-publish-from-this-machine.mdc`, deleted in **WQ-459** for a sound reason: its
+*premise* — the execute bit lives only in git, so the pack must be committed — was exactly what that
+row retired. The **content** it also carried went with it, and nothing checked which one was leaving.
+**Retiring a rule's premise is not retiring its content.**
+
+**Fixed in two parts, because the first part alone is what already failed.** The record now states the
+decision with its dates and quotes and says not to raise it, and the macOS CI row moved to **Parked**
+behind StarterPack-Airlock CI rather than a default-path question. Then, since a paragraph telling
+agents not to ask is precisely the thing that did not work, the WQ-476 control was extended:
+`preapproved.json` gains a **`settled`** list, and `offload-detect.ps1` flags an ask section that
+re-raises one, **citing where the decision is recorded** so the handback points at the record instead
+of asserting from nowhere.
+
+**Checked before the command list, and deliberately outside the refuse skip.** The refuse list exists
+so that an ask naming `install.ps1` or `git push` stays clean — those are genuinely the maintainer's.
+But *"this is the human's call"* is the exact framing that produced this defect, so a settled hit wins
+even when the same line matches a refuse entry. Step 83's new arm uses such a line on purpose.
+
+**Same hook, different question, and this is the worse failure.** WQ-476 caught asks naming a command
+the agent was cleared to **run**; this catches asks naming a decision already **made**. Offloading a
+command spends a turn. Re-asking a settled decision tells the owner their answer did not stick.
+
+**Discrimination survives, which is what keeps it enabled:** stating what a settled decision *means*
+for the work passes clean, because the check reads asks rather than mentions. Evidence that the
+change bites: the scratch table's `ask is a publish decision -> clean` case **failed on the new
+build, and that failure was the point** — the expectation encoded the old belief.
+
+## 2.22.120 (2026-09-11)
+
+**WQ-476 closed the one rule in this pack that had no mechanism, and it was closed by execution
+rather than by rewording it a fourth time.** `agent-defaults-always.mdc` forbids ending a turn with
+"run X to fix" when the agent can run X. That paragraph was present, loaded, and correctly worded;
+it was violated across four sessions and closed three times with better prose. The maintainer's
+question was not what the rule said — it was **how he was supposed to know it would hold**, having
+been told before. This file already had the answer: **a status field cannot hold a proof.** A
+sentence in chat promising compliance is a status field, stale the moment the context window rolls,
+with nothing running to contradict it.
+
+**Two hooks ship, and which event does what was measured rather than inferred.** The documentation
+lists return fields for six events and `stop` is not among them, so the design was settled by
+instrumenting the events and reading the payloads:
+
+| Event | Carries | Can act |
+|---|---|---|
+| `afterAgentResponse` | the assistant's message in `text`, ~560ms earlier | no |
+| `stop` | `status`, `loop_count`, `transcript_path` — **no text** | yes, via `followup_message` |
+
+**The event that can see is not the event that can act**, which is the opposite of the single-hook
+design that would have been written from the docs. So `offload-detect.ps1` judges the message and
+leaves a verdict on disk, and `completion-gate.ps1` acts on it.
+
+**What counts as a violation is a list, not a judgement call:** the ask section naming a command that
+`preapproved.json` already clears the agent to run. Both hooks read that one file, because two copies
+would drift silently — the detector would stop flagging exactly what the approver had started
+allowing. The discrimination is what decides whether anyone leaves this enabled: an ask naming
+`install.ps1` or ending in `git push` passes **clean**, because those are the two categories this
+pack has always said belong to the maintainer, and prose that merely *mentions* `run_audit.cmd`
+passes clean because a changelog entry is not an instruction. A checker without those exclusions is
+muted within a week, which this file records as a lesson already paid for.
+
+**Proven end to end, not installed and assumed.** A self-test sentinel fires the handback without
+anyone committing a real violation: the detector flagged at 09:16:09.40, the gate handed back at
+09:16:10.03, and the follow-up arrived as a turn. Before that run, "the hook emits a followup" and
+"Cursor delivers it" were two claims and only the first had evidence. The sentinel ships, because a
+control nobody can exercise on demand is a control nobody notices has died.
+
+**Pre-approval ships available and unregistered, and the asymmetry is asserted by step 83.** The two
+hooks above *tighten* what the agent gets away with, so shipping them on costs a project nothing it
+would want. `shell-preapprove.ps1` *widens* what runs unattended, and widening someone else's review
+posture is not a default to choose for them. A future edit that quietly registers it in
+`hooks.json.template` fails the step.
+
+**Step 83 runs the hooks instead of reading them, with every payload BOM-prefixed the way Cursor
+sends them.** That is not caution: the first live version of `shell-preapprove.ps1` was installed,
+logging, and approving **nothing** for four commands straight, because Cursor prefixes its payload
+with a UTF-8 BOM and `ConvertFrom-Json` threw on the U+FEFF. It looked installed and did nothing,
+which is this engine's signature failure shape. Proven able to fail by pointing the detector at a
+heading no message carries — the hook still parses, still logs, still exits 0, and silently approves
+every offload.
+
+**One portability defect fixed on the way in:** the hooks resolve their state directory through a
+guarded candidate list rather than `$env:LOCALAPPDATA`, which is empty off Windows and would have
+thrown on `Join-Path` — the same null-input defect that took step 54 red one release earlier.
+
+## 2.22.119 (2026-09-11)
+
+**A step that guards bash wrappers failed with a message about a null `Path`, and the step was
+right to fail — it just could not say so.** Step 54 assembles its bash candidates with three
+`Join-Path` calls over `$env:ProgramFiles`, `${env:ProgramFiles(x86)}` and `$env:LOCALAPPDATA`. On a
+shell where the x86 variable is **empty**, `Join-Path` throws on a null `Path`, and under this
+suite's `$ErrorActionPreference = 'Stop'` that aborts the whole step with
+`Cannot bind argument to parameter 'Path' because it is null` — naming neither the variable nor the
+step's subject.
+
+**The guard existed and could never run.** The candidate loop opens with
+`if (-not $cand) { continue }`, so a missing candidate was anticipated; it was simply guarded in the
+wrong place. `Join-Path` fails while building the array, before anything iterates it. Guarding a
+result cannot protect against an input, and this is the second time that distinction has cost this
+engine a red step for the wrong reason — the same shape as the zero that meant "unknown" in step 72.
+
+**Fixed by guarding the inputs**: each candidate is a base plus a leaf, skipped when the base is
+null or whitespace, so a machine missing any one of the three roots loses that candidate instead of
+the step. The failure was never about bash and never about the wrappers, which is why it deserves a
+release note rather than a silent patch — **a check that cannot name what it found is indistinguishable
+from a check that is broken**, and for one gate run this one was both.
+
+**Found by running the gate against new work, not by looking for it.** WQ-476's hooks were being
+verified; step 54 went red beside step 61 and read convincingly like collateral from the new files. It
+was not. Step 61's failure *was* the new work — `Set-Content -Encoding UTF8` in a hook, which writes a
+BOM on 5.1 and none on 7 — and fixing it does not touch step 54 at all. **Two red steps in one run are
+not one cause**, which this engine has now recorded twice.
+
+## 2.22.118 (2026-09-11)
+
+**WQ-467 closed the only way an unreproducible event honestly can: the forensics came back negative,
+and the next occurrence is now detectable.** Three registry rows went from `exempt` to full mutation
+specs inside an hour with no edit anyone could account for — the maintainer's own edits covered five
+rows of eight. The specs were sound and all three were later proven by execution, so what was
+unexplained was never the content. It was the **transition**, and nothing in the system disagreed with
+it.
+
+**Ruled out by reading every writer, not by assuming.** No script in this repo writes the source
+registry. `sync-audit-system.ps1` writes back into the source only under `-PullFromInstalled`, which
+was never passed. `verify-guard-proofs.ps1` applies every mutation to `$workCopy` and reads the source
+registry with `Get-Content` alone. A sweep for writes anywhere under `pack/audit/` finds only probe
+roots — fixtures written into throwaway trees, with the real manifest read as a `Copy-Item` source.
+That leaves a human, an agent, or an editor buffer flushing over the file, and none of those is
+reproducible a day later. **So the deliverable is detection, because the row's own re-open trigger was
+"a second unexplained status change" and nothing was watching for one.**
+
+**`exemptSteps` is now declared in the registry and compared to the rows.** Step 71 already printed
+`mutation 81, exempt 1` every run, and **a printed count nobody recorded is a number, not a check** —
+that is precisely how the first transition passed as scenery. The list names steps rather than
+counting them, because a count cannot see a **swap**: one row retrofitted while another regresses to
+exempt leaves the total intact. Both directions are reported, and the benign one matters as much as
+the regression — a row that gained a proof without the declaration being updated is how a declaration
+rots into a number nobody trusts, which is the state this one was found in. The practical effect is
+that a status change must be edited in two places in the same change, and **that second edit is the
+explanation the incident lacked.**
+
+The printed line now reads `exempt 1 (declared: 62)`, so the run says which row carries the debt
+rather than how much debt there is. **Three new in-process fixtures** cover a row that stopped being
+exempt without the declaration changing, a row exempt without being declared, and a registry with no
+declaration at all. Step 71 keeps its registered mutation and was **re-proven red under it** on a
+quiet tree — baseline green, no collateral. Full suite `Summary: 0 fail(s)`.
+
+## 2.22.117 (2026-09-11)
+
+**WQ-469 closed: the release narrative moved out of a scanned `.py`, because the guard reading it was
+never wrong.** Step 65 scans `pack/scripts` and `scripts` for strings that tell a reader to run a
+Windows-only entry point, and it fired three times on **one physical line** of
+`scripts/fill_pack_semantic_report.py` — 88,997 characters of canned audit prose. Each hit was
+correct on its own terms: the line named `run_audit.cmd`, later gained the word for raising an
+exception, and once carried `-fix ` inside the very phrase describing the forbidden behaviour, since
+`-match` is case-insensitive. **A scanner cannot tell prose about an instruction from an
+instruction**, and the exemption route was closed by the scanner's own comment — a file-level
+exemption is how the next real offender gets in beside a tolerated one. Three hits on the same line
+also showed the compounding shape: **new prose inherits every literal already on that line.**
+
+**The fix is a relocation, not a reword.** The canned per-section text now lives in
+`scripts/semantic_report_content.json`, and the script is a loader that reads it, merges the
+manifest's required sections, and writes the report exactly as before. **Verified by equivalence**,
+not by inspection: the report generated after the move is identical to the one generated before it,
+field for field, with only `generatedAt` differing. The script's own docstring now says what it is for,
+which is the part a future maintainer needs — the file has to stay a loader, since prose that creeps
+back beside the code is read by a code scanner again.
+
+**Two extra findings came out of the move.** The first is a small lie in the manifest:
+`scripts/fill_pack_semantic_report.py` was a declared consumer of `machineLocalPaths` and
+`maintainerOnlyPaths` in `listConsumers`, and it never read either — step 60 counts a **text mention**
+of a key as reading it, and the mentions were in the narrative. So the script was a phantom reader,
+declared to keep step 60's undeclared-reader arm quiet about its own prose. Both declarations are
+gone; the keys are still honoured by the two distribution channels that matter, which is what that
+registry exists to enforce. The second is the general lesson: **prose in a scanned file does not just
+trip scanners, it satisfies them**, and a registry entry created by a sentence is worse than one
+missing, because it reads as a verified fact.
+
+**New arm 5c on step 65** is what stops the narrative moving back: no line in the scanned set may
+exceed **600 characters**. The measurement makes that threshold uncontroversial — with the prose out,
+the longest line anywhere in the scanned set is **239** characters, against the 88,997 it replaced. It
+is added to step 65 rather than shipped as step 83 because it has the same subject: what those files
+may contain. Step 65 keeps its registered mutation and was **re-proven red under it** after the arms
+changed. Full suite `Summary: 0 fail(s)`, and zero `[FAIL]` lines printed on the green run, which is
+the 2.22.116 invariant doing its job on the release right after it shipped.
+
+## 2.22.116 (2026-09-11)
+
+**WQ-472 closed: a `[FAIL]` line in this pack now means a real failure, and a passing run that prints
+one is itself a failure.** The suite runs child verifies against deliberately broken fixtures on
+purpose — that is how a guard is shown to be able to fail — so those children print findings that are
+not findings. Step 57's absolute-path arm tried to discard its child's output with `2>&1 | Out-Null`,
+and **an error-only redirect cannot touch `Write-Host`**, which is the stream this pack reports on. So
+the finding printed to the host, the parent audit quoted it into its Fix line (correctly — that is
+what `Get-PackChildFailureDetail` is for), and the 2.22.109 certification reported a `SESSION` path
+that exists in no file in the pack folder. It cost a full diagnosis pass: the file was clean, the child
+verify exited 0 against it, and the suite reported zero failures. Nothing was wrong except the
+plumbing.
+
+**The fix is an invariant, not a patched arm.** A run that exited 0 must not have printed a marked
+failure line, and that is checkable only by the parent, which is the one layer that sees both the exit
+code and everything the child wrote. `verify-audit-system.ps1` now tees the behavior suite's output
+instead of piping it straight to the host, and asks `Get-PackStrayFailureLine` whether a green run
+printed anything marked `[FAIL]`. **Tee rather than capture-then-print**, because the suite runs for
+minutes and a human watching it is entitled to see the steps as they go. Only `[FAIL]` counts;
+`[WARN]` and `[SKIP]` are things a passing run is expected to say.
+
+**Suppressing the child would also satisfy the invariant, and is the one fix that was off the table.**
+That is the WQ-463 defect in the other direction: a failing child that says nothing cost four audit
+runs and two disproven theories. So step 57's arm now **captures** with `*>&1` — which serves both
+halves, since the host stays quiet on a green run and the text is finally there to assert on. That arm
+had been reading exit codes alone, so it gained two assertions on the way past: the rejection must
+name the absolute path it found, and the accepting run must say it judged the roots.
+
+**New step 82** tests the helper on fixtures rather than inferring it from the caller, which is the
+same shape step 74 uses for `Get-PackChildFailureDetail` and for the same reason — the parent that
+enforces this cannot be run from inside the suite it runs. Three arms cover the sides an exit-code
+gate can get wrong (clean pass, passing leak, real failure), one covers a single captured string with
+a blank line in it, and two ask whether the parent still keeps a copy of the output and still calls
+the helper. **A sixth arm greps this suite's own source** for in-process script calls paired with an
+error-only redirect, because the invariant only fires once a leak exists while the grep fires when one
+is written.
+
+**Measured before shipping, not after:** with step 57 fixed, a green suite prints **zero** `[FAIL]`
+lines, so the invariant could be turned on without hunting for further leaks — one arm was the whole
+population. **Proof:** steps 57 and 82 both red under their own mutations, one lane, baseline green,
+runner exit **0**, no collateral. Step 82's mutation inverts the gate in `Get-PackStrayFailureLine` so
+the detector goes quiet exactly where a leak can happen, and it reddens two arms rather than one.
+Reproducing the original incident by reverting step 57's redirect was **rejected** as the mutation: no
+step runs `verify-audit-system.ps1` against this suite — step 23 passes `-SkipBehavior` and step 73
+exists to keep that recursion out — so only the grep would have caught it, and a mutation proven by a
+grep is weaker than one proven by behaviour.
+
+## 2.22.115 (2026-09-11)
+
+**WQ-471 closed: the five guards that asserted only a zero exit now assert what was produced.**
+WQ-466 swept the suite for steps that asserted *that* a child failed without asserting **which**
+finding produced the failure, and fixed eleven. The mirror image was never swept — steps whose only
+assertion is that a child **succeeded** — and it kept surfacing on its own, three times while proving
+a different step. That is the argument for sweeping rather than waiting for a fourth.
+
+**Step 32 was the worst of them: one exit code for the whole step, output piped to null.** The
+portable export is the paste-at-session-start rules file for every tool that is not Cursor, and that
+population cannot notice staleness any other way — they read what the file says, not what the pack
+ships. A detector that had stopped comparing anything would have satisfied the old arm. It now
+requires the verify to name `GENERIC_RULES.md`, and to have compared this repo's **loaded** rules,
+because that arm skips silently where `.cursor/rules` is absent and here it must run (WQ-456). Then
+the positive control the step never had: a disposable two-file pack, exports generated into it, and
+four kinds of drift planted in turn — a hand-edited rules export, a deleted one, a stale skill mirror,
+and a loaded rule diverging from `pack/rules` — each of which must be **named**, from a freshly synced
+export each time so one plant cannot be proven by another's damage.
+
+**Step 39's fix is where the shape is clearest.** Its first arm reads the tree and its second asserted
+a zero exit, and under the step's own mutation the second arm reports *matches pack export* about a
+file that is not on disk. It now requires the verify to name the export it judged, and a second
+control deletes that export again and requires the rejection to name it — so the case the repair
+exists for is the case the verify is proven to see.
+
+**Step 33** asserted two zero exits and read nothing, so a bootstrap that generated nothing and a
+verify that judged nothing both passed; it now reads the instructions hub, the rules export and the
+bootstrap record, and requires the verify to state the Portable-only profile it was asked to enforce.
+**The product-truth skip arm** claimed the pack repo *skips* overlay checks while only reading exit 0
+— a skip and a full pass are the same exit code — and now requires the script to say it skipped.
+
+**Step 56 could not be fixed by asserting output, and the reason generalises.** `update-agent-stack`
+delegates without `-PassOutput`, so `verify-complete-picture` prints to the host and never reaches a
+captured stream; the first attempt at the fix failed on exactly that. What discriminates is the
+**verdict**, so the control is a project that must fail Step 5b — a `ROADMAP.md` still marking a
+shipped WQ as **Next** — because a delegation that has stopped happening cannot report a failure. The
+old arm's OK line claimed Step 5b had run, which the arm never checked.
+
+**All five re-proven on the changed arms**, two lanes, each with its own green baseline, runner exit 0
+in both. Collateral moved from suspected to confirmed in one place: step 32's mutation also fails
+step 23, because that step drives a generated project through its own audit, which runs this same
+verify — the earlier record listed steps 23 and 52 as *unverified* collateral measured under four
+concurrent lanes, and step 52 was the contention artefact, not collateral.
+
+**The new step 56 earned itself on the first certification run after it shipped.** The release note for
+WQ-472 quoted the planted-fixture path verbatim into this repo's own `docs/handoffs/SESSION.md`, which
+is exactly what the absolute-path check exists to reject, and `verify-complete-picture.ps1` went red on
+the maintainer repo. The old arm — exit code only — would have passed while the delegation it guards
+reported a failing project as aligned; the rewritten arm named `WORK_COMPLETION Step 5b` in its failure
+text and pointed straight at the cause. One prose fix cleared all three reported failures. Where a
+guard's own release note trips it, the guard is not too strict: prose about a bad path is still a bad
+path once a reader copies the line.
+
+## 2.22.114 (2026-09-11)
+
+**WQ-433 closed: a `docs/`, `scripts/` or `tests/` path named by a rule, skill or pack doc now has a
+declared owner, and the ones this pack delivers are checked for being deliverable.** Step 47 resolves
+`pack/`-rooted cites only, which is why a design-reference doc that was cited but absent survived
+until a manual sweep in 2.22.55. The other three roots were left out for a good reason rather than an
+oversight: a doc naming `docs/ROADMAP.md` is describing the reader's project, and this pack has no
+roadmap by decision. Measured before designing anything, an indiscriminate pass over those roots
+reports **68 findings on a clean tree, every one of them correct advice about somebody else's tree** —
+which is how the first attempt at this check got muted, and a muted check is worse than none.
+
+**So the work was ownership, not scanning.** A cite under those roots has three possible owners and
+only one of them is settled by asking whether the file is here:
+
+* **the pack folder** — `docs/WORK_QUEUE.md`, `scripts/audit_code_checks.py`. Must resolve, and this is
+  the **default for anything undeclared**, so a new cite is checked without anyone listing it.
+* **delivered** — the reader's project gets it *from this pack*. Existence here is the wrong question;
+  the right one is whether the pack can still produce it, which is a **stronger** check, because
+  advice to keep a file no template writes is undeliverable. 14 paths, each declared with its
+  deliverer: `docs/ROADMAP.md` from a template, `docs/AGENT_REFRESH.md` from the refresh script,
+  `scripts/doc_version_sync.py` from `pack/scripts` (the one Python-stack file bootstrap copies
+  rather than templating).
+* **the reader's own** — `docs/PRODUCT_REFERENCE.md`, cited as "or equivalent". Nothing here can check
+  it, so the only honest treatment is to say so: 3 paths, each carrying a why, **printed as INFO on
+  every suite run**. An enumerated mute is the alternative to a quieter check.
+
+**Ownership is declared per path, not guessed from the citing file, and prose-sniffing was tried and
+rejected.** One paragraph cites both trees: `START_HERE.md` line 22 contrasts this repo's work queue
+with a bootstrapped app's roadmap in a single sentence. A negation filter fares no better — the same
+doc says "there is no `docs/AGENT_SESSION_START.md` here", which a filter reads as an exemption and a
+reader reads as the truth. The declaration lives in `pack/audit/manifest.json` as
+`citedPathOwnership`, and **a declaration nothing cites any more is a failure**, not a leftover, on
+the same reasoning as a find that matches zero times.
+
+**New behavior step 81, mutation-proven, and it found a defect in itself on its first run.**
+`Get-PackCitedProjectPathReference` bound `[string[]]$Lines` without `AllowEmptyString`, so every
+document with a blank line failed to bind and the scan reported **nothing** — the shape of failure
+this pack keeps relearning, where a clean result and a blinded check are indistinguishable. It was
+caught by the arm that requires at least 100 cites before believing a clean verdict, which is the
+same argument step 80 shipped a fixture for. The step splits three ways: extraction tested in memory
+(a backslash cite is the same path, `.md.template` must not truncate to `.md`, and a `pack/`-rooted
+cite belongs to step 47), judgement tested against a synthetic tree with six planted defects
+including a stale exemption, and the live surface. The mutation renames a cite in
+`RULES_AND_VERIFY_MAP.md` and leaves the old one pointing at nothing — the original incident — and it
+reddens the **undeclared default**, which is the arm that matters. Deleting a template to exercise
+the deliverable arm was rejected: bootstrap copies it, so four steps would have gone red and four
+failing steps prove less than one. Step 47 and step 81 now share `Get-PackCitedReferenceFile`, so a
+new document class cannot arrive into one scan and not the other.
+
+**The scan found no live defect**, which makes this a guarantee rather than a repair: 35 distinct
+cites across 45 documents either resolve here, deliver from a template or script that exists, or are
+declared unowned with a reason.
+
+## 2.22.113 (2026-09-11)
+
+**WQ-462 is finished: steps 4, 7, 15, 18, 23 and 34 proven, and no grandfathered exemption is left
+in the registry.** Of the 70 steps seeded as `grandfathered-pre-wq443` when the registry shipped, 69
+now carry a mutation the runner has applied and watched go red; the last, step 62, is
+`not-applicable` because its subject is the git index on a checkout that keeps no git. Every proof
+in this batch was taken twice — once to find out what was wrong, and again on the final tree with a
+green baseline in its own lane.
+
+**The runner could not express two of these steps, and that was the reason they were exempt.** A
+mutation spec could only replace text, so a guard whose subject is a file's *absence* (step 4 keeps a
+duplicate audit template out of the pack) or its *presence* (step 7 requires two agent docs) had no
+spec that could reach it. The registry now has three actions — `replace`, `create`, `delete` — with
+mirror-image staleness rules: a create whose target exists, or a delete whose target is already gone,
+describes a tree where the guard should already be red, and is refused the same way a find matching
+zero times is. Six new controls in step 73; `Get-PackMutationAction` is the single reader, so the
+validator, the registry check and the runner cannot disagree about what a spec means.
+
+**Step 15 was rewritten before it could be proven, because it observed nothing.** It matched four
+sample strings against two regexes, and all six were literals written out in the step itself — no
+change to the pack could make it fail, and it had passed unchanged through every rewording of the
+messages it claimed to check. That is the WQ-443 defect, sitting in the suite built to catch it. It
+now reads the classifier's patterns out of `run_audit_core.ps1` and the gate messages the engine
+actually emits out of `audit_code_checks.py`, and fails when the two disagree — with a blind-guard
+arm that fails loudly if either can no longer be found.
+
+**A list argument does not survive `-File`, and two things were quietly wrong because of it.**
+`powershell -File script.ps1 -Only 4 7` binds `4` and drops `7` without a word; the comma form is
+worse, because `[int[]]'4,7'` does not throw — .NET reads the comma as a digit-group separator and
+returns **47**. A run asked to prove steps 4 and 7 proved step 47 and exited 0, reporting success for
+work nobody requested. Pairs of two-digit steps escaped only by luck.
+
+The same transport had been lying inside **step 34** for far longer. It bootstrapped a project for
+Claude, Copilot and Windsurf, received one for Claude, and the registration script reported the two
+missing adapters as "skipped (not in bootstrap targets)" and exited 0 — so the step printed OK for
+three editors having checked one. Nothing found this in review; the guard proof found it, because
+mutating the Windsurf template changed nothing that was ever written to disk. Fixed at the transport
+(`Expand-PackListArgument` in `pack-paths.ps1`, used by `bootstrap-project.ps1 -Targets` and
+`register-tool-adapters.ps1 -Tool`, which drop their `ValidateSet` because a joined string fails it
+before the body runs), in the runner (`-Only` parses through `Get-PackRequestedStepNumber`, seven
+controls including the pair that once resolved to one step), and in the step itself, which now
+asserts the recorded targets, the three adapter files on disk, and that the registration skipped
+none of them.
+
+**What this closes, and what it does not.** WQ-462 moves to Done with 79 mutations declared and
+proven and one reasoned exemption. `WQ-471` — guards that assert only an exit code — is smaller than
+it was, since step 34 was its worst instance and is now content-asserting, but steps 39 and 32 remain
+open. The plan's Phase 5 is complete.
+
+## 2.22.112 (2026-09-11)
+
+**WQ-462 batch nineteen: steps 1 and 38 proven, the two that batch eighteen could not prove. Retrofit
+count: 7 exempt, 63 proven of the 70 grandfathered steps.** Neither was provable by writing a better
+mutation. Both were blocked by defects in the machinery around them, and both mutations had already
+been written — what changed is the code they ran against.
+
+**`WQ-475` — a child's stderr is output, not a terminating error.** Every pack script sets
+`$ErrorActionPreference = 'Stop'`, and under it PowerShell wraps a native command's stderr in a
+`NativeCommandError` that terminates the caller. So a tool reporting a problem the way Python reports
+problems killed whatever was running it, before the exit code could be read. It cost two separate
+runs to see the whole shape: the guard runner died at its invoke line, and once that was fixed the
+**suite itself** died on its own first step and wrote no results at all. Fixed at the choke point
+rather than the call site — `Invoke-PackPython` and `Invoke-PackScript` in `pack-paths.ps1` now run
+children with the preference set to `Continue`, function-scoped, leaving the caller's untouched. The
+verdict was always `$LASTEXITCODE`, which this does not change.
+
+**`WQ-473` — the session hook's stdin drain is gone, not repaired, and the reason is measured.**
+2.22.63 bounded the drain with `Task::Run` and a scriptblock, which needs a runspace that a
+threadpool thread does not have: it faulted in ~6ms and never read anything, for three releases. The
+obvious fix was written first — a real off-thread read via `BeginRead`, bounded by `WaitOne(250)` —
+and measured, because that is the lesson this item taught. **In isolation it drains correctly and
+exits in about half a second. Inside the hook, which goes on to spawn a Python child that inherits
+the same handle, it hung past 15 seconds on both PowerShell hosts.** The working version of the
+courtesy reintroduces the defect it was meant to fix. The hook never needed the payload — it reports
+context freshness and ignores what Cursor sends — so it now reads stdin by no route at all, and says
+so where the drain used to be. Measured after: 0.35–0.55s to exit on both hosts, stdin held open,
+payload or none.
+
+**Three things the hook fix broke, each caught by a green baseline rather than by review.**
+*Detection read prose.* `repair-project-hooks.ps1` matched the file text, and the new template's
+comment explains the stdin read it deliberately does not perform — so the shipped template reported
+**itself** stale, and every project generated from it followed. It now tokenises and drops comments
+before matching, which also closes the reverse hole: a comment mentioning the guard could have
+vouched for a hook that still hangs. *Patterns matched source, not tokens.* The tokeniser splits
+`[System.Threading.Tasks.Task]::Run` into five tokens, so `Task\]::Run` matched nothing until it
+allowed the gaps. *A guard that hangs does not fail.* The arm running the hook on fresh context had
+no bound, so restoring the original defect left a run going for **half an hour** instead of failing
+in twenty seconds — the 2.22.63 incident reproducing inside the guard written to catch it. Both hook
+invocations in step 38 are now bounded, and `verify-guard-proofs.ps1` takes `-TimeoutMinutes`
+(default 12) so a hung mutation is killed and **reported as hung**, which is a different verdict from
+"did not fail".
+
+**Projects carrying the 2.22.63 hook are now repairable.** `repair-project-hooks.ps1` knows two stale
+shapes rather than one: the pre-2.22.63 unbounded `ReadToEnd`, and the 2.22.63 drain that faults
+instead of reading. Step 58 gained an arm that plants the second shape and requires the repair —
+without it, a test written against the hang accepts a hook that never drains, which is how the shape
+survived three releases.
+
+**`WQ-474` did not reproduce.** Twenty-three suite executions today across three- and four-lane
+concurrent runs, after the `export.ps1` `$PID` fix, with **zero** contention failures in steps 52, 54
+or 23 — including step 54, which the previous release could not clear. No mechanism was ever found
+for the step 54 sightings, so this is recorded as not reproducible rather than fixed, and the lane
+cap is lifted to four.
+
+**The two proofs.** Step 1 adds a module to the self-test's expected domain map for section F that
+the fixture never had, so the engine's own proof reports the mismatch and exits 1; collateral is wide
+and unavoidable — steps 21, 22, 23, 43 and 54 all gate on that one pass/fail signal. Step 38 restores
+the unguarded `[Console]::In.ReadToEnd()` verbatim, in the file and at the point where it originally
+sat; step 58 is declared collateral because the template becomes stale by definition, and step 23 is
+left undeclared because it is the defect reaching a generated project rather than a witness.
+
+**Twelve proofs re-taken.** Every step proved in 2.22.110 and 2.22.111 under `-SkipBaseline`, or in a
+lane whose baseline had failed, was re-run on the current tree with a green control inside its own
+run: steps 5, 17, 27, 29, 32, 33, 35, 40, 41, 42, 43 and 56, plus step 54 serially so contention
+could not manufacture a false proof. All twelve held.
+
+## 2.22.111 (2026-09-10)
+
+**WQ-462 batch eighteen: steps 5, 17, 33, 35, 41 and 56 proven. Retrofit count: 9 exempt, 61 proven
+of the 70 grandfathered steps.** The nine that remain are a named list with a reason each, not a
+backlog.
+
+**A product defect fixed, found by running the suite in parallel.** Two lanes rather than four this
+release, per the concurrency cap, and step 52 contended anyway — so the mechanism got tracked down
+instead of worked around. `export.ps1` staged into
+`Join-Path (Get-PackTempDir) "cursor-starter-export-$stamp"`, and `$stamp` is **`yyyyMMdd`**. Every
+export on the same day therefore resolved to the same `%TEMP%` directory, and the line after it is
+`Remove-Item $temp -Recurse -Force`. Two exports at once destroyed each other: one zipping a tree the
+other had just deleted, which is exactly the two errors the lanes reported —
+`Copy-Item : The process cannot access the file` and
+`CreateFromDirectory ... Could not find a part of the path`. **This needs no test harness.** Two
+users, or one user twice in a day, is enough. Fixed by adding `$PID` to the staging path and
+**verified by deliberately re-running two lanes at once: zero step 52 failures in either, both proofs
+intact.** Step **54** still contends under concurrency — seen once beside step 27 and once beside
+step 41 — and its cause is not yet identified, so `WQ-474` stays open narrowed to that step and lanes
+stay capped.
+
+**The runner has a blind spot of its own, filed as `WQ-475`.** Step 1's mutation was authored, ran on
+a green baseline, and the runner **crashed instead of recording the failure it had just caused**. The
+mutation worked: the engine's self-test detected the stale expectation and printed
+`parse_domain_map F: expected ...`. It printed to **stderr**, PowerShell wrapped that in a
+`NativeCommandError`, and the runner's own `$ErrorActionPreference = 'Stop'` made it terminating at
+the line that invokes the suite — no results file, no attribution, a call stack where a verdict
+belongs, and the two steps sharing that lane never ran. Step 1 is therefore blocked on the runner
+rather than on a better spec, because every mutation that reddens it must make the self-test print;
+printing is how it reports. Reconnaissance also corrected a claim this project had carried in step 2's
+`rejected` note since batch one: a `Fail` in step 1 does **not** abort the suite, and results are
+written unconditionally.
+
+**The six proofs.** Step 5 plants the loophole rather than removing the prohibition — a debug audit
+script may run machine checks only — because that arm expects zero findings from a text scan, and a
+scan that finds nothing looks identical whether the file is clean or the check is blind; the
+prohibition appears exactly once in that skill, so removal was available and simply proves less. Its
+proof is also narrower than the step number suggests: the manifest-coverage arms sharing step 5 are
+still unproven and this does not claim them. Step 17 writes the timestamp into the field that holds
+the test-pass proof, the copy-paste slip between two adjacent `Add-Member` lines, so the pairing
+between a finalize pass and the tests it finalizes silently stops being checkable while both fields
+still look populated — collateral in steps 18 and 23, both declared, both of which read that field.
+Step 33 inverts the test for a Portable-only project so the verify recognises every target except the
+one it is named for. Step 35 inverts the freshness module's own expectation about a fresh context, so
+it reports a self-test failure when correct and passes when not. Step 41 points doctor at a Python
+probe that does not exist, which is both a portability regression and a runtime error, since the
+shared helper is what finds `python3` where there is no `py` launcher. Step 56 sends the
+work-completion check to `verify_complete_picture.ps1` — underscores where the hyphens belong, the
+slip this repo is built to produce, since its Python files use underscores and its PowerShell files
+use hyphens.
+
+**One candidate was measured instead of assumed, and it mattered.** Step 56's first spec dropped
+`-AllowMissing` from the completion check, on the reasoning that strictness would fail on a repo with
+no ROADMAP. Running it took seconds and showed exit **0** either way — the sources it would tolerate
+as missing are present here — so the spec would have been inert and cost a lane to discover.
+
+## 2.22.110 (2026-09-10)
+
+**WQ-462 batch seventeen: steps 2, 8, 22, 27, 29, 32, 40, 42, 43 and 54 proven. Retrofit count: 15
+exempt, 55 proven of the 70 grandfathered steps.** Ten steps in one release against two in each of
+the previous four, and none of that came from the steps being easier.
+
+**What changed is the release, not the mutations.** Certification — `run_audit.cmd`, then the
+semantic fill, then `verify_semantic_audit`, then `finalize_audit` — costs about **12 minutes per
+release and nothing per step**, because it runs the suite over the whole pack either way. Proving two
+steps per release paid that toll five times for the same work. Nothing required the batch to be
+small: the runner already copies the pack per entry and keeps its scratch under `guard-proofs-$PID`,
+so entries are isolated from each other by construction.
+
+**Four lanes, 8.7 minutes, seven steps.** One lane carried the baseline control and three ran
+`-SkipBaseline`, on a tree frozen at 250 files for the duration — the fingerprint the runner takes at
+both ends is what makes a frozen tree checkable rather than assumed. Serially those runs would have
+been about 33 minutes. A suite run is process-startup bound, not CPU bound, so on 24 cores the lanes
+overlap almost perfectly. The reconnaissance was parallel too: four read-only agents worked disjoint
+step sets and returned candidate mutations with verified occurrence counts, which is the part of this
+work that is judgement rather than waiting.
+
+**The ten proofs, grouped by what they restore.** Three are inverted comparisons, the shape that
+survives review because the code still runs: step 27 flips the front-matter test deciding whether a
+rule is always-on, so the brief tells an agent the opposite of what its editor will do in both
+directions — the WQ-456 failure exactly, where a rule was present, correct and never loaded; step 32
+flips the export drift comparison, so a stale portable rules file verifies clean for the population
+that has no other way to notice; step 2 lowercases a section key on the way into a domain map whose
+keys are uppercase, so every module list arrives empty while the row still looks right, and a section
+reports a complete review of a scope it was never given. Three restore a decision or a defect the
+pack has already paid for: step 40 misses one site in a rename, so the override that points user-scope
+paths at scratch is ignored and the real profile answers — the incident where asking a probe for a
+scratch destination silently rewrote `%USERPROFILE%\.cursor`; step 43 marks the Windows Python
+launcher required on the branch that only runs off Windows, telling every Mac and Linux user their
+machine cannot run the engine; step 22 drops `-DualShell`, halving host coverage while every run still
+says OK, for the defect class this pack has actually shipped (a BOM on one host, `-Include` matching
+3723 files on one and 4 on the other). Two are entry points that only break where nobody looks: step
+42 points the POSIX audit wrapper at a script that does not exist, which is inert on Windows and fatal
+on the machines least able to diagnose it, and step 54 puts an off-by-one in the bootstrap usage guard
+so a no-argument run generates a project into whatever directory the shell was in. Step 29 turns a
+`#Requires` directive into a comment — a tidying edit that enforces nothing, which is why it is the
+realistic one; nobody deletes a version floor on purpose. Step 8 stubs the test-pass proof head, so a
+report written against an older tree can never be found stale and the freshness gate stops being a
+gate.
+
+**Step 38 refused to prove, and that is the most valuable thing in this release.** The mutation raised
+the Cursor session hook's bounded stdin drain from `Wait(250)` to `Wait(60000)` — restoring the hang
+that once held the whole audit for eleven minutes with no output — and the suite stayed green. The
+reason is not a weak mutation. **The drain never runs at all.** A PowerShell scriptblock cast to
+`[Func[string]]` and handed to `Task::Run` has no runspace on a threadpool thread, so the task faults
+immediately and `Wait` returns at once whatever timeout it is holding. Measured directly with stdin
+redirected and held open: `faulted=True, elapsed=6ms`, parent saw exit after 164ms. So the hook never
+reads Cursor's payload — the promise in its own comment that a writer never sees a broken pipe is not
+kept — and step 38's hang arm passes because of the fault rather than because of the bound, which
+means a real regression in that timeout would go unseen. Filed as **WQ-473**; step 38 went back to
+**exempt** rather than being declared proven, because a mutation that cannot reach the behaviour
+proves nothing. This is the third distinct way a guard has been found green-by-accident, and the
+first found by a mutation *failing* to make one red.
+
+**Concurrency cost one lane and three collateral lists.** Steps **52** (export) and **23**
+(bootstrap) fail under concurrent lanes with `Copy-Item : The process cannot access the file` — a
+sharing violation, not an assertion — and they fail in every lane, because the suite runs all 80
+steps no matter what `-Only` selects. That voided one lane's baseline, correctly taking its three
+proofs with it, and planted phantom collateral in three others, so the collateral records for steps
+27, 32 and 42 say **unverified** rather than claiming none. Lane 1 was re-run alone on a green
+baseline, where steps 2, 8 and 22 proved with no collateral at all. Filed as **WQ-474**: capping
+concurrency at two lanes is the cheap answer, but a probe that reaches outside the copy it is
+supposed to exercise is also a probe that can pass while that copy is broken, which is the WQ-466
+shape and worth fixing on its own merits.
+
+**Also corrected here:** `docs/GUARD_PROOF_PLAN.md` still reported the retrofit at "3 of 70, 67
+left" — sixteen batches stale, because the per-batch record went to this changelog and the queue and
+nobody re-read the plan that aims the work.
+
+## 2.22.109 (2026-09-10)
+
+**WQ-462 batch sixteen: steps 21 and 26 proven. Retrofit count: 25 exempt, 45 proven of the 70
+grandfathered steps.** Two of two, zero collateral, against a green baseline. Both mutations are one
+token wide and both restore a decision rather than inventing a defect.
+
+**Step 21 — a required git contradicts a settled decision.** The preflight sorts every requirement
+into required (the engine cannot run) or optional (one feature degrades). The mutation promotes
+**git** to required, which is the WQ-459 decision reversed: version control is optional to this pack,
+and a download, a zip, a folder copy and a flash drive are all supported deliveries. Without git the
+user loses a git-HEAD fingerprint in the test-pass proof and gets a file-tree one instead — that is
+the whole cost. A required git would tell a first-time user their machine cannot run the audit
+engine, and it would say the same about **the pack folder**, which keeps no repository at all.
+
+The mutation lands in the branch that runs whenever git is present, so the preflight still exits 0
+and still reports `ok`: the only thing that moves is the column saying whether the user has to act.
+Breaking the Python probe to force a non-zero exit was rejected — that proves the gate rather than
+the required-versus-optional split, and several steps depend on this preflight passing, so the
+failure would have spread to steps that say nothing about requirements.
+
+**Step 26 — the install that eats the user's other MCP servers.** `Merge-McpJson` adds an empty
+server map only when the config lacks one. The mutation drops that negation, so a config that *does*
+have servers has the map replaced with an empty one, and every server the user configured is gone
+once the file is written back. That is the original incident's symptom exactly: the installer once
+kept only `agent-hygiene` and destroyed the rest. It is the worst class of defect this pack can
+ship — it happens during an install, to a file the pack does not own, on a machine where the user's
+own servers are the reason that file exists.
+
+Restoring the *cause* rather than the symptom was rejected on precision. The original was a
+dot-assignment on a `PSCustomObject` from `ConvertFrom-Json`, which throws; the throw escapes to the
+step's own catch, so the step fails through `installer probe error` instead of through the arm that
+counts surviving servers. **A sign error that lets the function keep running proves the arm; an
+exception only proves the try block.** The BOM arm keeps passing, since the write path is untouched.
+
+No collateral either side, and step 26's reason is structural: `install.ps1` is the one script the
+suite cannot run for real, so its functions reach the suite only through the AST extraction this step
+performs, and no other step extracts `Merge-McpJson`.
+
+**Two self-inflicted stops during this release, both instructive.** A `Set-Content -Encoding UTF8`
+used to patch `scripts/fill_pack_semantic_report.py` from the shell wrote a **BOM** — the exact
+construct step 61 bans, committed by hand in the session that proved it — found by reading the first
+three bytes and removed with a byte-level rewrite. Then the word `throw ` entered that file's
+narrative, putting a message-pattern token on the one physical line that already carries
+`run_audit.cmd` and `run_tests.bat` from older release prose, so step 65's arm 5 reported instruction
+text naming a Windows entry point. Both guards were right, and this is now the **third** hit of the
+second kind on that same line, logged on **WQ-469**: new prose inherits every literal already on the
+line, which argues for moving release narrative out of a scanned `.py` rather than for policing
+adjectives.
+
+**New Inbox row WQ-472, from diagnosing the above.** The failing audit quoted two `[FAIL]` lines, and
+only one was real: the other — *SESSION names an absolute path … `E:\SomeCheckout\...`* — is a
+**planted fixture** inside an expected-fail arm, printed to the host with the same prefix as a
+genuine failure. `Get-PackChildFailureDetail` quotes child marked lines by design (WQ-463), so a
+parent detail can carry a line that no file in the checkout contains and no verify actually failed
+on. Attribution is unaffected, because it reads `Fail` calls rather than output; this is a reporting
+defect, and the fix is for planted arms to mark or capture their child output.
+
+## 2.22.108 (2026-09-10)
+
+**WQ-462 batch fifteen: steps 30 and 39 proven. Retrofit count: 27 exempt, 43 proven of the 70
+grandfathered steps.** Two of two, one collateral step each, both declared in advance and both worth
+reading rather than narrowing.
+
+**Step 30 — a warning that reports the opposite population.** The audit surfaces a stale
+`AGENT_CONTEXT.json` stamp as **Improve**, addressed to the agent so it offers the refresh instead of
+handing the user a command. The mutation inverts the staleness comparison, so the line goes silent on
+the project that needed telling and fires on the one that is current. That is worse than the
+pre-WQ-456 world it restores: before, nothing reported staleness and the only way to find out was to
+run the refresh the warning would have told you to run — under the mutation the feature looks present
+and reports the wrong half. Two arms fail, which is the payoff for asserting the check in both
+directions: the stale arm loses its line, and the current-stamp arm — added so the warning could not
+become wallpaper — sees a nag. The no-stamp and bootstrap-stub arms keep passing, since neither
+reaches the mutated comparison.
+
+Re-routing the line from **Improve** to **Fix** was the other candidate, and it was rejected on blast
+radius rather than realism: an extra Fix changes the audit's exit code on a fixture several other
+steps run, so the failure would have spread to steps with nothing to say about agent context.
+
+**Step 39 — a flag defaulted the wrong way.** `Sync-ProjectPortableExports` decides whether to copy
+the pack's rules export into a project, and its `$needsCopy` flag starts at `$true` so an absent
+destination is copied. The mutation starts it at `$false`, so the one case the flag exists for is the
+case it skips: a project whose `docs/portable/GENERIC_RULES.md` was deleted or never arrived keeps a
+repair that reports success and restores nothing, and an agent on Claude, Copilot or Windsurf has no
+rules export to read while every check says the project is fine.
+
+**The second arm's silence is the finding.** After the mutated repair, `-VerifyOnly` reads the same
+flag and reports *`GENERIC_RULES.md matches pack export`* about a file that is not there, exiting 0 —
+and arm 2 only checks the exit code, so it cannot see it. That is a live instance of the **WQ-471**
+shape (a guard asserting only that a child succeeded), found inside a step being proven for something
+else. It is recorded on that row rather than patched here, because the fix is the sweep.
+
+**Collateral, both correct.** Step 30's mutation also fails **step 23**, which drives a generated
+project through its own audit — the same `run_audit_core.ps1`, so any change to the Improve set
+reaches it. Step 39's also fails **step 33**, and that one is informative: bootstrap and repair share
+one copy path, so the function named "repair" is also how a newly bootstrapped Portable project
+receives its rules export at all. Narrowing either mutation would mean splitting a path the product
+deliberately shares.
+
+## 2.22.107 (2026-09-10)
+
+**WQ-462 batch fourteen: steps 52 and 61 proven. Retrofit count: 29 exempt, 41 proven of the 70
+grandfathered steps.** Two of two, zero collateral, against a green baseline.
+
+**Step 52 — the arm with no second check.** Step 52 unzips a real export and asserts three things:
+every mirrored file is present, no machine-local state travelled, and no maintainer-only path did.
+The first of those is double-covered, because `export.ps1` already throws on its own when a
+`packMirror` file is missing — so the mutation targets the maintainer-only strip, which nothing else
+watches. It mistypes the separator normalisation (`-replace '/', '\'` becomes `-replace '/', '_'`),
+so every entry resolves to a path that does not exist, nothing is removed, and the archive ships this
+repo's session notes and its workspace-only rules to a recipient. The export still exits 0 and this
+checkout stays green, because here those files belong.
+
+Renaming the manifest property would have been the easier mutation and was rejected: the list is
+declared in `listConsumers`, so steps 53 and 60 would have failed alongside, and three red steps
+would have proved only that a key is mentioned somewhere. Keeping the read intact and breaking the
+*use* is what separates "the strip is wired up" from "the strip works."
+
+**Step 61 — a scanner cannot be proven by blinding it.** This step parses every `.ps1` in the pack
+and rejects three constructs that differ between PowerShell 5.1 and 7. Its expected result is zero
+hits, which means a blinded detector and a clean tree produce identical output — so the mutation
+plants a defect instead: `Set-Content -Encoding UTF8`, the construct that writes a BOM on 5.1 and has
+crashed Python's `json` reader on generated files. The plant sits behind `if ($false)`, so the parser
+sees it and the process never runs it; no script changes behaviour, and the failure is attributable
+to this step alone.
+
+That mutation also documents a gap rather than closing it: **step 61 has no positive control.**
+Nothing in it watches the detector fire, which is the same gap step 80 closed for the POSIX scanner
+by shipping a fixture containing the banned constructs. Until step 61 gets one, this proof is the
+only evidence the scan works, and it exists in the registry rather than in the suite. Recorded in
+the step's registry note; it is a candidate for the same fixture treatment, not a defect in the
+proof.
+
+**Method note.** Two mutation ideas were discarded for being unsafe in a child process rather than
+unrealistic — dropping `-Recurse` from a folder removal raises a confirmation prompt that a
+non-interactive run can sit on instead of failing, which would hang the suite rather than fail a
+step. A mutation has to fail loudly; one that blocks is worse than one that proves too little.
+
+## 2.22.106 (2026-09-10)
+
+**WQ-462 batch thirteen: steps 37 and 58 proven. Retrofit count: 31 exempt, 39 proven of the 70
+grandfathered steps.** Two of two, zero collateral, against a green baseline. Both mutations are sign
+errors rather than deletions, which is the shape that survives review.
+
+**Step 37 — an early return that is legitimate one line earlier.** `Test-ProductTruthRoadmapAlignment`
+returns immediately when no id is Done, because with nothing shipped there is nothing a roadmap can
+contradict (the WQ-432 reasoning). The mutation changes that condition to one that is always true, so
+a roadmap still marking a shipped id as **Next**, or still linking its active handoff, is never
+reported. Nothing about the mutated line looks wrong, and the check's output is identical to a clean
+run — it prints nothing either way. The pack-repo arm and the header-alignment arm keep passing
+correctly, the latter because it is a different function, which is what makes the failing arm
+attributable.
+
+**Step 58 — the test that decides whether a hook is even a candidate.** `Test-HookIsStale` first asks
+whether the hook drains stdin at all; the mutation inverts that one match, so every hook that drains
+stdin — exactly the shape that hangs a session start — is declared current, and the repair reports
+success with the hang still reachable. The rejected alternative is worth keeping: loosening the paired
+requirement to "either guard is enough" proves nothing, because the planted hook has neither guard and
+is stale under both readings.
+
+**A step's assertions can be complete and still not discriminate, and step 34 is the positive-path
+case.** WQ-466 swept the suite for guards asserting *that* a run failed without asserting *why*. The
+mirror image was not swept: guards asserting only that a run **succeeded**. Step 34 bootstraps a
+project for three editors and asserts that the adapter registrar exits 0 — and nothing else. A
+registrar that wrote no adapter and exited 0 would satisfy it, which also means the only mutation that
+can turn the step red is one that changes an exit code. Filed as **WQ-471** rather than half-fixed
+here, because the value is in the sweep, not in one step.
+
+**Method note.** Two registry entries were left with an orphan field after an in-place edit, and the
+prover refused to run rather than reporting anything about the steps named — the JSON parse failure
+surfaced as a rejected run. Worth stating because it is the desired behaviour: a registry that cannot
+be read is not a registry that says everything is exempt. Validate the file with a parser after
+editing it, not by eye.
+
+## 2.22.105 (2026-09-10)
+
+**WQ-462 batch twelve: steps 36, 55 and 64 proven. Retrofit count: 33 exempt, 37 proven of the 70
+grandfathered steps.** Three of three went red under their own mutation against a green baseline, and
+all three targets were chosen for the same reason: each guards a promise whose failure would be
+discovered by a human losing something rather than by a check going red.
+
+**Step 36 — a preview that is not a preview.** The archive script's documented contract is that
+running it without `-Apply` changes nothing, which is why the docs tell agents to run it that way.
+The mutation adds a second term to `if (-not $Apply)` so the preview branch is unreachable and a
+preview run falls through to `Move-Item`. Two arms see it at once — the eligible-preview arm loses the
+`Would move` line it asserts on, and finds the file already gone. The active-handoff arms keep
+passing, correctly: the status gate stops the loop before the mutated branch, so those arms were
+never evidence about `-Apply` in the first place.
+
+**Step 55 — the phrase that carries the WQ-415 defect.** `$staleShippedPatterns` is what turns "this
+doc still says a shipped slice is not built" into a finding. The mutation replaces `not built` with a
+synonym nobody writes, so the probe's `WQ-042 is not built yet` sails through. Nothing about the list
+looks broken afterwards, which is the point — an emptied list is visibly wrong, a near-miss pattern
+reads as working code.
+
+**Step 64 — one character in a config key.** `load_historical_regions` reads
+`historicalRegions` in exactly one place; the mutation drops the plural, so no region loads, and the
+sync rewrites the Done log while reporting `ok`. That is precisely how the protection would disappear
+in practice, and it separates *the config declares protection* from *the tool honours it*: arms 1 to
+3 read the config through `verify-work-queue.ps1` and still find the declaration, so only arm 4,
+which runs the tool, can see the difference.
+
+**The collateral is worth reading as a result, not as noise.** Step 64 also failed **step 22**, which
+runs the unit suite, because `test_version_sync_leaves_the_historical_region_alone` asserts
+`frozenRegions` contains the work queue. The same promise is guarded twice — once as a unit test on
+the tool, once as a behavior arm on the config — so a mutation narrow enough to fail one and not the
+other would mean the two had stopped testing the same thing. Registered on the row rather than
+"narrowed".
+
+**Also confirmed: the `-Only` list trap is in the runner's own invocation, not only in
+`Start-Process`.** Passing `-Only 36,55,64` through `powershell -File` collapsed the list to
+`365564`, and the runner refused the run rather than silently proving nothing — the rejection added
+in 2.22.87 doing its job. Invoke the script with `-Command "& '<path>' -Only 36,55,64"` so the array
+survives argument parsing.
+
+## 2.22.104 (2026-09-10)
+
+**WQ-470: the reporting contract required a closing line that turned every finished task into a
+checkpoint.** The rule set told agents to end a reply with `Nothing needed from you` whenever they had
+no ask. Two costs, and the second is the expensive one. The line is noise the reader still has to
+read. Worse, it reads as the turn being returned: a finished work-queue row followed by "nothing
+needed from you" looks exactly like a request to confirm, so the user spends a turn saying *continue*
+for work they had already authorized in full. A status line that cannot distinguish "I am done with
+everything" from "I am done with this one and waiting" is a false stop.
+
+**The phrase was in no pack file, and that is the finding to carry forward.** A grep of the whole
+checkout for it returned nothing: the instruction lived in the editor's own user-rules store, which
+no pack guard reads, no sync writes, and no verify can see. The user reported it as a defect in this
+tool, and the report was fair — the pack ships the reporting contract — but the literal instance was
+reachable only through the editor's rules API. **Before editing pack text to change an agent
+behavior, grep the checkout for the exact string the user quoted**; when it is absent, the pack can
+still fix the *shape* it teaches, but the *instance* lives somewhere else and has to be corrected
+there.
+
+**What changed.** `generic-structured-chat-output.mdc` now forbids an action section with nothing in
+it — an empty **What I need from you**, a standing "nothing needed" line, or any sentence whose only
+content is that the agent has no ask — on the reasoning that the section's **absence** is the
+message. It also forbids returning the turn to ask for work the user already authorized, and points
+at the queue rule for the substance. `generic-work-queue-discipline.mdc` gains **Continuing without
+being asked again**: under a standing instruction to work a queue or a project, the end of the turn
+is the next **Active** row, not the finished one, and the agent stops only for a decision that is the
+user's to make, credentials or hardware it does not have, or a conflict with something already
+settled. The required bullet that used to read "when anything is left for the user" now reads "when —
+and only when — something is genuinely the user's to do", because the permissive reading is what
+allowed an empty section to satisfy it.
+
+**No new behavior step.** Both changes are rule prose, and the suite cannot test what an agent writes
+in chat; `schemaSealedAtStep` is untouched at 70 and the exempt count is unchanged. What is
+mechanically verified is delivery: `sync-project-rules.ps1 -VerifyOnly` at 14 rules, which is the
+only channel that puts these two files in a load path.
+
+## 2.22.103 (2026-09-10)
+
+**WQ-462 batches ten and eleven: steps 16, 19, 25, 28, 51 and 59 proven. Retrofit count: 36 exempt,
+34 proven of the 70 grandfathered steps.** Two of the six could not fail as written, and both
+failures were the same shape as WQ-466 rather than a repeat of it.
+
+**Step 19 accepted an empty phases map.** `-not $tl.phases` is false for `{}`, because
+`ConvertFrom-Json` returns an object with no properties rather than `$null`. The timing log could
+therefore ship with a total, no breakdown, and a green step. The mutation is a guard that requires
+the map to be non-empty before writing its first entry — a condition that can never become true —
+and the assertion now counts the properties.
+
+**Step 16 asserted `test|proof|manifest`.** WQ-466 gave that step a message check; nobody checked
+that the message was *specific*. All three words occur in ordinary audit output, so bypassing the
+finalize gate entirely left the step green: the run still exited non-zero over the incomplete
+semantic report, and the loose pattern matched that instead. It now looks for
+`Audit finalize blocked`, which only `Test-ManifestFinalizeAllowed` emits.
+
+That second finding is the general one, so the suite was swept for it: **six assertions matched text
+the run produces anyway.** `ROADMAP` is the clearest — `-notmatch` is case-insensitive and the
+probe's own directory is named `cp-roadmap-probe`, so the assertion passed on any output that echoed
+the project root. `Next`, `open`, `cite`, `evidence` and the bare `3` for an exit code were the rest.
+Each now carries the producer's own sentence. **A message assertion is only as good as the narrowest
+thing that can produce the message** — the WQ-466 sweep proved the assertions existed, not that they
+discriminated.
+
+The other four went green first try: **step 25** widens the fixture-filler opt-in so one shipped
+command can mark every checklist section reviewed with no findings; **step 28** routes a layout
+finding to `Add-LayoutFix`, a real function one word away, turning Section B back into a delete list;
+**step 51** drops case folding from the Python half of the state-root key while PowerShell keeps it,
+so the two halves address different directories on the one platform where paths are case-insensitive;
+**step 59** drops the segment anchor from the illustration-name test, and since `Users` contains the
+allowlisted `user`, every real machine path in a general doc becomes an example.
+
+**Step 62 was considered and is already settled**, as `not-applicable` since 2.22.88: its subject is
+the git index and the pack folder keeps no version control (WQ-459), so it takes its documented
+`[SKIP]` every run and a content mutation has nothing to break. Recorded here because the batch
+reached for it first, and the registry note — not memory — is what stopped a second look at it.
+
+## 2.22.102 (2026-09-10)
+
+**An approval retry that fails is the agent's mistake, not a broken dialog.**
+
+A sync the agent could run ended up as a command handed to the user, after six approval retries came
+back `Failed to find tool call context`. The agent called that a rendering failure. It was not: a held
+command must be resent **byte-identical**, paired with the **exact** rejection text *that* command
+produced. Every failed retry had been edited between the block and the resend — output shortened, a
+comparison reworded — or paired with a reason string from an earlier, different block. The one retry
+that succeeded that day was the one resent unchanged. With nothing to match the retry against, the
+approval had nothing to attach to and never reached the user.
+
+Two failures compounded: the wrong diagnosis, and then treating it as a blocker, which
+`agent-defaults-always.mdc` already forbids — it says not to end with "run X to fix" when the agent
+can run X. That rule now also carries the mechanism, under **When approval is required, resend the
+command unchanged**, including the heuristic worth having: *if two retries fail, suspect the retry,
+not the harness.*
+
+Reported by the maintainer, who read "the approval card failed to render" and correctly answered that
+this describes an unaddressed problem rather than an explanation.
+
+**Second finding, from the same session: `request_smart_mode_approval` is a retry flag, not a request
+flag.** Setting it on a call that has *not* just been rejected produces the identical
+`Failed to find tool card` error, because there is no rejection for the approval to attach to. Call
+plainly first; escalate only after a block. That is the half the first diagnosis missed, and it is
+why the error kept recurring after the byte-identical rule was written.
+
+**Third, and the reason step 65 fired twice on this release:** the semantic report's narrative lives
+inside a scanned `.py`, and `-match` is **case-insensitive**. The phrase describing the forbidden
+behaviour — a "run-this-to-**fix**" instruction — contains `-fix `, which is the scanner's `-Fix `
+token, on a line that already carries two Windows entry-point names from an older entry. A
+hand-rolled pre-check missed it twice: once by running before the last edit, once by being
+case-sensitive when the scanner is not. A pre-check that does not evaluate `$msgPattern` from the
+suite's own source is a guess about the guard, not a check of it.
+
+## 2.22.101 (2026-09-09)
+
+**WQ-462 batch nine: steps 63 and 70 newly specified, steps 65, 67 and 69 re-proven. 5 of 5, zero
+collateral. Retrofit count: 42 exempt, 28 proven of the 70 grandfathered steps.**
+
+**Step 63** turns the segment test back into a substring test, and its damage runs backwards from most
+defects. A bare `__pycache__` also matches a file named `__pycache__.txt`, and `.git` swallows
+`.gitignore` — so the filter gets *broader*, scans quietly exclude files they are supposed to judge,
+and every step downstream reports clean on a smaller tree than it claims to have read. Collateral
+from a mutation like this would show up as steps staying **green**, which is why the step tests the
+primitive directly instead of trusting its callers to notice.
+
+**Step 70** inverts the orphan test so the detector returns only rules the pack *does* ship — the
+WQ-460 state, where no detection existed. The inversion is a better target than an empty return,
+because the function keeps enumerating, keeps reading front matter and keeps producing results; it
+just never produces the file that matters. A detector reporting nothing invites suspicion, one
+reporting the wrong set looks like it is working.
+
+**Steps 65, 67 and 69 were re-proven rather than assumed — see WQ-467.** At the start of batch seven
+the registry read 52 exempt with those three among them; forty minutes later it read 43 exempt with
+all three carrying full mutation specs, and my edits in that window account for five rows, not eight.
+The installed mirror synced in between already had them, so the change happened in the source before
+the sync rather than by pulling from the mirror. The specs are sound — all three fail under their own
+mutation on demand — but the transition is unexplained, and an unexplained change to the file that
+records what has been proven is worth its own row rather than a shrug. **The prover is the answer to
+this class of doubt:** any row's truth can be settled by running it, which is why a stored `proven`
+status was refused in 2.22.83.
+
+## 2.22.100 (2026-09-09)
+
+**WQ-462 batches seven and eight: steps 24, 44, 50, 60, 66 proven. Retrofit count: 47 exempt, 33
+proven of 80.**
+
+Three of the five restore the defect they were written from rather than an approximation of it:
+
+| Step | Mutation |
+|---|---|
+| 24 | An em dash in a docstring of a file that runs — the character behind three separate encoding failures |
+| 44 | The sync child's exit code kept and its output discarded, so a red run names no drifted file |
+| 50 | The illustration name in a shipped doc overwritten with something indistinguishable from a real person |
+| 60 | A declared reader inlines the manifest list it is supposed to look up |
+| 66 | A required POSIX twin renamed in the only script that can write it |
+
+**Step 66 needed a second spec, and the first one's failure was informative.** It broke
+`run_tests.sh`, which `projectRequired` does not demand — so nothing became undeliverable and the
+mutation was inert. Chasing that turned up a live overstatement in the guard: arm 1's comment claims
+it checks **both** directions, but the loop only walks `projectRequired` asking whether each required
+twin is deliverable. The reverse case it describes — a deliverable twin nobody requires — is not
+implemented, and `run_tests.sh` is an instance of it right now. Harmless in practice, since the repair
+writes it either way, but the comment promises more than the code does.
+
+**Step 66's proof costs steps 18 and 23 as collateral, correctly.** Both drive a generated project
+through its own audit, and a project whose `run_audit.sh` cannot be written fails from where they
+stand too.
+
+## 2.22.99 (2026-09-09)
+
+**WQ-466: eight guards asserted "it failed" without asserting *why*. Two of them were proving
+nothing.**
+
+Three WQ-462 batches in a row hit the same shape — steps **9, 10 and 12** each stayed green under
+their own mutation because the fixture was being rejected for a reason the step does not name. Rather
+than trip over it a fourth time, the suite was swept for it: `if ($LASTEXITCODE -eq 0) { Fail ... }`
+with the child's output thrown away.
+
+**11 rejection assertions, 8 blind** — steps 16, 20, 37 (three), 55 (two), 57. All eight now capture
+the output and assert which finding produced the rejection. **Two were defective rather than merely
+weak, and the new assertions found both on their first run:**
+
+1. **Step 37's product-truth arm had never exercised what it claims.** Its probe held only
+   `WORK_COMPLETION.md`, so `verify-complete-picture.ps1` stopped at `no handoff sources found` and the
+   arm passed on that exit code. The delegation it exists to prove was never reached. The probe now
+   carries a `WORK_QUEUE.md`.
+2. **Step 57's capture was blind.** It used an error-only redirect, but the script reports findings on
+   the **information** stream — so the capture was an empty string and the arm was comparing against
+   nothing. A full redirect fixes it. *A capture that cannot see the output is not a check.*
+
+**Postscript: writing this entry tripped step 65, and the guard was right.** Naming the host-write
+cmdlet as a bare literal in the semantic report's narrative put it on the same line as two Windows
+entry-point names that had sat there harmlessly for four releases — and step 65 reads a Windows entry
+point beside a print call as an instruction that cannot run off Windows. Certification failed with
+three Fix lines that all traced to that one line. **The fix was the prose, not an allowlist entry:**
+the scanner's own comment says a file-level exemption is how the next real offender gets in beside a
+tolerated one, and it is right about that too. Worth knowing before writing narrative into a scanned
+`.py` — the audit reads it as code because it is.
+
+**The rule, stated once here rather than rediscovered per batch:**
+
+> A step asserting a rejection must assert **which** rejection, and its fixture must be valid in every
+> respect except the one defect under test.
+
+An exit code is shared by every reason a run can fail, so it cannot attribute. This is the same
+finding as WQ-443 — a guard must be proven able to fail — one level in: a guard can be provably able
+to fail and still be measuring the wrong thing.
+
+## 2.22.98 (2026-09-09)
+
+**WQ-462 batch six: steps 6, 12, 14 proven, zero collateral. Retrofit count: 52 exempt, 28 proven of
+80.**
+
+**Step 12 was the third fixture in a row passing for a reason it did not name.** It removed
+`hardware_cache.py` from section F's `modulesReviewed[]` as well as from disk, and that omission raises
+its own coverage fix — so `--verify-semantic-report` was rejecting the report over coverage, and would
+have kept rejecting it with the alignment test negated. Reproducing the fixture by hand showed
+**eleven** other fixes in the same output.
+
+The fixture now *keeps* the module listed, which is also the truer setup: the expanded domain map is
+built from config rather than from disk, so a section listing a deleted module is precisely the
+contradiction under test — it claims to have reviewed what the machine reports missing.
+
+**This is now a rule, not an anecdote.** Three of the six steps in batches five and six were passing
+on unrelated rejections. A step that only checks *that* a verify said no cannot tell a proof from a
+coincidence:
+
+> Any step asserting a rejection must assert **which** rejection, and its fixture must be valid in
+> every respect except the one defect under test.
+
+**Steps 14 and 3 stay separate on purpose.** Step 3 asserts `audit_code_checks.py` *raises* the
+incomplete-audit fix; step 14 asserts `run_audit_core.ps1` files it into the gate channel instead of a
+section. Raising it and then misfiling it is a different failure — a whole-audit gate that reappears as
+Section L reads like one checklist item somebody can tick off. Mutating the recogniser rather than the
+raiser keeps the two proofs from overlapping.
+
+## 2.22.97 (2026-09-09)
+
+**WQ-462 batch five: steps 9, 10, 11 proven. Two of the three were passing for reasons they did not
+name — the most this exercise has returned in one batch.**
+
+Retrofit count: **55 exempt, 25 proven** of 80.
+
+**Steps 9 and 10 both survived their first mutation green.** Both fixtures omitted `modulesReviewed[]`,
+which is required for sections D–K, so `--verify-semantic-report` was rejecting the report over *that* —
+and would have gone on rejecting it with cite checking and the evidence minimum switched off entirely.
+Step 9 compounded it by giving section D a lone `command` evidence item, which trips the file/test
+requirement when not clean: a third unrelated ground for the same rejection.
+
+Both are fixed the same way, and the fix has two halves:
+
+1. The fixture is now valid in **every** respect except the one defect under test.
+2. The step asserts the rejection **names** that defect.
+
+The second half is the durable part. A step that only checks "the verify said no" cannot tell a proof
+from a coincidence, and the coincidence is what it had.
+
+**A mutation has to survive whatever runs before the step it aims at.** Step 9's obvious target was
+`summary_has_cite` returning `True`. That is asserted directly by `audit_code_checks.py --self-test`,
+so step **1** failed first, the suite aborted before writing a results file, and the runner could only
+report "no results file" — no information about step 9 at all. The config default was mutated instead.
+Recorded in the control's `rejected` field so the next person does not spend the same run finding out.
+
+**Step 11 costs step 2 as collateral, correctly.** Step 2 reads the same manifest and asserts sections
+F and K arrive complete, so a blanked `machineCheckCount` is a real defect from where it stands too.
+Narrowing the mutation would mean singling out one section by letter, which is not a shape any refactor
+produces.
+
+## 2.22.96 (2026-09-09)
+
+**WQ-464: the macOS risk that can be checked without a Mac, now is (new step 80, mutation-proven).
+WQ-455 split and marked Blocked with the reason written down.**
+
+The maintainer has no Mac, and the pack folder has **no `.git`** (by decision, WQ-459) — so no workflow
+in `.github/workflows` can run at all, the nominally-blocking Linux job included. Waiting on hardware
+to check something a script can decide is how a gap stays open for releases, so the decidable half was
+split out and closed.
+
+Two of the failure families behind WQ-436's macOS surprise are visible in the text:
+
+| Family | Examples |
+|---|---|
+| GNU coreutils macOS does not ship | `sha256sum`, `md5sum`, `timeout`, `stat -c`, `grep -P`, `date -d`, `find -printf`, `base64 -w`, `readlink -f`, and `sed -i` with no backup argument — on BSD that eats the next word as the suffix |
+| bash 4 syntax macOS will never have (pinned at 3.2) | `mapfile`, `declare -A`, `${v^^}`, `**/` |
+
+`Get-PackPosixPortabilityHit` decides both; **step 80** runs it over every shipped `.sh`. **All 23
+pass** — the surface was already clean, so this is a guarantee rather than a repair. The one `stat -c`
+in the repo is inside the **Linux** job, where it is correct, and the macOS job was already written to
+avoid it.
+
+**Scoped to shipped `.sh` on purpose.** A Linux-only CI job may legitimately call GNU tools, and
+failing it for that is how a check earns a mute — and a muted check is worse than none. Two controls
+guard the opposite errors: every rule carries a positive case, because a detector nobody has watched
+fire is a detector nobody has tested; and a portable sample that *names* the banned constructs in a
+comment must pass, because naming a thing is not calling it.
+
+**What still needs the hardware**, recorded on WQ-455 rather than implied: a case-insensitive
+filesystem, a `pwsh` that must be installed rather than assumed, Python provisioning, Gatekeeper on a
+downloaded copy, and the suite's 80 steps actually executing.
+
+## 2.22.95 (2026-09-09)
+
+**WQ-432 settled by reading the script, and the Inbox emptied.**
+
+**Why the same verify appears at 3c and 5b.** `pack/docs/WORK_COMPLETION.md` carried an open note: step
+3 says product-truth drift blocks the close, but the audit that catches it is step 6, *after* the row
+is moved to Done at step 5. The contradiction is real in the prose and absent in the mechanism.
+`verify-product-truth-paths.ps1` finds contradictions by reading the **Done log** and asking whether
+any doc still calls those ids not built or deferred — and `Test-DoneWqProseContradictions` **returns
+immediately when there are no Done ids**. Run at **3c**, the row being closed is not in the Done log
+yet, so the check cannot see it: it passes vacuously. Run at **5b**, the row is Done and the check has
+its subject.
+
+So **5b is the gate and 3c is a preview.** No step was reordered — the table was already right, the
+note explaining it was not. 3c stays because its other checks (files exist, ROADMAP no longer reads
+**Next** for that id) do not depend on the Done log and are cheaper to fix before the row moves.
+
+**Inbox is empty.** `WQ-433` (cited paths under `docs/`, `scripts/`, `tests/` unchecked) moved to the
+Active queue as the only row describing a **detection gap** rather than a convenience. `WQ-418`,
+`WQ-421` and `WQ-422` moved to Parked, each with a **Re-open when** that names the evidence that would
+justify building it — not a date. All 93 ids reconcile; `verify-work-queue.ps1` and
+`verify-complete-picture.ps1` both exit **0**.
+
+## 2.22.94 (2026-09-09)
+
+**WQ-462 batch four: steps 3, 13 and 20 now carry executable mutations. 3 of 3 proved; 58 grandfathered
+steps left.**
+
+| Step | Guards | Mutation restores |
+|---|---|---|
+| 3 | `-SkipTests` must exit 1 | A tests-skipped run that raises no incomplete-audit fix, so it exits 0 and reads as complete |
+| 13 | Section L `.gitignore` audit artifacts | An inverted report condition: a `.gitignore` missing an artifact passes |
+| 20 | Mirror direction | The installed copy overwriting the source pack |
+
+**Target the fix, not the exit code (step 3).** The exit code is derived from the fix count, so
+mutating the `exit` statement would produce a report saying the audit was incomplete while the process
+said it passed — a different defect from the one the step guards. **Expect step 14 as collateral**: it
+asserts the same fix reaches the manifest's gate list, so no mutation of that fix separates them.
+
+**Invert, do not empty (step 13).** Emptying the default artifact list is a visibly broken config;
+an inverted test looks like a working check right up to the point where a manifest full of machine
+paths gets committed. Collateral is low by construction — under the mutation the check reports *fewer*
+gaps, so other steps lose a fix rather than gain one.
+
+**Step 20's indent is load-bearing**, in the now-familiar way: the same `Copy-File` call appears inside
+a one-line `if` on the preceding branch, and a spec matching twice is rejected.
+
+## 2.22.93 (2026-09-09)
+
+**WQ-452: a project's `AGENTS.md` no longer has to name the *Windows* entry points (new step 79,
+mutation-proven).**
+
+Section L required the literal strings `run_audit.cmd` and `run_tests.bat`. A project whose
+`AGENTS.md` correctly tells a Linux reader to run `./run_audit.sh` therefore **failed its own audit
+for being correct** — the last place still carrying the assumption WQ-449 removed everywhere else.
+
+`agentsMdRequiredPhrases` entries may now be a **list**, meaning *any one of these*. The default is:
+
+| Requirement | Satisfied by |
+|---|---|
+| Audit entry point named | `run_audit.cmd` or `run_audit.sh` or `run_audit.ps1` |
+| Test entry point named | `run_tests.bat` or `run_tests.sh` or `run_tests.ps1` |
+
+A plain string still means that exact phrase, so **a config that pins names keeps pinning them** —
+asserted, because a permissive check that quietly stopped enforcing anything would look identical from
+the outside. Section F takes the same shape, so one key does not mean two things in one config file.
+
+**Four places carried the assumption, not one**: the code default, the generated project's
+`AUDIT.config.json.template`, and both reference configs. Fixing only the default would have left
+every newly generated project pinned to Windows names in its own config.
+
+Two of step 79's four controls exist to stop the fix going too far: an `AGENTS.md` naming **no** entry
+point at all must still be caught, and a pinned config must still pin. Expect step 23 as collateral
+when re-proving — under all-of, the generated projects it bootstraps cannot name every spelling
+either.
+
+## 2.22.92 (2026-09-09)
+
+**WQ-447: a generated project's runners are now proven thin, not just the pack's own (new step 78,
+mutation-proven).**
+
+Step 22 has always proved the *pack's* `.bat`/`.sh` pair delegates to one implementation. Nothing
+proved the same of the pair a **generated project** receives — and that is where drift costs most: a
+project whose `.bat` grows a step its `.sh` lacks runs a different suite per platform, and the audit's
+test-pass proof only ever observed whichever one ran.
+
+Step 78 bootstraps a Generic project and reads the **generated files**, not the templates, because
+reading a template is evidence about the template. For both pairs (`run_tests.bat`/`run_tests.sh` and
+`run_audit.cmd`/`run_audit.sh`) it extracts the scripts each wrapper hands off to, ignoring comments,
+and requires: both delegate to the shared implementation, both hand off to the **same set** of
+scripts, and neither invokes anything beyond it. A last control requires the implementation to be
+non-empty — two wrappers agreeing on nothing is not delegation.
+
+Note the generated `.sh` wrappers deliberately do **not** use `pwsh-wrap.sh`, unlike the pack's own:
+a generated project must run its own tests without the pack present. Step 22's rules could not simply
+be copied.
+
+**Expect step 23 as collateral when proving this** (the registry says so). Any mutation of a runner
+template also reaches the generated projects step 23 bootstraps and runs, so no target isolates step
+78 — the same situation as step 46.
+
+## 2.22.91 (2026-09-09)
+
+**WQ-444: five byte-identical copies of the markdown section slicer became one (new step 77,
+mutation-proven).**
+
+`Get-SectionBody` was defined, identically, in `archive-completed-handoff.ps1`,
+`verify-agent-handoffs.ps1`, `verify-complete-picture.ps1`, `verify-work-queue.ps1` and
+`verify-product-truth-paths.ps1`. That is not a tidiness complaint: one defect in it cost **five
+patches** in 2.22.73. The start-header search was unanchored, so it matched a heading *quoted inside a
+table cell*, began the Done section in the middle of the Active table, and reported every Active id as
+both active and done.
+
+It now lives once, as `Get-PackSectionBody` in `verify-lib.ps1`. Four of the five scripts did not load
+the library at all and now do. All four verify scripts still exit **0**.
+
+**Step 77 mutates the behavior, not the consolidation.** Removing the line anchor recreates the
+2.22.73 defect exactly. Asserting only "there is one copy" would be satisfied by one copy of a broken
+function, so the behavioral controls come first and the single-home scan is last.
+
+**The first version of step 77 was not provable and the runner caught it**, which is the reusable
+lesson. Its fixture quoted only the *end* header in a table cell, and start and end are matched by
+separate code — so the suite stayed green with the start anchor deliberately removed. The fixture now
+quotes **both** headers before their real heading. This is the fourth inert-fixture mistake in the
+WQ-443 family, and every one of them was caught by running the mutation rather than by reading the
+test.
+
+## 2.22.90 (2026-09-09)
+
+**WQ-463 closed. The cause was a version cite synced too late; a second, real defect was found on the
+way there.** Two new steps, both mutation-proven: **75** and **76**.
+
+**The cause (step 76).** Bumping the engine leaves `pack/docs/AUDIT_SYSTEM.md` carrying the old
+version, and `verify-audit-system.ps1` fails on that mismatch. Inside a full audit the failure
+surfaced two layers away — in a *generated project's* bootstrap check, as `verify-audit-system.ps1
+failed against the starter pack itself` — and then vanished, because the audit's own later sync
+repaired the header before the next run. That is the entire "first audit after a bump fails, the
+second passes" effect, and it is not intermittent at all: it is deterministic on a version bump and
+invisible on every run after one.
+
+**It was found by the instrumentation shipped one release earlier**, which is the argument for
+building that first. The very next failure said, in the Fix line, `AUDIT_SYSTEM.md header must mention
+starter pack 2.22.90 (run sync-doc-versions.ps1)`. Six runs had produced nothing but "a verify
+failed".
+
+The sync now runs in `scripts/run_audit_tests.ps1`, the build/test entry point that owns derived
+files — not in the audit, which must judge those files rather than rewrite them. Step 76 guards the
+**order**, not the mere presence of a call: a sync that runs after the check repairs the next run and
+proves nothing about this one. Its second control asserts the audit has *not* grown its own sync.
+
+**The second defect (step 75): verification was validating the user's backup copy of the pack.**
+Discovery is broad on purpose — a project outside the pack must be able to find one, so it searches
+the profile, the Desktop and the OneDrive Desktop. `verify-audit-system.ps1` reused that list and
+validated **every copy it found**. This machine exposes three: the checkout, the installed copy, and a
+backup on a OneDrive Desktop still at 2.22.83; the certification log shows three `Pack:` headers, one
+of them the backup. This was found while chasing the intermittent and is a genuine defect on its own —
+a backup is not a stable input (OneDrive hydrates and re-syncs it, and it changes whenever a newer
+pack is copied over it), and a failure in it is unactionable from where the message lands.
+
+**A backup is not a delivery.** `Get-PackVerifyRoot` narrows verification to two copies: the pack
+these scripts belong to, and the one installed on this machine. Skipped copies are **named on screen**
+rather than silently dropped, so "why is my other copy not checked" has an answer without reading
+source. Discovery itself is unchanged — narrowing that would break finding a pack from another project.
+
+Step 75's controls include path spelling (case, trailing separators, slash direction), because a
+normalization miss there drops the *real* pack instead of a backup and verifies nothing at all, which
+reads as success. Two earlier theories were disproven by experiment along the way and are recorded in
+`docs/WORK_QUEUE.md` so they are not raised again: a stale installed copy, and "first audit after an
+edit".
+
+## 2.22.89 (2026-09-09)
+
+**A parent that reports "the child failed" now says what the child said (WQ-463).** New behavior step
+**74**, mutation-proven, and the first step added since the seal — so it arrived with an executable
+proof rather than an exemption, which is what the seal is for.
+
+**The defect this fixes is not the intermittent; it is why the intermittent survived six runs.** Step
+23's bootstrap checks failed twice with `verify-audit-system.ps1 failed against the starter pack
+itself` and nothing more. The child's output went to the host, which the behavior harness swallows, so
+each occurrence cost a full audit run and produced no reason at all. Two plausible causes were
+investigated and **both disproven by experiment** — a stale installed copy (a suite run against a
+deliberately mismatched install was clean) and "first audit after an edit" (a full audit on an edited
+tree was clean). Neither could have been settled from the message, and neither should be re-raised
+without new evidence.
+
+`Get-PackChildFailureDetail` in `verify-lib.ps1` builds the reason: it quotes the child's marked lines,
+caps the quote and says when it truncated, and — the case that made this expensive — **reports a
+non-zero exit with no output as exactly that, naming the exit code**, rather than appending nothing.
+An empty detail would read as "the child had nothing to say" instead of "it would not say". Step 74's
+last control asserts `run_audit_core.ps1` actually calls the helper, because a tested function nobody
+uses reports nothing.
+
+**WQ-463 stays open, and deliberately so.** The instrumentation is complete; the cause is not known.
+The next occurrence will name itself in the Fix line.
+
+## 2.22.88 (2026-09-08)
+
+**Third retrofit batch: steps 31, 57 and 68 are proven, and step 62 is reclassified rather than
+retrofitted (WQ-462).** Twelve steps now carry executable mutations; 61 remain exempt.
+
+**Step 62 will never be proven on the pack folder, and saying so is more honest than leaving it
+grandfathered.** Its subject is the git index — the only place a file's execute bit durably lives,
+since a folder copy, a zip and a Windows checkout all lose it — while the runner mutates file
+*content*. On a pack that keeps no version control by decision (WQ-459) the step takes its documented
+`[SKIP]` on every run, and **a skipped step cannot be proven able to fail**. It now carries the
+`not-applicable` reason with that written out, and its real proof is a git-backed clone on Linux or
+macOS, which is what `pack-os-smoke.yml` and WQ-455 are for.
+
+**Step 57 could not be proven by breaking one of its checks, which is worth knowing before the next
+multi-check guard.** It runs `verify-session-handoff.ps1` against a deliberately bad fixture and
+requires a non-zero exit. That fixture trips three separate checks at once, so disabling any one of
+them leaves the exit code non-zero and the step passes on the strength of the checks that still work.
+The mutation that does prove it changes the exit threshold, so the script counts every failure, prints
+every one, and still exits 0 — the exact shape WQ-443 was filed over.
+
+**Step 68's first mutation was inert, and the detector was right.** Replacing the bolded negation in a
+`START_HERE.md` table row left the cell label `Rules, best-effort copy` on the same line, and the
+disclaimer window tolerates `best-effort` by design. The suite stayed green because the line still
+read as a correct one. **A load-claim mutation has to remove every disclaimer word within one line
+either side of the claim** — checked against the detector's own regexes before spending a proof run,
+not by reading. The working target flips `is best-effort reference text` in `PACK_MAINTENANCE.md`.
+
+Also of note: `behavior-controls.json` being `.json` is what keeps step 68's spec legal, since that
+step scans `.md`, `.mdc`, `.template` and `.txt`. The constraint recorded in 2.22.86 — a spec cannot
+hold text another guard bans — bites per guard, not universally.
+
+## 2.22.87 (2026-09-08)
+
+**Second retrofit batch: steps 45, 46 and 53 (WQ-462). The backlog drops from 67 to 64 — and one of
+the three mutations found a guard that could not fail.**
+
+**Step 53 stayed green under a mutation that broke exactly what it claims to check.** The step asserts
+that each consumer of a manifest-declared list still *reads* that list, so a private copy cannot drift
+away from the one home the list has. The mutation renamed the read
+`$pbManifest.projectRequired.flatLayout` to `…projectRequiredPrivateCopy…`. The suite did not notice,
+for two independent reasons: the check was a substring grep, and the renamed token still *contains*
+`projectRequired`; and even a total rename would have left the explanatory comment above it, which the
+grep counted just as happily as code. **A consumer could have stopped reading its list entirely and
+kept the guard green so long as it still talked about it in prose.** Step 53 now strips comment lines
+and matches whole tokens; every existing consumer passes unchanged, so the tightening cost nothing but
+the hole it closed was real. This is the first case of the mutation runner finding a defect in the
+guard rather than proving one — which is the outcome WQ-443 was funded for.
+
+**Step 46 cannot be proven without collateral, and that is a property of the step.** It scans
+`pack/rules/` only, so unlike step 47 there is no doc to mutate instead; a mutated rule necessarily
+differs from its synced copy in `.cursor/rules/`, and the rule-sync step fails alongside it. The
+runner reports collateral without failing, and the registry note says to expect it, so the next reader
+does not go hunting for a narrower mutation that does not exist.
+
+**`-Only` now takes a list, and rejects a step that declares no mutation.** A batch was paying a full
+suite run for every step already proven in an earlier release. The rejection is not decoration: the
+first attempt at this batch passed `-Only 45,46,53` through `Start-Process`, which collapsed it into
+the single integer `454653`. Under the old signature that would have selected nothing and reported
+success for three steps it never touched.
+
+## 2.22.86 (2026-09-08)
+
+**First retrofit batch: steps 47, 48 and 49 now carry executable proofs (WQ-462).** The grandfathered
+backlog drops from 70 to **67**, and step 71 prints that number on every run, so it shrinks in public.
+Six of six declared mutations proved, runner exit **0**.
+
+**The baseline earned its cost on this batch, before a single mutation ran.** It refused the whole
+run: adding step 49's spec had made the *pack itself* fail step 49. Step 49 bans the retired word
+`handover` in every shipped file, `.json` included — and a spec that proves step 49 has to contain that
+word. So the registry tripped the guard from the inside.
+
+Step 49 already exempts two files on precisely this reasoning ("a linter has to spell the word it
+bans, so it cannot lint itself"): its own source, and the changelog where the retired term is
+explained. `behavior-controls.json` is the third and for the same reason — it stores the *defect* each
+step is proven by. **The general constraint is worth stating, because it will recur:** a mutation spec
+cannot hold text that another guard bans, or the registry violates that guard merely by describing
+it. Step 68's load-path claims are the next case this will hit.
+
+**Two of the three targets were chosen against the obvious one, and the reasons generalize.** Step
+47's mutation dangles a cite in a pack **doc**, not in a `pack/rules/*.mdc`: mutating a rule also puts
+it out of sync with the copy in `.cursor/rules/`, so the rule-sync step fails too and the proof gets
+harder to read. Step 48's mutation replaces a **comment** with a bare `pause` rather than un-gating an
+existing one, because `if not defined BUILD_NOPAUSE pause` appears twice in that launcher and a spec
+matching more than once is rejected — the runner could not say which site it broke.
+
+## 2.22.85 (2026-09-08)
+
+**A declared control is now executable: the pack can break what a step guards and require that step
+to go red (WQ-443, Phases 3–4 of `docs/GUARD_PROOF_PLAN.md`).** 2.22.84 made a control mandatory to
+*declare*. This makes the declaration mean something — `pack/scripts/verify-guard-proofs.ps1` copies
+the pack, applies a registry mutation to the copy, runs the suite there, and requires the named step
+to report a failure.
+
+**Phase 3's design was replaced before it was built, on a measurement.** The plan called for a `Step`
+helper and a mechanical rewrite of all 71 announcements so `Fail` could tag its step. That sweep was
+unnecessary: `Fail` can read its own step from `Get-PSCallStack` by taking the **last frame belonging
+to the suite file** — the top-level scope — and mapping that line to the nearest announcement at or
+before it. Probed on both hosts with identical output, including the case that looks hardest, where a
+`Fail` raised inside a helper defined hundreds of lines earlier is credited to the step that *called*
+the helper. Two consequences: the 71-line rewrite disappears, and so does the problem Phase 3 was
+written to solve. Attribution never reads output, so step 57's child verify printing the identical
+`[FAIL]` prefix cannot be mistaken for a failure — **only a real `Fail` call is ever recorded**. The
+printed `[FAIL] msg` line is byte-for-byte unchanged; attribution rides in a separate `-ResultsPath`
+JSON file, so nothing that greps the suite's output had to move.
+
+**Step 72 failed on its first run, and the defect was in the check rather than the mechanism.** Its
+live self-check used `$MyInvocation.ScriptLineNumber`, which is **0** at top-level scope — and 0 is
+not an error value here, it resolves to "before every announcement" and attributes nothing. The
+results file from that same run credited the failure to step 72 correctly, because `Fail` was already
+using the call stack. A probe had printed the 0 an hour earlier and it was not applied. Both paths now
+go through one helper, `Get-SuiteTopLevelLine`, so the check and the mechanism cannot use different
+means and disagree, and a line of 0 fails explicitly rather than resolving to nothing.
+
+**The runner's two judgements are where a mutation runner would silently prove nothing**, so they are
+in `verify-lib.ps1` and planted against in-process. `Get-PackMutationSpecProblem` requires a spec to
+match **exactly once** — zero means stale, more than one means the runner cannot say which site it
+broke — and treats an unapplicable spec as an error, never a skip, because a no-op mutation leaves the
+suite green and green reads as a proof. That is the `.Replace(a,b,1)` defect this pack shipped three
+times, one layer up. `Test-PackMutationOutcome` asks whether **these** steps failed, not whether the
+suite failed, so a mutation that breaks something unrelated does not count.
+
+**A green baseline runs first, and it is the control on the runner itself.** Without it, a copy that
+fails for an environmental reason would make every mutation look proven while proving nothing.
+
+**Never the live tree.** A mutation whose restore path fails leaves a defect indistinguishable from a
+real one, and the restore path is the code most likely to be wrong the first time it runs. This pack
+also keeps no version control by decision (WQ-459), so there is nothing to restore from. Copies cost
+minutes; the alternative costs the checkout.
+
+**Step 73 asserts the runner uses those checks and must never call it.** The runner runs this suite —
+invoking it from a step is the recursion that killed step 70 after twelve levels and 25 minutes. The
+step's final arm is the standing guard on that, matching only an actual invocation rather than the
+name appearing in a comment.
+
+**The runner's first real execution found a defect in itself, and it is the most interesting thing in
+this release.** It reported step 72 as **not proven**. Step 72's mutation disables
+`Resolve-PackBehaviorStep` — which is the code `Fail` uses to record *which* step failed — so the
+suite failed exactly as designed and wrote every failure with no step attached, leaving the runner
+unable to name what it had just broken. **A proof defeated by the thing it was proving.** `Fail` now
+records the raw line as well as the resolved step, and `Resolve-PackMutationFailureStep` recovers the
+step by parsing the mutated copy's suite text with the runner's **own** unmutated functions, so only
+the text comes from inside the blast radius. On the re-run, step 72's mutation produced three
+unattributed failures, all three recovered, and the step was proven.
+
+**A second finding was operator error worth a guard.** On that first execution, steps 23 and 31 also
+failed in two of the three mutated runs, reading exactly like collateral from a mutation that was too
+broad. They were neither: the tree was being edited — a version bump in progress — while the runner
+took its copies, so the three copies were not the same pack. The runner now fingerprints the tree at
+start and end and warns when it moved. On a quiet tree the collateral was gone and all three steps
+proved cleanly.
+
+**And the inert-fixture mistake was made a third time, in the arm added to catch the first finding.**
+An announcement in source contains the two literal characters `` `n ``, written `'`n'`; writing
+`"`n"` produces a real newline, splits the announcement across two lines and matches nothing. The
+fixture therefore contained no announcement and its controls proved nothing. Every synthetic fixture
+in this area now declares how many announcements it must parse to, which is what caught it.
+
+Phase 5 — retrofitting the 70 grandfathered steps to executable mutations — remains open, and `seal`
+stays pinned at 70 until it closes.
+
+## 2.22.84 (2026-09-08)
+
+**A behavior step can no longer be added without declaring how it is proven able to fail (WQ-443,
+Phases 1–2 of `docs/GUARD_PROOF_PLAN.md`).** Six guards shipped in a single day reporting success
+while observing nothing, and the discipline that catches them — plant the defect, watch the step go
+red, restore — was applied by hand for seventy steps with nothing requiring number seventy-one to
+have it.
+
+**The obvious implementation was tried first and abandoned on evidence.** A scanner that reads each
+step's body looking for a plant was written, run over all 70 steps, and **misjudged step 69** — seven
+controls, two of them positive — as having none. The cause is not a weak regex: three legitimate
+idioms are in use (plant-and-restore, an expectations table carrying both polarities, and a negative
+fixture asserting non-zero exit), and a scan wide enough to accept all three also accepts a comment
+that merely claims a control. **Text cannot distinguish a control that runs from a comment saying one
+does**, so a scanner here would have been the WQ-443 defect wearing the WQ-443 fix as a costume.
+
+**What shipped instead.** `pack/audit/behavior-controls.json` declares all 71 steps, each either
+`mutation` (carrying a `file`/`find`/`replace` spec the Phase 4 runner can apply, plus the steps that
+must report `[FAIL]` when it is) or `exempt` with a reason. Step **71** compares the suite's own
+announcements against that registry — an exact comparison of two lists, not a heuristic — and
+`Get-PackBehaviorControlProblem` in `verify-lib.ps1` holds the logic so the step tests it in-process
+rather than shelling out, which is the recursion trap step 70 fell into.
+
+**There is deliberately no `proven` status.** A proof is a run outcome, not a fact a file can hold: a
+stored "proven" goes stale the first time nobody runs the runner, which is precisely the
+inert-but-authoritative artifact 2.22.83 removed. The registry holds the specification; the run
+produces the proof.
+
+**The seal is what stops the declaration being free.** `schemaSealedAtStep: 70` makes
+`grandfathered-pre-wq443` valid only at or below step 70, so a new step must carry a mutation spec or
+argue `not-applicable` in writing — it cannot inherit the grandfathering covering the steps written
+before the registry existed. Step 71 asserts the seal's value, because raising it is the easiest way
+to abandon the discipline quietly. The 70 grandfathered steps are reported as `[INFO]` on **every**
+run, since an exclusion list that accepts everything is the same thing as no checker.
+
+**Step 71 failed twice on its own controls before it was right, and both failures were the shape it
+polices.** First, its synthetic fixtures were written as literal announcements in a here-string — and
+the checker reads the suite's own source, so **73 announcements were found for 71 steps**. Second,
+after rewriting those fixtures in escaped form to avoid that, two planted defects became **inert**:
+`Write-Host `"` does not match the announcement pattern, so the "undeclared step" was never in the
+fixture and the control passed having planted nothing. Fixtures are now assembled from fragments, and
+cases that add a step declare how many announcements their fixture must contain, so an inert plant
+fails with its reason instead of passing as a caught defect. The duplicate-announcement arm is the
+standing guard against the first bug returning.
+
+**Registered as a file, not a manifest list.** `behavior-controls.json` is in `packMirror` so sync,
+export and the installed copy carry it; it is **not** in `listConsumers`, which declares readers of
+manifest *keys*. Adding the plan doc also made step 5 fail until `docs/GUARD_PROOF_PLAN.md` was
+mirrored — every `docs/*.md` must be, or it installs once and is stale forever.
+
+Phases 3–5 (step attribution, the mutation runner, and retrofitting the 70 grandfathered steps)
+remain open in `docs/GUARD_PROOF_PLAN.md`. Phase 3's design changed on evidence from this release: a
+trial parse attributed five `[FAIL]` lines to two steps while the suite's own summary said one,
+because step 57's planted controls invoke a child verify whose output carries the identical `[FAIL]`
+prefix. A runner trusting output position would credit a step for a failure its own control printed
+on purpose.
+
+## 2.22.83 (2026-09-08)
+
+**The rule that started the "global rules do not load" investigation was still inert, and deleting it
+would have been a bandaid (WQ-460).** `structured-chat-output.mdc` sat in
+`%USERPROFILE%\.cursor\rules\` declaring `alwaysApply: true`, claiming to be "Referenced from
+`agent-defaults-always.mdc` (always-on)" and to be "the canonical copy". All three claims were false:
+that folder is not a load path, and a grep of the entire pack found the string `structured-chat-output`
+in exactly one place — a changelog sentence describing the problem. Four one-step options were on the
+table (delete it, promote it, strip the false claims, park it) and each closed one of **three**
+defects, which is what made all four a bandaid.
+
+**Defect one — the content was undelivered.** No folder that loads carried output-shape guidance, in
+this repo or in any project the pack bootstraps. Promoted to
+**`pack/rules/generic-structured-chat-output.mdc`**, registered in both manifest lists (`packMirror`
+and `packToUser`), and delivered by `sync-project-rules.ps1` into `.cursor/rules/`, which is the only
+mechanism ever shown to bind. It deliberately does **not** restate `full-paths-in-chat.mdc` (that rule
+governs how a path inside a reply is written; this one governs the reply's shape) and it defers to
+`generic-deep-task-execution.mdc` where a depth contract prescribes evidence before verdict — because
+"answer first" and "evidence first" genuinely conflict there, and the depth contract wins.
+
+**Defect two — a file that lied about itself.** Fixed by making the claim true rather than by deleting
+the sentence: `agent-defaults-always.mdc` now carries a **Chat output shape** section that really does
+reference the rule, so the cross-reference the orphan invented now exists. The orphan itself was then
+deleted, which is an endpoint only because the promotion had already replaced its function.
+
+**Defect three — nothing could detect the shape again, and this is the part every option missed.** An
+orphan `.mdc` claiming to be always-on was invisible to everything: `doctor.ps1` enumerated
+`pack/rules` and asked "did it arrive?", which by construction cannot see a file the pack never
+shipped; step 68 scans only **shipped** docs; and `install.ps1 -Prune` structurally cannot help, since
+pruning removes what a previous install recorded shipping and an orphan is absent from that record.
+**`Get-PackOrphanAlwaysOnRule`** now reports them, wired into `doctor.ps1`. It matches
+`alwaysApply: true` in **front matter only** — a body that merely discusses the flag, as these very
+docs do, is not a file making the claim — and it ignores orphans that declare `alwaysApply: false`,
+because somebody's private note is not a false claim and warning about it would train the reader to
+tune out the warning that matters. Proven against the live file **before** it was deleted:
+`[WARN] inert rule: ...structured-chat-output.mdc`, doctor exit **1**; after deletion,
+`[OK] no orphan always-on rule`, exit **0**.
+
+**A behavior step that recursed twelve levels deep, and the rule that came out of it.** Step 70's
+first implementation shelled out to `doctor.ps1` against a redirected profile. `doctor.ps1` calls
+`verify-audit-system.ps1`, which runs this suite, which called `doctor.ps1` — an unbounded loop that
+ran for 25 minutes before being killed, leaving six `orphan-rule-probe-*` directories as the evidence
+that it had re-entered itself six times. The detection logic was therefore **extracted** to
+`pack-paths.ps1` so the step can test it in-process, and the step now carries a third arm asserting
+that **no step in this suite invokes `doctor.ps1`** at all. Runtime returned to 227s from an unbounded
+hang. The lesson generalises past this step: a maintainer script that runs the verifier cannot be
+called *from* the verifier, and only a test can notice that, since reading either file alone shows
+nothing wrong.
+
+**All three arms watched to fail (WQ-443).** Detector forced to return nothing → `misses a planted
+alwaysApply:true orphan`; `doctor.ps1` call removed → `no longer calls Get-PackOrphanAlwaysOnRule`;
+a `-File $doctorPath` line re-added under `if ($false)` → `this suite invokes doctor.ps1 (1 site(s))`.
+Suite exit **1** with all three planted, and the guarded-so-it-never-runs invocation proves the third
+arm reads the text rather than waiting for a hang. Fixtures cover the shipped rule, the always-on
+orphan, the `alwaysApply: false` orphan, the discussion-only file, an empty directory argument and a
+missing directory.
+
+**Also: a hardcoded rule count removed rather than incremented.** `starter-pack-repo.mdc` said "the 13
+generic rules" and "never edit the 13 synced copies"; the fourteenth rule made both wrong. Since
+`sync-project-rules.ps1 -VerifyOnly` compares the files themselves, the number was decoration that
+could only ever go stale, so it is now phrased without one. The historical counts in this changelog
+and in the work queue were **left alone** — they describe what was true at 2.22.79, and editing them
+would be the defect those entries warn about.
+
+## 2.22.82 (2026-09-04)
+
+**"Does a `.git` entry exist" is not "is this a git work tree", and eleven guards asked the first one
+meaning the second (WQ-461).** Found the way these things should be found — by doing the thing. The
+`.git` directory was deleted from the pack folder an hour after 2.22.81 certified the pack as
+git-optional, and the next audit **failed**, on a pack that had just been proven to certify with no
+git at all. The 2.22.81 claim that "every functional git call guards for absence" was **true for
+absence and false for unreadability**, which is not the same property.
+
+**Why the probe missed it.** The 2.22.81 evidence was a copy of the tree with `.git` excluded, so
+`.git` was *absent* and every `Test-Path` guard correctly reported "not a git checkout". Deleting the
+real one left a `.git` **directory** behind, because the editor keeps its code-index cache at
+`.git\cursor\crepe\` and holds those files open. So the path existed, the guard fell through, and
+`git ls-files` answered `fatal: not a git repository`. A test that removes a thing cannot see the
+states in which the thing is present but broken.
+
+**Three sites, three different symptoms — which is why one of them looked fine.**
+`verify-audit-behavior.ps1` step 62 turned it into `[FAIL] executable-bit check error`, failing the
+suite and therefore `verify-audit-system.ps1`. `verify-work-queue.ps1` exited **1** from a raw
+`git show HEAD:...` error. `run_audit_core.ps1` degraded correctly to a `tree:`-only proof but printed
+a fatal git error into the audit's own output. Only the loudest of the three was diagnosable from the
+report.
+
+**`Test-PackGitRepo` in `pack-paths.ps1`** now answers the question by asking git —
+`rev-parse --is-inside-work-tree`, any non-zero exit meaning "not usable here", since unreadable and
+absent are the same outcome for every caller. It sets `safe.directory=*` deliberately: ownership is a
+property of the disk rather than of the repository, and refusing a checkout on removable or
+foreign-owned media would reintroduce a false negative on exactly the media this pack is carried on.
+Used at step 62, in `verify-work-queue.ps1`, and at both `run_audit_core.ps1` sites. The remaining
+`.git`-existence tests are left alone on purpose: `audit_common.py` and `doc_version_sync.py` use it
+to *locate* a repo root, and a leftover `.git` still marks that root correctly.
+
+**Controls in both directions (WQ-443), because the failure mode of this fix is silence.** A probe
+that answered "not a repo" everywhere would skip forever and never catch a real mode regression —
+strictly worse than the bug it replaced. Eight ad-hoc controls first: **False** for the pack folder, for
+no `.git` at all, for a `.git` **file** pointing nowhere (the worktree and submodule shape, which
+defeats a path test just as thoroughly), for a `.git` holding only an editor cache, for a missing path
+and for an empty string; **True** for a fresh `git init` and for a subdirectory inside a real
+repository. 8 of 8, 0 wrong. `AllowEmptyString` was added after the empty-root control threw a
+parameter-binding exception instead of returning `$false`.
+
+**Then the controls were made permanent, because a proof that lives in a scratch file is not a
+guard.** Leaving them in `.tmp` would have reproduced the WQ-443 failure while claiming to have fixed
+it. **Step 69** now builds the fixtures itself and carries two arms: the seven portable controls (the
+eighth was specific to the pack folder), and an assertion that the four call sites still *call* the
+helper — because an edit that reverts one to a path test would otherwise leave the step green while
+the defect returned. Both arms were watched to fail: with the helper reduced to a path test and one
+call site reverted, arm A reported three wrong answers and arm B reported
+`verify-work-queue.ps1 (0 of 1)`, suite exit **1**. The most instructive of the three was
+`subdirectory of a real repository: got False, want True` — a path test answers "not a repo" for every
+subdirectory of a genuine checkout, because `.git` is not *in* it, which is the same class of wrong
+answer in the opposite direction.
+
+**A second, unrelated defect surfaced underneath it: `Copy-Tree` in `install.ps1` could not skip what
+it could not read.** Its filters — `SkipDirNames`, `SkipRelPaths`, extensions, patterns — all run
+*per file, after* the walk, so none of them can stop `Get-ChildItem -Recurse` entering a directory.
+`.git\` has been on that skip list for releases, and an unreadable `.git\logs` still failed the whole
+install. `Get-RelativeFileSet`, forty lines below in the same file, had been enumerating with
+`-ErrorAction SilentlyContinue` all along: the correct pattern was already in the file, next to the
+wrong one, which is the WQ-441 shape again. Now enumerates tolerantly and **captures** the errors
+rather than discarding them, because the two cases are not equivalent — an unreadable folder on the
+skip list is expected and silent, while any other one means files are missing from the install and a
+silent success would be a lie. Proven live against the still-locked directory: the step passes, and
+prints no warning, because `.git` is skipped by name.
+
+## 2.22.81 (2026-09-04)
+
+**Version control is optional to this pack by decision now, not only by construction (WQ-459).** The
+code was already there: `verify-work-queue.ps1` carries three `[SKIP]` branches for git-absent,
+git-not-on-PATH and git-refused-the-repo; `run_audit_core.ps1` returns `$null` when there is no
+`.git`; `check-requirements.ps1` records git as `Required $false`; and the audit's test-pass proof is
+a content fingerprint that merely *prefixes* HEAD when git answers. What had accumulated on top of
+that was a layer of ceremony demanding git work from the maintainer, and it was expensive out of all
+proportion to what it protected.
+
+**Measured before touching anything.** 279 mentions of git across 38 files sounds like a rewrite, and
+it is not. 69 are historical narrative in this changelog, `SESSION.md` and the WORK_QUEUE Done log,
+where rewriting the record would be the actual defect. Most of the remainder are comments explaining
+why a guard exists. The functional calls number about a dozen and every one already guards for
+absence. So the change is confined to the files that told a human to run a git command.
+
+**Removed.** `.cursor/rules/no-publish-from-this-machine.mdc` - the rule that split `commit` from
+`push` and generated the whole commit-but-do-not-publish protocol. Its premise was that the execute
+bit lives only in git and therefore had to be committed; that premise is what this release retires.
+The `.gitignore` and `maintainerOnlyPaths` entries for it stay, because both mean "strip this if
+present" and cost nothing when it is not - and the behavior step that names it builds the path as a
+synthetic fixture in a temp directory rather than reading the real file, so deleting it changed
+nothing there.
+
+**Reframed, in `INSTALL.txt`, `INSTALL.md` and `README.md`.** These said the Unix execute bit "is
+carried by git and by nothing else this folder travels through", which is true and was the wrong
+thing to emphasise: it reads as *git is required*. They now say to assume the bit is absent, because
+that is the ordinary case for a download, a copy, an archive and exFAT media alike. The operative
+instruction is unchanged - `bash install.sh`, never `./install.sh`. The one-time
+`git config --global --add safe.directory` line is gone from the flash-drive procedure, along with
+the broken step numbering it left behind.
+
+**The consumer/maintainer mix-up, which was a separate defect.** `AGENTS.md` is the file agents read
+first, and it opened by framing the reader as a pack maintainer under an edit boundary with a work
+queue to respect. A colleague handed a copy would have their agent follow maintainer instructions
+instead of installing the thing. It now opens with a four-line install block for both hosts and sends
+maintainers past a horizontal rule. `INSTALL.txt` had the same fault in one line - "Agents:
+`docs\WORK_QUEUE.md`" pointed a consumer's agent at the maintainer radar.
+
+**CI stopped requiring what the pack stopped promising.** The step asserting every tracked `.sh` is
+`100755` is now `continue-on-error` and renamed to say it is informational: with a web upload or a
+zip as a legitimate publish route, a red X there would report a cosmetic difference as a broken
+product. The blocking guarantee moves to where it belongs - the step that strips `.git` and every
+permission bit and requires the install to succeed anyway. Fixing that exposed a second-order
+problem in the same file: nine CI invocations ran wrappers as `./Bootstrap-Project.sh`,
+`./install.sh`, `./run_audit.sh` and so on, which depend on precisely the mode the step above had
+just stopped requiring. All nine now use `bash <file>`, the documented form. The two deliberate
+`./install.sh` invocations remain, because they assert it *fails* at mode 644 - remove those and the
+mode-stripped test stops measuring anything.
+
+**Proven by running it, not by reading the guards.** The tree was copied without `.git` (245 files,
+`git rev-parse` answering `fatal: not a git repository`) and taken through the full cycle. The proof
+it computed was `tree:eb3b2f29...` - byte-identical to the fingerprint half of the git-backed repo's
+`a7feca5...+tree:eb3b2f29...`, so the two paths agree on the same tree. `Tests: OK`, semantic report
+valid, **`finalize_audit.cmd` exit 0, `verify-audit-system: OK`, 0 fails and 0 warnings, Fix and
+Improve both empty.** The skips were graceful and legible: `[INFO] not a git checkout (or git absent)
+- index check skipped` and `[SKIP] not a git checkout - nothing records the mode here`.
+
+## 2.22.80 (2026-09-04)
+
+**The claim 2.22.79 corrected came back the same day, in the one file written for users of other
+tools (WQ-457).** `pack/docs/portable/GENERIC_RULES.md` is the paste-at-session-start export for
+Claude, Copilot, Windsurf and the CLI. It opened with a table headed **"Load path"** whose first row
+was `%USERPROFILE%\.cursor\rules\*.mdc` -> "Cursor (after `install.ps1`)". That is precisely the
+falsehood 2.22.79 removed from roughly fifteen documents, surviving in the export aimed at the
+audience with the least ability to check it - a reader on another tool has no `.cursor/rules/` to
+compare against.
+
+**Two independent reasons the 2.22.79 sweep could not have found it, and step 68 exists for both.**
+
+The first is that the text was not in a document. It was a string literal inside
+`pack/scripts/sync-portable-docs.ps1`, assembled into a document at build time. A sweep of `*.md`
+reads the output of the last build, not the instruction that produces the next one; a sweep of prose
+never opens the generator. **A doc audit that greps prose does not reach text assembled by code.**
+
+The second is subtler and is the reason a grep would have missed it even pointed at the right file.
+No single line carried the claim. The row said only "Cursor (after `install.ps1`)" - the assertion
+that this is a *load path* was made by the table header two rows above. The claim was distributed
+across markdown structure, so a line-at-a-time scan is not merely unlucky here, it is structurally
+incapable. **Step 68's scanner therefore carries table context:** a header row matching `load path`
+governs the rows beneath it until a blank line closes the table, and a row naming the profile folder
+under such a header is a claim whether or not it repeats the word.
+
+**Both directions, over ~90 files that mention the path legitimately.** The profile folder appears
+throughout the pack for correct reasons - `install.ps1` writes there, `doctor.ps1` checks it is
+present, and several documents now explain at length that it does not load. A scanner that flagged
+those would be turned off within a day, so step 68 asserts five planted claims are caught (bare
+"load from", a load-path table, a "where rules are loaded" header, an `always-on ... apply to every
+project` sentence, and the original row) and six correct mentions are not. It also needed a
+two-line disclaimer window: prose wraps, and `docs/handoffs/SESSION.md` puts "is not" at the end of
+one line and "a place any editor reads" at the start of the next. Widening the window was the right
+fix; exempting the file would have created the blind spot the guard exists to close. Only two files
+are exempt - this changelog and `docs/WORK_QUEUE.md` - because both must quote the false claim in
+order to record it, and a guard that forbids naming the bug it prevents cannot be documented.
+
+**The proof attempt failed first, and that failure is the useful part (WQ-443).** Planting the old
+row directly into the generated `GENERIC_RULES.md` and running the suite produced
+`[OK] 87 docs make no profile-rules load claim` - a clean pass over a file that contained the defect.
+Step 39 (`repair-agent-docs restores hub patterns and portable GENERIC_RULES`) regenerates that
+export mid-suite, so by the time step 68 read the file the plant had already been repaired away.
+**A generated artifact cannot be tested by editing the generated artifact**; the plant has to go
+into the generator, which is also the real regression path. Planted there, regeneration propagated
+it and both arms fired, naming `pack\docs\portable\GENERIC_RULES.md -> line 10`. Restored, the suite
+returns to zero. The first attempt would have shipped a guard that had never observed anything,
+which is the seventh instance of the WQ-443 shape and the first where the masking step was a
+*repair* rather than a filter.
+
+A side effect worth recording: the planting command used `Set-Content -Encoding utf8`, which on
+PowerShell 5.1 writes a BOM, and the existing generated-files check caught it immediately
+(`generated files carry a UTF-8 BOM: GENERIC_RULES.md`). An unrelated guard proving itself on an
+accident is the cheapest evidence available.
+
+**WQ-458: the premise under 2.22.79's remedy, measured rather than assumed.** 2.22.79 routes changed
+always-on rules into `requiredReads` on the stated grounds that "no editor reloads rules
+mid-session." That sentence had never been tested, and evidence from the same session appeared to
+contradict it: fourteen rules synced into this repo's `.cursor/rules/` mid-chat *did* reach agent
+context without a restart. A throwaway probe rule with `alwaysApply: true` settled it. The probe was
+absent from context across tool-call round trips **and** across a fresh user message, so the
+fourteen had arrived only because a context summarization had rebuilt the prompt in between - a
+boundary no user can invoke on demand. The premise holds, `requiredReads` remains the only channel
+that reaches an open chat, and `docs/MULTI_INSTANCE_GUIDE.md` is now stating a measured fact rather
+than a plausible one.
+
+## 2.22.79 (2026-09-04)
+
+**The folder this pack installs its "global rules" into is not a place any editor reads (WQ-456).**
+`install.ps1` copies 13 `.mdc` files to `%USERPROFILE%\.cursor\rules\`, nine of them declaring
+`alwaysApply: true`, and roughly fifteen documents describe them as always-on — `docs/PORTABLE_SETUP.md`
+called it "the only place Cursor reads global rules and skills from." Cursor's rules reference documents
+four locations: project `.cursor/rules/`, User Rules, Team Rules, and `AGENTS.md`. A home-folder rules
+directory is not among them. It survives on a single Cursor 2.1 changelog bullet promising inclusion
+"in context", with no `alwaysApply` semantics and no slot in the documented Team → Project → User
+precedence. `~/.cursor/skills/` **is** documented as a global load path, in an explicit table — which is
+exactly why the three pack skills worked and all 13 rules did not.
+
+**Found by the symptom, not by the audit.** The user had asked repeatedly, across sessions, for replies
+that were not walls of text and for action items to be called out explicitly. A machine-local
+`structured-chat-output.mdc` had been saying precisely that since 2026-08-28, `alwaysApply: true`, sitting
+in the profile folder. So had the pack's own `full-paths-in-chat.mdc`. Neither ever entered a session's
+context, and the agent went on citing bare filenames and emitting prose blocks while both rules sat on
+disk, present and verified. The complaint was the only working detector.
+
+**Every guard was measuring the hand-off point.** `doctor.ps1` enumerates `pack/rules/*.mdc` and checks
+the profile copy exists. `verify-agent-setup.ps1` walks `packToUser` and checks the same. Eight behavior
+steps cover manifest completeness, `rulesRevision` hashing, `Copy-Tree` filters and prune safety. Not one
+asked whether anything reads the destination — the single fact the whole feature depends on. All stayed
+green for the life of the feature. New lesson in `docs/WORK_QUEUE.md`: **verifying delivery is not
+verifying arrival**; when a feature's value depends on another program consuming an artifact, the test
+has to observe that program, because presence at the hand-off point was never in doubt.
+
+**The second half was worse, because it was the one channel that could still work.** Editors build rule
+context at session start and never reload it, so a rule change cannot reach a chat that is already open —
+except through the refresh brief, which is why `Refresh-AgentContext.cmd` exists. That brief listed
+`AGENTS.md`, `SESSION.md`, `WORK_QUEUE.md` and `START_HERE.md`. No rule file, ever.
+`changedLayers` already emitted `rules` when `rulesRevision` moved, and the prose already said "re-read
+the rules before acting on remembered ones" — with no paths, pointing at a folder nobody reads. A rule
+edit therefore had two routes to an agent and both were closed.
+
+Delivery had to cover **any** AI editor or AI-powered IDE, not just Cursor. That rules out Cursor User
+Rules (account-stored, no file to install) and a user-scope Cursor plugin (the one documented way to ship
+machine-wide `.mdc` files, but Cursor-only and gated by Enterprise admins). Project `.cursor/rules/` plus
+`AGENTS.md` is the only pair every AI editor loads, and the pack already had the mechanism —
+`sync-project-rules.ps1`, previously treated as the fallback.
+
+- **`sync-project-rules.ps1` run on the pack repo itself** — the 13 generic rules now live in
+  `.cursor/rules/` alongside the five workspace-only ones, 18 total, `-VerifyOnly` clean. The pack becomes
+  its own first customer of the path that actually binds.
+- **`starter-pack-repo.mdc` and `AGENTS.md`** — the rule-layer table said `.cursor/rules/` was "this
+  workspace only" and `pack/rules/` applied "all projects after `install.ps1`". Both were false in
+  opposite directions. `pack/rules/` is now named a canonical source, not a load path, with an explicit
+  instruction never to edit the synced copies.
+- **`refresh-agent-context.ps1`** — new `ruleLoadPath`, `loadedRulesRevision` and `alwaysOnRules` fields;
+  a `loadedRules` layer that reports `stale` when no `alwaysApply` rule reached the load path; and the
+  always-on rule files added to `requiredReads`, each flagged in the brief as something the editor will
+  not reload mid-session. Frontmatter-only detection, since a rule body may quote `alwaysApply: true`
+  while describing another rule. Schema stays at 2 — added fields only.
+- **Listed on change, not on every run.** Required reading that grows by eighteen entries per refresh is
+  a list nobody follows, so the rule paths appear only when `loadedRulesRevision` moves, when the pack's
+  rule text moves, on a first refresh, or when a stamp predates the fields — a one-time migration without
+  which this ships and lies dormant on every install that already exists.
+- **A standing defect is not a change.** A stale load path was invisible on a project's *first* refresh,
+  where `changedLayers` is only `firstRefresh` — the one refresh that matters most. Stale layers now get
+  a **Needs attention (standing, not new)** section driven by current status rather than by a diff.
+- **`layers.globalRules` no longer reports a bare `ok`.** It was set to `ok` whenever the installed pack
+  matched, asserting nothing about rules while reassuring the reader that a dead path was healthy. It now
+  reads `best-effort (profile copy; no editor documents loading it)`.
+- **Layer change detection compares by prefix**, so a status carrying its reason (`stale (no rules
+  folder)`) still registers; equality would have silently stopped reporting.
+- **The drift verify now covers the copy that binds.** `sync-portable-docs.ps1 -VerifyOnly` checked the
+  portable export nobody auto-loads and skipped this repo's own `.cursor/rules/`, which is what actually
+  governs an agent working here — so the first cut of this very change **audited clean while two rules
+  had already diverged**, the same shape as the defect being fixed, one layer out. It now compares the
+  loaded copies against `pack/rules/` and names `sync-project-rules.ps1` as the remedy. Proven by
+  planting drift in a loaded rule: clean passes, planted drift fails, exit 1.
+- **Step 27 grew six arms, in both directions** (WQ-443 discipline). The negative control plants an
+  `alwaysApply: false` rule and requires `stale` plus the remedy command; the positive control adds one
+  real always-on rule and requires the layer to flip, the path to land in `requiredReads`, and the
+  mid-session warning to appear. A third arm requires an unchanged rule set *not* to be re-listed, and a
+  fourth strips the new fields from a stamp to prove the migration fires. **Two of the six failed on
+  first run** and both were the implementation, not the test: a project going from `stale` to `ok` — the
+  exact moment rules first arrive — was not listed at all, because the change loop only reacted to
+  `stale`/`updated` transitions; and the first-refresh case above.
+
+## 2.22.78 (2026-09-03)
+
+**Asked what would happen if git were not here at all, and the answer was one undocumented command
+(WQ-454).** Git had been doing a job the real delivery channel cannot: the Unix execute bit and LF line
+endings survive a clone and survive nothing else this pack travels through — a folder copy, an unzipped
+archive, exFAT or FAT media, and a Windows checkout that has no bit to carry in the first place. The
+pack is installed by an agent reading these docs, not by `git clone`, so that mattered more than it
+looked.
+
+**Measured on ext4 rather than reasoned about**, because `/mnt/d` is DrvFs and reports 777 for every
+file, so a mode test run from there passes against a completely broken installer. A copy with every
+bit stripped answered:
+
+- `./install.sh` — **`Permission denied`, exit 126**
+- `bash install.sh` — **succeeded**, and the destination came out **20 of 20 executable**
+
+So the pack already survived a git-less delivery, through exactly one command, and **that command
+appeared in zero documents**. `bash install.sh` was in none; `./install.sh` was in changelog narrative
+about past bugs. All five primary install docs — `README.md`, `INSTALL.md`, `INSTALL.txt`, `AGENTS.md`,
+`pack/docs/START_HERE.md` — told every reader on every OS to run `Install-AgentStarterPack.cmd`, and
+`docs/PORTABLE_SETUP.md` listed `install.sh` in a table with no invocation syntax at all. The
+capability was real and cross-platform; the instructions were Windows-only. An agent on a Mac was being
+told to double-click a `.cmd`.
+
+**The bootstrap paradox is the whole reason one command has to be exempt.** `install.ps1` already
+chmods what it delivers, so everything after the first command self-heals — but off Windows it is
+reached *through* `install.sh`, which means the file that fixes the execute bit is the file the missing
+execute bit stops. `bash install.sh` breaks the loop because bash runs a file it is handed at any mode.
+Every install doc now says so, and says why, because the `./` form is what a future editor will
+"tidy" it back to.
+
+**CI could not have caught any of this, because it manufactured the condition.** `pack-os-smoke.yml`
+opened its wrapper step with `chmod +x ./*.sh`, setting the bit before asking whether the delivery
+carried one — so the Linux job passed for the entire period in which every shipped `.sh` was committed
+`100644` and no clone could run one (WQ-446). It was masking the defect it existed to catch, and
+probably added because of it. Replaced by both real delivery shapes: a clone must arrive executable and
+is *used* rather than chmodded, and a `chmod 644` copy must fail on `./install.sh` **and** succeed on
+`bash install.sh`. The failing half is asserted too — if `./install.sh` ever starts working at mode
+644, the test is measuring nothing.
+
+**The installer now repairs both properties rather than trusting the transport.** Line endings before
+the bit, because a CRLF file that is executable still fails and fails less legibly: `#!/usr/bin/env
+bash\r` makes the interpreter path itself wrong, so bash answers `$'\r': command not found` and names
+no file. Read as bytes, since the text reader strips line endings and cannot see the thing being
+tested. It also chmods **the folder it ran from**, which install had never done — a recipient who
+unzipped, installed cleanly, and then ran `./run_audit.sh` from that folder got `Permission denied`
+from a pack that had just reported success. Proven against a delivery with all bits stripped and CRLF
+planted in three payload scripts: 3 files repaired, 20 of 20 executable at the destination and at the
+source, and the planted file starts.
+
+**WQ-451's three twins shipped, and writing them found the payloads were not portable either.**
+`Verify-AgentSetup.sh`, `Update-AgentRules.sh` and `Bootstrap-Portable-Project.sh` are the POSIX halves
+of entry points `README.md` and `AGENTS.md` already documented as the way to verify a setup, refresh
+rules, and bootstrap a portable project. The first run of `Update-AgentRules.sh` died inside
+`update-agents.ps1` on `Join-Path $env:USERPROFILE` — that variable is Windows-only and `$null`
+elsewhere, which surfaces as a null-binding error naming a parameter rather than the cause. **Shipping
+the twin without that fix would have moved the dead end rather than closed it**, which is precisely the
+WQ-450 shape one layer over. A sweep found seven scripts with unguarded uses: `update-agents.ps1`,
+`verify-agent-setup.ps1` (unconditional, no fallback), `bootstrap-project.ps1`, `sync-audit-system.ps1`,
+`doctor.ps1`, `run_audit_core.ps1` (twice, config-gated, which is why no Linux run had reached it), and
+— worst behaved — `cleanup-orphan-processes.ps1` and `fix-stale-terminal.ps1`, where
+`$ErrorActionPreference = 'SilentlyContinue'` turned the null into an *empty search root*, so both
+scanned nothing and reported no orphans, which is indistinguishable from a clean machine. All now go
+through `Get-PackHomeDir`, which returns `USERPROFILE` first so Windows behaviour is unchanged; the two
+MCP hot-path scripts resolve inline to stay dependency-free. Both twins verified on Ubuntu:
+`Verify-AgentSetup.sh` reports **Fail 0, Warn 0**. `pack_pwsh_run` joins `pwsh-wrap.sh` because
+`pack_pwsh_file` uses `exec` and therefore can only ever be a wrapper's last line, which made a
+multi-step twin impossible to express through the helper at all.
+
+**A macOS job exists for the first time (WQ-436).** macOS had been treated as "Linux, near enough" on
+the strength of both being non-Windows — the same assumption Linux itself disproved, where an estimate
+of 24 Windows-only steps met a reality of 16 different real failures. It differs where this pack
+actually reaches: a case-**insensitive** default filesystem (like Windows, unlike Linux), BSD userland
+where `stat`, `sed` and `find` take different flags, and `pwsh` from a cask rather than a distro
+package. Report-only, because the point of a first run is to produce a baseline and a red X against an
+unknown baseline says nothing actionable; promote it the way Linux was promoted.
+
+**Step 67 holds the instruction form, and its own negative controls corrected it before it shipped.**
+The scanner asks two things of the six start docs: that no line *begins* with `./<entry point>`, and —
+the direction that actually shipped — that each names a POSIX install path at all, since a doc can
+satisfy the first by documenting nothing. The first draft keyed on the prefix and flagged its own
+explanatory note: a bullet reading ``- `./install.sh` `` is an instruction, and a wrapped prose line
+beginning ``` `./install.sh` on such a copy ... ``` is not, and both start identically. What separates
+them is what *follows* — arguments, or English — so a line is prose if any remaining token is an
+ordinary lowercase word, real arguments here being flags, paths, or capitalised (`User`, `Both`,
+`MyApp`). Planted both ways per WQ-443: four instruction forms must be caught and five legal mentions
+must not, because a scanner that flags nothing and one that flags its own documentation both read as a
+clean sweep. Further arms pin the installer's three repairs, the absence of CI's blanket chmod, the
+presence of the mode-stripped arm and the macOS job, and all three `pwsh-wrap.sh` helpers.
+
+**Also fixed:** `INSTALL.txt` claimed audit engine **2.22.43** against a manifest reading 2.22.77 — 34
+releases stale, in the file a human on a new machine reads first, because only its `QUICK INSTALL (v…)`
+header was version-synced and `auditVersionScanFiles` scans `.md` only. It also restated `Next: WQ-011`,
+duplicating a status claim `docs/WORK_QUEUE.md` owns and getting it wrong. Engine cite now synced;
+duplicate claim replaced by a pointer.
+
+## 2.22.77 (2026-09-03)
+
+**2.22.76 fixed the pack and moved the defect in every project that already existed (WQ-450).**
+The previous release taught every message to name the entry point the running host can execute, and
+taught `bootstrap-project.ps1` to emit both twins. That was correct for the pack and for every project
+generated afterwards. For a project generated *before* it, the upgrade changed which non-existent file
+the audit named: it had `scripts/finalize_audit.cmd` and nothing else, so on Linux the instruction went
+from a `.cmd` that host cannot run to a `.sh` that project does not have. Measured rather than assumed
+— a fixture holding only the Windows twins was asked what the upgraded pack would tell it, and all
+three answers named files absent from the fixture. The headline fix reached nobody who had used the
+pack before.
+
+**The order matters and was deliberate.** The twins were held out of the manifest's `projectRequired`
+in 2.22.76 and are added here. That list only *reports* a missing project file — no sync command writes
+into a project — so requiring them first would have produced drift with nothing able to clear it, which
+is a worse failure than the one being fixed: every existing project failing its portability check with
+no remedy. `pack/scripts/repair-project-scripts.ps1` is the remedy, and it exists before the
+requirement.
+
+**A twin can be present and still unrunnable, so the repair treats three defects, not one.** Missing
+is the pre-2.22.77 bootstrap. **CRLF** is a file that exists and still fails, because `bash` answers
+`$'\r': command not found` and names no file — an error that points at nothing. **No execute bit** is
+the same story as step 62 one layer down: PowerShell creates files without it and no Windows filesystem
+carries one, so any project copied from Windows answers `Permission denied` to the command its own
+README prints. Missing twins are written from the shipped template; a CRLF one is repaired **in place**,
+because rewriting from the template would silently discard a project's own edits and the carriage
+returns are the whole defect. A project that never took an entry point is silent, not reported —
+otherwise the check fails on every project without a test runner and people learn to ignore it.
+
+**The CRLF case was found while fixing the first one, and it was latent in what 2.22.76 shipped.**
+`.gitattributes` pinned `*.sh` to LF, and `*.sh` does not match `run_audit.sh.template`. So the six
+shell-script templates fell through to `* text=auto`, and with `core.autocrlf=true` — the Git for
+Windows default, and set on this machine — the next Windows checkout would have converted them. Every
+project bootstrapped from that checkout would then have received CRLF shell entry points. Nothing in
+the tree could see it: all six templates are still untracked, and the working copy of an uncommitted
+file is whatever wrote it, so the conversion had not happened yet and would have arrived with the
+commit. `*.sh.template` is now pinned to LF and `*.cmd.template`/`*.bat.template` to CRLF, which is the
+same defect mirrored — bootstrap runs on Linux now, and a Batch file with LF endings is as broken there
+as the reverse.
+
+**Reachable from the two places a project already goes.** `run_audit_core.ps1` runs the check in
+`-AuditMode` so the project's own audit reports the gap as **Fix**, and `update-agent-stack.ps1` runs
+the repair after an upgrade, beside the hook repair and for the same reason: a repair nobody knows about
+repairs nothing. Both couplings were removable without a test noticing until now.
+
+**Step 66**, twelve arms, and **all fourteen negative controls caught their planted defect against a
+green baseline**. The controls run step 66's *own source* against a planted copy rather than
+restating its assertions, since a probe that re-implements a check tests the probe; the harness asserts
+on itself first (non-empty slice, every arm present in the slice, baseline at 0 fail) because an empty
+slice would have reported a clean sweep — the WQ-443 failure exactly. The load-bearing arm is a
+cross-check rather than a shared read: the repair
+script keeps its own table because a pair needs a template name, which `projectRequired` cannot express
+— so the step fails if the manifest requires a twin the repair cannot write, **and** if the repair can
+write one nothing requires. The rest repair a project shaped like the ones already out there and assert
+what the modes promise: `-AuditMode` reports and writes nothing, `-VerifyOnly` rejects and writes
+nothing, the repair delivers five LF twins, the CRLF arm keeps the project's own content, the repair
+satisfies its own verify, an absent entry point stays absent, and `.gitattributes` pins both suffixes
+with no carriage return anywhere in the tree.
+
+**The behaviour fixture was one of the stranded projects.** Step 18 failed the moment the check went
+in — `pack/audit/behavior-fixture` is `.cmd`-only, which is exactly the defect. It was fixed by running
+the repair on it, so the delivery path is exercised on a real project rather than only on a probe.
+Steps: **66**.
+
+## 2.22.76 (2026-09-03)
+
+**The audit told a Linux reader to run four commands, three of which did not exist (WQ-449).**
+Finishing `./run_audit.sh` on Ubuntu printed a next-steps list naming
+`scripts\write_semantic_audit_template.cmd`, `scripts\verify_semantic_audit.cmd` and
+`scripts\finalize_audit.cmd` — Batch names, backslash separators, and on that host no such files at
+all. Nothing failed, because the only consumer of those strings is a human. That is why it survived
+the Linux port of the *engine* and several releases after it: the suite proves what the pack **does**,
+and this was what the pack **says**.
+
+**Two defects, not one.** The queue row had this filed as 34 wrong strings needing a speller. Half
+right: the strings were wrong, but for four of the entry points they named there was no POSIX twin to
+name, so a speller alone would have had nothing to spell. `scripts/` now ships
+`write_semantic_audit_template.sh`, `verify_semantic_audit.sh`, `finalize_audit.sh` and
+`sync_audit_system.sh`, and the root gains `Sync-DocVersions.sh`, `Update-AgentStack.sh` and
+`Register-Tool-Adapters.sh` — each a thin twin of its `.cmd`, because the payload underneath
+(`audit_code_checks.py`, `run_audit.ps1`, `sync-audit-system.ps1`) was already portable. `py-wrap.sh`
+is the shell twin of `Invoke-PackPython`: the `.cmd` files call `py -3`, which is the Windows launcher
+and exists nowhere else, so a literal port would have failed with `py: command not found` — a message
+that reads like a missing Python rather than a Windows-only launcher.
+
+**The speller, and why it is a registry rather than a string rule.** `Get-PackEntryPoint` in
+`pack-paths.ps1` and `pack_entry_points.py` map a logical name to what each host can run, separators
+included: `run_audit.cmd` on Windows, `./run_audit.sh` elsewhere. Names are asymmetric where the pack
+ships them that way — `install` is `Install-AgentStarterPack.cmd` and `install.sh` — so a shared base
+name with an appended extension would not have worked. An unregistered name **throws**, which is what
+stops the next message inventing an entry point that has no twin. The Python copy is deliberate and its
+docstring says why: these names appear in text that prints when something is already broken, so
+resolving one must not depend on parsing a file that could be the broken thing.
+
+**`Format-PackDisplayPath`** covers the adjacent half. `docs\.audit_semantic_report.json` is not merely
+ugly off Windows — pasted into bash, `\.` collapses to `.` and names a different file. `$appPrefix` was
+built with a hardcoded `\` and feeds eight Fix lines.
+
+**Generated projects had the same hole, one layer down.** `pack/templates/scripts/` shipped `.cmd`-only
+templates, so a bootstrapped project on Linux could run `run_audit.sh` and then had nothing to run for
+the semantic and finalize steps its own audit named next. Four `.sh.template` files now ship, bootstrap
+emits both twins on every OS, and they go through `Set-PackExecutableBit` — a `.sh` written by
+PowerShell arrives without the execute bit, which is step 62's defect one layer up. These templates
+inline their interpreter check instead of sourcing `py-wrap.sh`, following the rule
+`run_audit.sh.template` already states: a generated project must audit itself without the pack present,
+and sourcing a *new* pack helper would break against an older installed pack.
+
+**Step 65, and the arm that matters.** Seven arms assert the speller answers, both registries agree,
+every registered name ships both twins, an unregistered name is refused, and the templates and
+bootstrap carry the twins through. The eighth is the one that keeps this closed: a scanner over 43
+script files that fails when instruction text names a Windows entry point directly. It allows exactly
+two lines and names both inline — a Windows-only branch describing the `.cmd` scripts, and an evidence
+reference — because a file-level exemption would let the next bad string in beside a good one. Per
+WQ-443 the scanner is planted against rather than trusted: three synthetic instructions must be caught
+and two legitimate lines must not be flagged, since a scanner that flags nothing and a scanner that
+exempts everything both report a clean sweep. All five file-level arms were then proven on a planted
+copy of the pack — twin deleted, registries desynced, a bare `.cmd` added to `doctor.ps1`, a template
+removed, bootstrap stopped emitting — and each failed with its own message while the other arms stayed
+green.
+
+**Deliberately not done.** The four `.sh` twins are *not* added to `projectRequired`. That list only
+reports missing project files; `sync-audit-system.ps1 -AutoFix` mirrors pack-to-installed and never
+writes into a project, so requiring them would produce drift on every pre-existing project that no
+command could clear. Retrofitting them needs a delivery mechanism first, and that is filed rather than
+half-built.
+
+## 2.22.75 (2026-09-03)
+
+**A bump can no longer reach into the past (WQ-437).** `docs/WORK_QUEUE.md` is the one document that
+mixes both kinds of version cite: the header table says which engine is *current*, and every Done-log
+row says which engine *shipped* that item. Nothing separated them, so the bump procedure was a habit —
+"split the file at the Done-log heading and replace only above it, by hand" — and four historical cites
+were rewritten in two days anyway, twice in a single session. The habit is now the tool's behaviour:
+`historicalRegions` in `docs/VERSION_SYNC.json` declares where the past begins, and
+`doc_version_sync.py` writes nothing below it, including via `extraReplacements` — whole-file regexes,
+and so the rules likeliest to reach backwards.
+
+**The measurement that killed the first design.** The obvious guard was to corroborate each Done row's
+engine cite against the changelog entry for that version, on the theory that a rewritten cite would
+stop matching. Measured before building: only **20 of 41** rows corroborate today, because changelog
+entries do not reliably name every WQ ID. As a Fix that would have been 21 false positives on a clean
+tree. The invariant that survived measurement is monotonic instead — **the set of engine versions the
+Done log cites may only grow** — which held at 14-of-14 against `HEAD` with zero false positives.
+
+**Three things hold the boundary, because one of them cannot see the actual cause.**
+
+- **The tool** refuses to write below the heading. This closes a latent hazard as well as the known one:
+  `WORK_QUEUE` was line-scanned with no boundary, so a Done row phrased `starter pack 2.22.x` was one
+  bump away from being rewritten by the sync engine itself. Generated projects were exposed too — their
+  `scanGlobs` includes `docs/*.md`, which sweeps up their work queue
+- **The config** is checked rather than trusted: `verify-work-queue.ps1` fails when the entry is deleted,
+  and fails differently when the entry names a heading that does not exist — the worst state, because the
+  config still claims protection while the file is synced end to end
+- **The backstop** compares the Done log's cited versions against git `HEAD`. Stated plainly: it cannot
+  see a row added and corrupted before its first commit, which is exactly how all four known cases
+  happened in a checkout carrying nine unpublished releases. It catches the repeat once history is
+  committed, which is when the damage becomes permanent
+
+**Step 64 plants a defect against all five arms** — declaration deleted, heading absent, sync run over a
+Done row using the phrasing the engine does match, and a committed cite rewritten — because a guard
+written in the same session as its fix is the one most likely to be checking nothing. Proving the fifth
+arm exposed a real reporting bug: git declines to read a scratch repo on a filesystem that records no
+ownership, and the check reported that as "no committed version yet", which is a true sentence about a
+new file and a false one about a repo git refused. The probe went looking in the wrong place until the
+two were separated.
+
+**Method note.** The step's git arm passes `safe.directory` to the verify script's own git through
+`GIT_CONFIG_*` environment variables rather than editing the user's global config. A test has no
+business writing there, and without it the arm silently skipped — which is how an unproven guard looks
+from the outside.
+
+## 2.22.74 (2026-09-03)
+
+**The suite runs on Linux: 63 steps, 0 fail — and Windows re-certified at 0 fail after every change.**
+2.22.73 shipped a report-only CI job because porting 61 steps blind from a Windows desktop looked riskier
+than measuring first. That was right, and the measurement corrected the estimate: the static pass had
+guessed 24 Windows-only steps; the real run produced **16 failures**, a different set, and the first one
+was not about Linux at all.
+
+**A dead audit gate, found by running somewhere new.** The first Linux failure was a leftover `'-3'` in
+`run_audit_core.ps1`'s `$codeArgs` — a survivor of the `py -3` → `Invoke-PackPython` migration, sitting in
+a variable rather than at the call site. Python answered `Unknown option: -3`, so `audit_code_checks.py`
+and the agent manifest it writes had been silently dead **on both hosts**. Nothing failed, because the
+audit treated the missing output as nothing to report. A second host is a cheap way to find the bug your
+only host has stopped being able to see.
+
+**One spelling for a path.** `pack-paths.ps1` gained `ConvertTo-PackPathKey`, `Split-PackPathKey`,
+`Get-PackRelPathKey`, `Test-PackPathKeyUnder` and `Test-PackPathHasSegment`; 357 `Join-Path` literals, 46
+interpolated ones, 21 `Substring($Root.Length).TrimStart('\')` idioms and 6 `\.git\`-shaped filters were
+rewritten to use them. The rewrites were AST-driven and extent-exact so messages and regexes were left
+alone — and the AST is also what caught that `Join-Path $x ".tmp\probe-$PID"` is an *expandable* string,
+a class the first pass had silently skipped. `TrimStart('\')` is the quiet one: it does not strip a
+leading `/`, so on Linux every relative key kept its separator and no comparison against a manifest entry
+could match — the filters passed everything through while looking like they filtered. Those five helpers
+now decide roughly 430 path comparisons and had no test of their own, so **step 63** pins them: eight
+cases, four of which are near-misses (`docs/handoffs` versus `docs/handoffs-archive`, a `.git/` segment
+versus a file called `x.gitignore`), because the failure to fear is a helper that answers *uniformly*,
+not one that answers wrongly. It asserts it built all eight cases before judging any of them.
+
+**Test and audit entry points are one implementation with two wrappers.** `run_audit_tests.bat` *was* the
+implementation — five steps of Batch — so the pack's own test command could not exist off Windows, and
+the audit runs a project's declared test script to earn its test-pass proof. Now `scripts/run_audit_tests.ps1`
+holds the logic behind `run_audit_tests.bat` and `run_audit_tests.sh`, matching `run_audit.cmd`/`.sh` →
+`scripts/run_audit.ps1`. Generated projects get the same shape for `run_tests` and `run_audit`, plus
+`tests.scriptPosix` in `AUDIT.config.json` (a **required key**, so the template cannot ship without one).
+`Get-PackScriptRunner` picks the interpreter by extension, and a script this host cannot run is a **Fix**
+that names the config key to add — never a skip, because a silent skip would let `finalize` collect a
+test-pass proof no test ever earned. **Step 22 now asserts the property that matters** — both wrappers
+delegate to one implementation — instead of grepping one wrapper for the work itself.
+
+**Four defects only Linux could show.**
+
+- **Every export made off Windows was broken.** `Copy-Item -Recurse` skips hidden children, and on Linux
+  every dot-prefixed name is hidden — so `.cursor/rules/audit.mdc` and the fixture's `.gitignore` never
+  reached the archive. `Compress-Archive` is worse: naming a dotfile explicitly fails outright with
+  "Could not find item .gitattributes". Staging now enumerates with `-Force` and the archive is built with
+  `ZipFile.CreateFromDirectory`
+- **A generated project could not audit itself.** `run_audit.ps1.template` called `Join-Path
+  $env:USERPROFILE` (null off Windows) and spawned `& powershell` (absent off Windows), so the audit
+  exited 0 having audited nothing
+- **The Cursor session hook** had both faults, so it produced no context at all off Windows
+- **All six shipped `.sh` files were committed `100644`** — a fresh clone could not run `./install.sh`, the
+  first command the install instructions give. No test could see it: Windows has no execute bit, and WSL
+  reads `/mnt/*` as 777 regardless, so both hosts reported success on a pack nobody could start.
+  **Step 62** reads the mode from git, the only place it survives a copy, and reports untracked `.sh`
+  files with the `git add --chmod=+x` form rather than failing an uncommitted tree
+
+**A guard that had been passing by luck.** Installing WSL put a second `bash` on PATH — `System32\bash.exe`
+takes precedence over Git bash — and step 54 both preferred bare `bash` and hardcoded Git bash's `/d/x`
+mapping, which WSL spells `/mnt/d/x`. Five wrappers then failed with "No such file or directory" on a
+machine where nothing about the pack had changed. `Convert-PackPathToPosix` asks the chosen shell
+(`cygpath`, then `wslpath`) instead of assuming, and the probe prefers Git bash because running these
+wrappers inside a distro is a different OS than the step claims to cover.
+
+**The wrapper shape broke the check that reads runners, and fixing it found a worse hole.** With both
+entry points now delegating, the self-audit reported `run_audit_tests.sh never runs test_pack_audit.py`:
+`check_test_runner_coverage` follows one level of delegation, but only through a fixed vocabulary of
+invocation spellings, and the posix wrapper reaches the implementation through `pack_pwsh_file` rather
+than by naming `pwsh` on the command line. Widening that vocabulary is only safe while a *mention* still
+does not count — and it did. Coverage is a substring search over the whole runner file, so
+`# real suite: scripts/run_tests.ps1 (test_thing.py)` above `exit /b 0` satisfied it, as did an `echo` of
+a path. The one defect this check exists to catch could be waved through with a comment. Inert lines —
+comments, and output statements that run nothing else — are now stripped before the search, and
+`test_runner_coverage_follows_delegation_but_still_refuses_stubs` pins **both** directions: two real
+wrapper shapes accepted, three stub shapes refused.
+
+**Method note.** Two rewrites regressed Windows and the suite caught both within one run: an index
+expression that needed parentheses, and `.tmp\*` exclusion patterns that stopped matching once the keys
+they were compared against became forward-slashed. Both are the WQ-443 shape — a filter that silently
+excludes nothing still looks like a filter — which is why Windows was re-run after every batch rather
+than at the end.
+
+**Method note, WQ-443 on the harness itself.** The negative-control run for these guards printed
+`CAUGHT` for the path-key checks while its dot-source of `pack-paths.ps1` had failed and not one case had
+been evaluated: the case list was built by calling the missing functions, so it came out empty, and an
+empty list has no mismatches. A control harness is a guard, and it needs the same treatment — it now
+asserts *how many* cases it compared before reporting on them. Worth stating plainly: the first thing the
+negative controls caught was themselves.
+
+## 2.22.73 (2026-09-02)
+
+**One version of the pack, two hosts, and a gate that actually runs both.** The pack targets Windows
+PowerShell 5.1 because it ships with Windows - that floor is what lets a single codebase run from a USB
+stick on a machine with nothing installed, and run under `pwsh` on macOS and Linux through the `.sh`
+wrappers. What was missing was enforcement: `-DualShell` existed but nothing invoked it, so "the suite
+passes under both" was a comment in `pack-paths.ps1` rather than a tested claim. Windows contributors only
+ever exercised 5.1; everyone else only ever exercised 7.
+
+- **`run_audit_tests.bat` now passes `-DualShell`** when `pwsh` is present. 5.1 stays the launcher - it is
+  the only host guaranteed to exist - and the second host is what the gate adds. Certification went from
+  3m30s to 6m16s. `PACK_SKIP_DUALSHELL=1` for a single-host loop while iterating; the gate never skips it
+- **Behavior step 61** refuses the three constructs that differ between the hosts, by AST rather than text
+- **Step 22 asserts the runner still passes `-DualShell`**, so the gate cannot quietly lose its second host
+- **The Linux job now runs the full suite, report-only** (WQ-446). 24 of 61 steps touch `.cmd` runners,
+  `%USERPROFILE%\.cursor`, `powershell.exe` or `robocopy`; one real run will produce the authoritative
+  list, which beats porting 61 steps blind from a Windows desktop
+
+**The premise needed correcting first.** Sessions kept blaming 5.1, so both hosts were probed directly:
+
+| Construct | 5.1 | 7.6.5 |
+| --- | --- | --- |
+| `.Replace(a, b, 1)` | throws - no such overload | returns `bbb`: the `1` binds to `StringComparison` and **every** match is replaced, silently |
+| `-Include` without `-Recurse` | matched 3723 files in a folder of 3538 | matched 4 |
+| `Write-Host` captured by `2>&1` | no | no - **identical**, and `6>&1` works on both |
+| `Set-Content -Encoding UTF8` | writes a BOM | no BOM |
+
+Only the last is a genuine version split, and it was already centralised in `Write-Utf8NoBom`. Two others
+are wrong on every host - one of them *silently* wrong on 7, which is the more dangerous direction - and
+one never differed at all. So the guard bans constructs, not versions.
+
+**A real BOM bug fell out of the sweep.** `register-portable-mcp.ps1` wrote the MCP config with
+`Set-Content -Encoding UTF8`, so a config registered from Windows 5.1 carried a BOM - in the *portable* MCP
+registrar, whose whole job is producing a file another tool reads. Seventeen call sites moved to
+`Write-Utf8NoBom`; sixteen were suite fixtures, which the suite itself then verified on both hosts.
+
+**A guard for text written through an escape.** Adding a queue row from a PowerShell double-quoted string
+turned `` `a `` into a bell character and `` `v `` into a vertical tab, eating the first letter of five
+filenames. The row still rendered as a table, and a full audit certified it. `verify-work-queue.ps1` now
+fails on any control character other than tab, CR and LF - and every project gets that check, not just
+this one.
+
+---
+
+## 2.22.72 (2026-09-02)
+
+**A list's readers are declared, not discovered (WQ-442).** `machineLocalPaths` got one home in 2.22.54 and
+that held - but nothing enumerated its *readers*, so every consumer after that was found by shipping the
+bug: WQ-425, WQ-426, WQ-429, WQ-430, WQ-439. One list, one home, six discoveries.
+
+- **`listConsumers`** maps each manifest list to the scripts that must read it
+- **`distributionChannels`** and **`distributionCriticalKeys`** name the ways this pack reaches a machine
+  that did not build it, and the lists each of them must honour
+- **Step 60** fails on three things: a declared reader that stopped reading, a channel honouring one
+  critical list but not the others, and an *undeclared* reader - so a new channel has to be registered
+  before it can quietly disagree with the existing ones
+
+**WQ-425 closed as its instance, with its own premise corrected.** The row said installing from a
+transferred folder could plant a foreign context stamp in the profile. It could not, quite: install runs
+`sync-audit-system.ps1` out of the installed tree afterwards, and sync deletes machine-local files. That
+was established by disabling both guards, at which point the planted stamp does arrive. The real defect
+was narrower and still worth fixing - the profile **held another machine's context stamp until a later
+step happened to clean it up**, and that cleanup depended on sync existing at the destination and
+succeeding. `install.ps1` now skips the list at copy time, reading the same key `export.ps1` reads.
+
+**The masking had already defeated the test.** The first version of step 60's install arm planted state,
+installed, and asserted absence - and passed identically with the filter removed, because sync cleaned up
+either way. A guard that cannot fail. The probe now disables sync in its scratch source so the arm tests
+install's own filter, which is the thing this release changed. Negative control run both ways: with the
+filter removed, step 60 fails naming `docs\AGENT_CONTEXT.json` and `docs\AGENT_PASTE.txt`; restored, the
+suite is green.
+
+**Two enumeration bugs of the same shape, found in one session.** `Get-ChildItem -LiteralPath X -Include
+'*.ps1'` silently matches *everything*, because `-Include` needs `-Recurse` or a wildcard path. It first
+made a reader survey look like two files out of eighty-five, and then made step 60 report `.gitignore` and
+the semantic report as undeclared readers. Both now filter on `.Extension` explicitly.
+
+**A section parser that could be fooled by a quotation.** Writing the WQ-437 row surfaced this: the row
+mentioned the Done-log heading inside a table cell, and `Get-SectionBody` located its *start* header with
+an unanchored `IndexOf` while anchoring every *end* header at line start. The Done section therefore began
+in the middle of the Active table, and the queue verifier reported every active id as both active and done.
+Anchored now - in all **five** scripts that define their own copy of that helper, which is WQ-441's finding
+again in a different helper and is filed as WQ-444.
+**WQ-437 promoted to Next, and WQ-443 filed.** This release bumped versions by splitting the queue at
+`## Done log` and replacing only above it, by hand, because a blanket replace has corrupted historical
+cites four times in two days. That belongs in the tooling. WQ-443 collects the day's six
+checks-that-could-not-fail into one item: a behavior step should not be addable without a planted-defect
+arm proving it can fail.
+
+---
+
+## 2.22.71 (2026-09-02)
+
+**One home for the path vocabulary (WQ-441).** Prompted by a fair question - whether this run of releases
+was solving root problems or patching instances. Measuring first was worth it, because it corrected the
+premise twice.
+
+**What the measurement showed.** Nine verify scripts, 5,108 lines, only `pack-paths.ps1` shared, four
+sharing nothing at all. The first read of that said "one rule implemented three times". Reading the code
+said otherwise: `verify-product-truth-paths.ps1` uses its drive-letter match to *normalise* a cited path by
+stripping the project root, and `verify-agent-handoffs.ps1` uses its own to enforce the **opposite** rule -
+a session opener must be root-anchored, absolute or placeholder, because a bare relative path opens the
+wrong file. Three different rules that share a regex fragment.
+
+**What actually duplicated** is the vocabulary underneath: four private answers to "is this string a
+placeholder or a person". That is the mechanism behind WQ-440. `verify-session-handoff.ps1` shipped in
+2.22.68 with no path rule at all, and the lesson it needed had lived in a *differently shaped* rule since
+2.22.58 - so there was nothing to copy, and nothing to notice missing.
+
+- **`pack/scripts/verify-lib.ps1`** - `Test-PackSubstitutionMarker`, `Test-PackRootAnchoredPath`,
+  `Get-PackMachinePathHit` (**Strict** for files that travel, **Illustrative** for docs that must show a
+  concrete example), `Get-PackIllustrationUserName`
+- **Consumers migrated:** `verify-session-handoff.ps1`, `verify-agent-handoffs.ps1`, behavior step 50
+- **Behavior step 59** fails when a script outside `pathRulePrimitiveAllowlist` grows its own copy
+
+**A latent gap closed on the way.** The older rule anchored at line start (`^[A-Za-z]:\\`), so an absolute
+path anywhere but the first character escaped it. The shared predicate has no such blind spot, which is
+asserted directly in step 59 rather than assumed.
+
+**The rules stay separate; only the vocabulary is shared.** Merging the three rules would have been the
+wrong fix - they disagree on purpose. What they must not disagree about is what a placeholder *is*.
+
+**Two of the author's own mistakes are the evidence it works.** Step 50 failed the build because step 59's
+fixture contained a real user name, in a file that travels as far as prose does; the fixture now builds
+that string at runtime from a name deliberately absent from the illustration list. And the migrated
+pointer check failed a `SESSION.md` line naming two WQ ids, because the regex takes the furthest id within
+120 characters. Both were caught by guards written for other reasons, which is the argument for having
+them.
+
+**Method note, fourth of the day.** Three `.Replace(old, new, 1)` calls in scaffolding silently did nothing
+- PowerShell 5.1's string type has no count overload - while the success messages printed anyway, because
+the exception was non-terminating at the default preference. The file state was verified afterwards and the
+edits redone. Same shape as the zip separator, the in-process capture, and the syntax-error probe: a step
+that reports success without observing the thing it claims.
+
+---
+
+## 2.22.70 (2026-09-02)
+
+**A repair path for hooks that predate their own fix (WQ-435).** 2.22.63 fixed the generated Cursor
+session hook - an unbounded `[Console]::In.ReadToEnd()` that returns instantly under Cursor, which closes
+the handle, and never returns under bash, which does not. `install.ps1` rewrites the profile copy on every
+install, so that one self-heals. `bootstrap-project.ps1` copies the project hook with `-ForceWrite:$Force`,
+so every project bootstrapped before that release kept its broken copy, and the only remedy was
+`bootstrap -Force`, which rewrites unrelated generated files too.
+
+- **`pack/scripts/repair-project-hooks.ps1`** - `-ProjectRoot`, `-VerifyOnly`, `-AuditMode`
+- **Wired into `update-agent-stack.ps1`** (the command already run after a pack upgrade) and surfaced as
+  **Fix** by `run_audit_core.ps1`, so a project's own `run_audit.cmd` reports it
+- **Behavior step 58** - current, stale, `-VerifyOnly`, `-AuditMode`, idempotence, no-hooks-at-all
+
+**Three design choices worth keeping.**
+
+**Detect the defect, not a difference.** The check matches the pre-fix shape - an unbounded `ReadToEnd`
+with neither `IsInputRedirected` nor a bounded `Wait` - rather than comparing against the template. A hash
+compare would report drift for every unrelated template edit and would overwrite a hook somebody
+customised on purpose. The job is to name the hang, not to enforce sameness.
+
+**Back up only when repairing.** A second run finds a current hook and stops, so `.bak` keeps the file the
+project actually had. Copying on every invocation would bury the original under a copy of the repaired
+file, which is the one thing a backup exists to prevent.
+
+**A repair nobody knows to run is not a repair path.** Hence the audit surfacing rather than a script
+mentioned in a document. The remedy text is addressed to the agent, matching the agent-context Improve, so
+it offers the run instead of handing over a command to type. An absent `.cursor/hooks` is INFO, because a
+project that never took the Cursor target is not broken and reporting it would train people to ignore the
+check everywhere else.
+
+**WQ-437 bit twice in one session.** The bump to 2.22.69 rewrote WQ-438's historical cite from 2.22.68,
+and the bump to 2.22.70 rewrote WQ-439's and WQ-440's from 2.22.69 - both times a blanket replace on
+`docs/WORK_QUEUE.md`, both times hand-corrected afterwards by reading the rows back. The queue's Done log
+is the one file where every version number is a *historical* claim, so it is the one file a
+release-wide replace must never touch blindly. That is now four hand-fixes across two days, which is the
+whole argument for the backlog item.
+
+**Method note.** Step 58's first version called the script in-process and asserted on the captured output.
+`Write-Host` does not reach the success stream, so it captured an empty string and the step failed - which
+is how it was found. Written the other way round, the assertion would have passed on nothing. That is the
+third instance today of a check that could not fail, after the zip separator in WQ-439 and two assertions
+in the smoke run that reported `True` on null input. The suite's own convention -
+`Invoke-PackScript -PassOutput`, a child process whose stdout is real output - exists for this reason.
+
+---
+
+## 2.22.69 (2026-09-02)
+
+**Two leaks found by reading a returned folder (WQ-439, WQ-440).** The tree came back from the primary
+system at 2.22.68 and **failed its own suite on arrival** - one real failure, in a file written the day
+before.
+
+**`docs/handoffs/SESSION.md` named a machine.** It recorded the received copy's own checkout root twice, which step 50
+forbids in any file that travels. **It passed on the machine that wrote it**, because that guard
+compares against the checkout it is running in: a document naming a *different* root is invisible to it.
+A leak of this shape is only ever caught by the machine it is wrong for. `verify-agent-handoffs.ps1` has
+required the placeholder form for slice openers since 2.22.58, but `verify-session-handoff.ps1` shipped
+one release earlier without it, so the new channel had no rule of its own. Added, with `<pack checkout>`,
+`%LOCALAPPDATA%`-style env roots and `<you>` markers explicitly still legal - a blunter rule would ban
+the syntax the pack tells people to use. **Step 57** now tests both directions.
+
+**`export.ps1` shipped what `install.ps1` strips.** Same manifest list, two channels, one reader: the
+export removed `machineLocalPaths` and never `maintainerOnlyPaths`, while copying `docs` and `.cursor`
+wholesale. So a zip carried `.cursor/rules/no-publish-from-this-machine.mdc` - **a workspace rule
+instructing the recipient's agent not to commit or push their own work**, which is exactly what that
+rule's own text says to delete on arrival - together with `docs/handoffs` and its session notes. The
+fix reads the manifest key `install.ps1` already reads, with the same folder-aware semantics.
+**Step 52** fails on any maintainer-only path in the archive.
+
+- Verified on a real 189-entry export: no maintainer-only content, every `packMirror` entry and audit
+  entry point still present. With the filter disabled, four leaks return
+- **Method note worth keeping:** the first archive read compared forward-slash names while
+  `Compress-Archive` writes backslashes, so nested paths matched nothing and the export read *clean*
+  before the fix existed. A check that cannot fail is worse than no check - and this is the second time
+  that exact sentence has been earned by a separator
+- **Writing up the defect reproduced it.** The Done row and this entry originally quoted the offending
+  path verbatim, and step 50 failed the suite again - on the write-up. The guard forbids the string, not
+  the intent, so a post-mortem cannot name what it is describing. Both now say *the pack folder's own
+  drive root*, which is also the phrasing that stays true on the next machine
+
+**Correction to the 2.22.65 entry below.** It claimed WQ-431 was "closed by construction" when the
+session document was retired. Only half of it was: the queue header's **Next active ID** can still
+disagree with the Active **Next** row, and 2.22.67 built that check. The entry has been amended in
+place rather than left to contradict the Done log - the WQ-437 class, caught by reading rather than by a
+guard, because nothing checks a changelog claim against a Done row yet.
+
+---
+
+## 2.22.68 (2026-09-02)
+
+**Session handoff first on continue (WQ-438).** Retired `HANDOFF_NEXT_AGENT.md` removed the second
+**Next** claim but left no session **now** channel — agents jumped straight to WORK_QUEUE or chat.
+
+- **`docs/handoffs/SESSION.md`** — blockers, open items, pointers only (no duplicate WQ tables)
+- **`pack/rules/handoff-first.mdc`** — always-on lookup order SESSION → WQ → unplanned; interrupt rule
+- **`verify-session-handoff.ps1`** — wired from `verify-complete-picture.ps1`; behavior **step 57**
+- **`refresh-agent-context.ps1`** — SESSION in `requiredReads` before WORK_QUEUE when present
+- **`ensure-work-completion.ps1`** — scaffolds SESSION from template (never overwrites)
+
+---
+
+## 2.22.67 (2026-09-02)
+
+**Wire product-truth into the close path (WQ-416, WQ-417, WQ-431, WQ-420).**
+
+- **`verify-complete-picture.ps1`** — delegates to `verify-product-truth-paths.ps1`; **pack repo:** FAIL when
+  WORK_QUEUE header **Next active ID** disagrees with Active **Next** row (WQ-431)
+- **`update-agent-stack.ps1`** — **`-VerifyOnly`** runs Step 5b without refresh; Step 5b runs after refresh
+  for pack and for **`-ProjectRoot`** app checkouts
+- **`pack/templates/docs/DOC_MAP.md.template`** — product-truth owners table (WQ-420)
+- **Portable skill** — product-truth drift on a closing slice → **Fix**, not Improve (WQ-419)
+
+---
+
+## 2.22.66 (2026-09-02)
+
+**Product-truth verify — limitations/capability prose vs code (WQ-415).** Step 3c had human-only
+"read the sections you touched"; agents could pass ROADMAP alignment while capability docs still said
+*not built* for a Done **WQ** id, or while code no longer matched a documented capability.
+
+- **`pack/scripts/verify-product-truth-paths.ps1`** — resolves product-truth paths from the
+  `docs/WORK_COMPLETION.md` overlay (or defaults); **FAIL** when listed files are missing; **FAIL**
+  when a Done **WQ** id appears beside not-built/deferred phrasing; optional
+  `docs/.product_truth_verify.json` doc/code claims (example template shipped)
+- **`pack/docs/WORK_COMPLETION.md`** Step **3c** — run the script before step 5b
+- **Behavior step 55** — negative probes for missing overlay path, Done-WQ prose contradiction, and
+  a passing JSON claim fixture
+
+**WQ-416** (wire into `verify-complete-picture` / Update-AgentStack) remains queued.
 
 ---
 
@@ -30,8 +2605,10 @@ second claim removes the class.
 was found, which skipped the Done-contradiction scan entirely - so a bootstrapped app, the case least
 likely to have such a file, got the least checking. That scan now always runs.
 
-**WQ-431 is closed by construction.** The gap was a header status line unreconciled with section 11;
-both are gone, and there is one status claim left to be wrong.
+**WQ-431 is narrowed, not closed.** The section-11 half of it is gone with the document. The queue's
+own header still carries a **Next active ID** field that can disagree with the Active **Next** row, and
+that half stayed open - 2.22.67 built the check for it and owns the Done row. *(Corrected 2026-09-02:
+this entry originally claimed the id was closed by construction.)*
 
 **The distilled lessons were absorbed, not discarded** - fifteen findings that outlive their release now
 open `docs/WORK_QUEUE.md`. Everything else in the retired document already existed elsewhere: deferred
@@ -80,7 +2657,7 @@ three.
 
 **Handoff documents consolidated to one transfer file (same release, later the same day).** At the
 user's request the pack's *status* documents were reduced to one: a single transfer document written to
-the **root of the transfer drive**, deliberately outside the checkout so it cannot reach a commit, an
+the **root of the portable media root**, deliberately outside the checkout so it cannot reach a commit, an
 export or an install. Deleted after their content moved there:
 
 | Deleted | Why it was safe |
@@ -99,7 +2676,7 @@ rewiring release, not a cleanup.
 - **Every live citation to the four was repaired** — the WQ-426 queue row, `docs/handoffs/README.md`,
   three rows in the verify map and queue backlog, the docs tree and four §11/§14 pointers here. The
   paths are replaced with *unpathed* references on purpose: a tracked file must not record where the
-  transfer drive happened to be mounted, which is the same rule 2.22.58 enforces for the checkout path
+  portable media root happened to be mounted, which is the same rule 2.22.58 enforces for the checkout path
 - **Done-log and changelog evidence keeps its narrative** but no longer cites a path that cannot
   resolve. Historical entries above are left alone — they record what was true then
 - **`docs/handoffs/active/` and `docs/handoff_archive/` stay** (now empty): they are destinations for
@@ -110,7 +2687,7 @@ rewiring release, not a cleanup.
 
 **A rule the docs claimed to rely on did not exist.** This file, `HANDOFF_NEXT_AGENT.md` and the
 manifest all cite `.cursor/rules/no-publish-from-this-machine.mdc` as what stops an agent committing
-from the transfer machine — and it was **absent from disk**. The policy was surviving on prose in the
+from the received copy — and it was **absent from disk**. The policy was surviving on prose in the
 handoff. Restored, with the reason it must not travel to the publishing machine written into it. The
 suite stayed green throughout, which is the honest read: `maintainerOnlyPaths` is an exclusion list, so
 nothing checks that its entries exist.
@@ -229,7 +2806,7 @@ points present?" — the other four would fail on the recipient's machine instea
 
 `run_audit_core.ps1` is the interesting one: its literal fallback matched the manifest exactly, so it
 had never *caused* a wrong answer. It also turned out to be unreachable while any pack manifest
-resolves — hiding this checkout's manifest falls through to the installed copy's. **Dead code holding a
+resolves — hiding the pack folder's manifest falls through to the installed copy's. **Dead code holding a
 duplicate of live data is a bug waiting for its first reader**, and the honest failure mode is a
 reported gap, not a silent snapshot.
 
@@ -323,12 +2900,12 @@ reveals the layout of whoever wrote it, and unlike a generated stamp it **surviv
 download** rather than only a folder copy. The pack's own standing rule already said never hard-code a
 drive letter in scripts or docs; nothing enforced it.
 
-- **Step 50 now fails when a travelling file contains this checkout's own absolute path**, in any of
+- **Step 50 now fails when a travelling file contains the pack folder's own absolute path**, in any of
   the three forms a path takes in text (native, JSON-escaped, forward-slash). Machine-local files stay
   exempt — naming this machine is their purpose. Illustration paths (`C:\Users\alice\...`,
-  `D:\your-project`) are unaffected: they are not this checkout
+  `D:\your-project`) are unaffected: they are not the pack folder
 - **Found two real cases** on the first run, both in archived handoffs that a download would carry: a
-  session opener and a copy-notes block naming the transfer drive's checkout. Also genericised three
+  session opener and a copy-notes block naming the portable media root's checkout. Also genericised three
   historical evidence rows in the changelog and `WORK_QUEUE.md`
 - **Handoff openers may now use a placeholder root** (`<pack folder>\docs\...`, `%PACK_ROOT%\...`,
   `$env:X\...`) instead of an absolute path. The convention existed so an opener could not be a bare
@@ -365,7 +2942,7 @@ appearing to be ignored.
   `[INFO]` when there is no repo, since git is an optional requirement
 
 **What a guard cannot do:** untrack files in a repository it is not running in. The fix travels as
-source; the primary system's index does not fix itself. **WQ-426** carries the one-time steps.
+source; the StarterPack-Airlock's index does not fix itself. **WQ-426** carries the one-time steps.
 
 ---
 
@@ -394,18 +2971,18 @@ files above are untracked, gitignored, and regenerated locally.
 - **Behavior step 50** — fails when a real user profile path appears in any file that travels (illustration names like `alice` and substitution markers are allowed), when a `machineLocalPaths` entry is missing from `.gitignore` or also present in `packMirror`, when `export.ps1` or the sanitizer stops reading the manifest list, and when the sanitizer's preview deletes anything
 - **The freshness check now names the cause.** It trusted `canonicalProjectRoot` out of a copied stamp, resolved every path against a root that does not exist here, and reported **"missing AGENT_CONTEXT.json"** while the file sat in `docs/`. A recorded root that does not exist is ignored, and the reason reads *written on another machine for `<root>`*. Its version arm also reset `stale` to `False`, so a foreign stamp whose engine version happened to match would have read as fresh — reasons now accumulate
 - **`sync-audit-system.ps1` now clears copied machine-local files from an existing install.** Dropping the overlay from `packMirror` fixed the source but stranded the copy: the profile still held `docs/WORK_COMPLETION.md` with the other machine's paths, and nothing mirrored it any more, so nothing would ever refresh it. Removed on sync, the same way maintainer-only paths are — except `install-manifest.json`, which `install.ps1` writes into its target as that install's own record
-- **One prose leak, not a mechanism:** a `WORK_QUEUE.md` Done row recorded an external app path on the other machine. Reworded — that file is mirrored into installs and pushed
+- **One prose leak, not a mechanism:** a `WORK_QUEUE.md` Done row recorded an external app path on a different host. Reworded — that file is mirrored into installs and pushed
 - **A guard that could not fail.** Steps 49 and 50 excluded `.git`, `__pycache__` and `.tmp` by matching the *absolute* path, and a probe pack root lives under `.tmp` — so every file in a scratch copy was excluded and the scan passed on a tree with a planted user path. Caught by trying to make the new check fail, which is the only reason it was found. Both now match on the path relative to the pack root
 
 **Not shipped to bootstrapped projects.** A generated overlay naming its own absolute paths is correct in
 an app that lives at one location; the pack folder is portable by policy, which is what makes it wrong
-here. Step 50 scans this checkout only.
+here. Step 50 scans the pack folder only.
 
 ## 2.22.55 (2026-09-01)
 
 **The reference that documented the handoff layout was not in the layout.** `HANDOFF_NEXT_AGENT.md` §11 cited
 `docs/HANDOFF_DESIGN_REFERENCE.md` as "(in repo)", and the reference itself said its maintainer copy "remains" at that
-path — while the only copy sat at the root of the transfer drive, outside the checkout. Nothing outside the pack folder
+path — while the only copy sat at the root of the portable media root, outside the checkout. Nothing outside the pack folder
 survives a clone, an `export.ps1` archive, or a folder copy, which are the three ways this pack moves. Now written
 into `docs/` and added to **`maintainerOnlyPaths`**: it describes this repo's internal layout and means nothing in a
 user's profile.
@@ -445,8 +3022,8 @@ longer lists two specs among its pack sources.
 - **`install.ps1` `SkipRelPaths` matched exact files only**, so a `maintainerOnlyPaths` entry naming a *folder* did nothing. `docs/handoffs/` accumulates a file per work slice, and listing them one at a time guarantees the next one ships into every user's profile. A listed folder now excludes everything under it, `sync-audit-system.ps1` removes a directory entry with `-Recurse`, and **step 26** asserts both — including that skipping `docs\handoffs` does not take a same-prefixed neighbour (`docs\handoffs-notes.md`) with it
 - **`HANDOFF_NEXT_AGENT.md`: 788 lines to ~470.** Roughly 400 lines were a bump-by-bump history the changelog already holds, and it had started to contradict it. What replaced it: the standing decisions in one place, and the findings that generalise past the bump that produced them. Section numbering is unchanged, because `verify-complete-picture.ps1` reads `## 11.` for the queue pointer
 - **The pack's own `docs/handoffs/README.md` still said `{{PROJECT_NAME}}`** — scaffolded before 2.22.50 fixed the substitution, so this repo carried the exact defect it had shipped a guard for. Generated projects were already correct; only this copy predated the fix
-- **`.cursor/rules/no-publish-from-this-machine.mdc` is now gitignored.** It tells an agent never to commit or push, which is true of the working copy and *false* on the machine that publishes — committing it would instruct an agent there to refuse the push it was asked for
-- **`docs/handoffs/active/HANDOFF_WQ011_primary_system_update.md`** — the pack now uses its own handoff convention for the transfer to the primary system, and passes `verify-agent-handoffs.ps1`
+- **`.cursor/rules/no-publish-from-this-machine.mdc` is now gitignored.** It tells an agent never to commit or push, which is true of default git-free copies and false in StarterPack-Airlock — committing it would instruct an agent there to refuse the push it was asked for
+- **`docs/handoffs/active/HANDOFF_WQ011_primary_system_update.md`** — the pack now uses its own handoff convention for the transfer to the StarterPack-Airlock, and passes `verify-agent-handoffs.ps1`
 
 ## 2.22.52 (2026-08-31)
 

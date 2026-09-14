@@ -1,4 +1,4 @@
-# Audit system (starter pack 2.22.65 — manifest-driven)
+# Audit system (starter pack 2.22.123 — manifest-driven)
 
 **One audit = closed scope.** Two report sections: Fix and Improve. **One standard:** full `run_audit.cmd` — never `-SkipTests` for an audit.
 
@@ -57,6 +57,8 @@ Both halves matter:
 - **Size and mtime are not inputs.** They do not survive a copy to another drive — this pack ships on removable media — and they can be restored, so an mtime proof can be stale and matching at the same time.
 
 `Get-AuditTreeFingerprint` (`run_audit_core.ps1`) and `compute_tree_fingerprint` (`audit_code_checks.py`) must produce the identical string; PowerShell asks Python first and only falls back to its own copy. Keys are lowercased app-relative paths sorted **ordinally** — `Sort-Object` is culture-aware and Python's `sorted()` is not.
+
+**StarterPack-Airlock (maintainer):** git-free working copies use **`tree:`** only (Zone A); publish runs from Airlock **`repo/`** with **`commit+tree:`** (Zone B). Publisher sequence and touchpoint matrix: **`docs/AUDIT_AIRLOCK_COVERAGE.md`**.
 
 ### The tests gate trusts the runner, so the runner is checked
 

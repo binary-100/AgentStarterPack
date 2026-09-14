@@ -15,8 +15,8 @@ if (-not $ProjectRoot) {
 $ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
 
 $pyScript = Join-Path $PSScriptRoot 'sync_doc_versions.py'
-$vsCfg = Join-Path $ProjectRoot 'docs\VERSION_SYNC.json'
-$auditCfg = Join-Path $ProjectRoot 'docs\AUDIT.config.json'
+$vsCfg = Join-Path $ProjectRoot 'docs/VERSION_SYNC.json'
+$auditCfg = Join-Path $ProjectRoot 'docs/AUDIT.config.json'
 if (-not (Test-Path -LiteralPath $vsCfg) -and -not (Test-Path -LiteralPath $auditCfg)) {
     Write-Host "SKIP: no docs/VERSION_SYNC.json or docs/AUDIT.config.json at $ProjectRoot"
     exit 0
