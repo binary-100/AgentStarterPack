@@ -6763,9 +6763,9 @@ try {
         New-Item -ItemType Directory -Path (Join-Path $airlock 'repo') -Force | Out-Null
         $materialize = Join-Path $PackRoot 'pack/scripts/materialize-starter-pack-airlock-templates.ps1'
         if (-not (Test-Path -LiteralPath $materialize)) { throw "materialize script missing: $materialize" }
-        $null = & powershell -NoProfile -ExecutionPolicy Bypass -File $materialize `
-            -PackRoot $PackRoot -AirlockRoot $airlock -PublisherKeyId $KeyId 2>&1
-        if ($LASTEXITCODE -ne 0) { throw 'materialize failed for WQ-487 probe airlock' }
+        $matExit = Invoke-PackScript -NoProfile -ScriptPath $materialize `
+            -PackRoot $PackRoot -AirlockRoot $airlock -PublisherKeyId $KeyId
+        if ($matExit -ne 0) { throw 'materialize failed for WQ-487 probe airlock' }
         if (-not $OmitKey) {
             $keyVal = if ($WrongKey) { 'wrong-key' } else { $KeyId }
             Write-Utf8NoBom -Path (Join-Path $airlock 'publisher.key') -Text $keyVal
