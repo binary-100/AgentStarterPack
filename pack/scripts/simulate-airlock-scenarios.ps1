@@ -782,7 +782,7 @@ if (-not (Test-Path -LiteralPath $s28Init)) {
 }
 Write-ScenarioResult -Id 'S28' -Name 'Initialize-StarterPackAirlock.ps1 bootstrap' -Ok $s28Ok -Detail $s28Detail
 
-# --- S29: Parallel init (-GitMode Copy) — both trees keep git until cutover ---
+# --- S29: Parallel init (-GitMode Copy) - both trees keep git until cutover ---
 $s29Ok = $false
 $s29Detail = ''
 $s29Init = Join-Path $PackRoot 'pack/scripts/Initialize-StarterPackAirlock.ps1'

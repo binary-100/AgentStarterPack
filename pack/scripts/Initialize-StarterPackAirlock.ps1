@@ -6,7 +6,7 @@
   Publisher bootstrap per docs/AIRLOCK_MIGRATION_CHECKLIST.md:
   1. Materialize overlay + repo-only templates under {Desktop}/StarterPack-Airlock/
   2. Write publisher.key (or validate an existing key)
-  3. Git into repo/ — Move (default cutover), Copy (parallel build), or Skip
+  3. Git into repo/ - Move (default cutover), Copy (parallel build), or Skip
   4. Run sync-working-copy-to-airlock-repo.ps1 to align repo/ content
 
   Does not configure remotes, push, or CI secrets - human steps after init.
@@ -22,8 +22,8 @@
 .PARAMETER PublisherKeyId
   Overlay manifest keyId and publisher.key contents. Default: new random id when creating a key.
 .PARAMETER GitMode
-  Move — move .git to repo/ (final layout). Copy — copy .git to repo/, keep on working copy (parallel).
-  Skip — no git change. `-SkipGitMigrate` is equivalent to `-GitMode Skip`.
+  Move - move .git to repo/ (final layout). Copy - copy .git to repo/, keep on working copy (parallel).
+  Skip - no git change. `-SkipGitMigrate` is equivalent to `-GitMode Skip`.
 .PARAMETER SkipGitMigrate
   Deprecated alias for `-GitMode Skip`.
 .PARAMETER SkipSync
@@ -96,7 +96,7 @@ if ($GitMode -ne 'Skip' -and (Test-PackGitCursorLock -Root $WorkingCopy)) {
     Write-Host '[WARN] .git/cursor present - close Cursor on this checkout before git copy/move (WQ-461)'
 }
 if ($GitMode -eq 'Copy') {
-    Write-Host '[INFO] parallel build — working copy keeps .git until Complete-StarterPackAirlockCutover.cmd'
+    Write-Host '[INFO] parallel build - working copy keeps .git until Complete-StarterPackAirlockCutover.cmd'
 }
 
 $existing = Find-StarterPackAirlock -DesktopRoots @($layout.DesktopRoot)
@@ -203,7 +203,7 @@ if (-not $WhatIf) {
 }
 
 if ($GitMode -eq 'Copy') {
-    Write-Host 'Next: Verify-AirlockPublishGate.cmd, configure remote on repo/, prove CI — then Complete-StarterPackAirlockCutover.cmd.'
+    Write-Host 'Next: Verify-AirlockPublishGate.cmd, configure remote on repo/, prove CI - then Complete-StarterPackAirlockCutover.cmd.'
 } else {
     Write-Host 'Next: Verify-AirlockPublishGate.cmd (Zone A + sync + Zone B), configure remote on repo/, human git push only.'
 }

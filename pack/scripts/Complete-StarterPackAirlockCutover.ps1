@@ -13,7 +13,7 @@
 .PARAMETER WhatIf
   Print planned action without deleting.
 .EXAMPLE
-  .\pack\scripts\Complete-StarterPackAirlockCutover.ps1 -WorkingCopy 'C:\Users\me\Desktop\AgentStarterPack'
+  .\pack\scripts\Complete-StarterPackAirlockCutover.ps1 -WorkingCopy '<pack checkout>'
 #>
 param(
     [string]$WorkingCopy,
@@ -76,5 +76,5 @@ if (-not $WhatIf) {
     }
 }
 
-Write-Host 'Next: Refresh-AgentContext.cmd on working copy; run Verify-AirlockPublishGate.cmd before each push.'
+Write-Host 'Next: refresh agent context on the working copy, then run the publish gate before each push.'
 exit 0
