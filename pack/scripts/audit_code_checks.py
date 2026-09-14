@@ -847,6 +847,28 @@ def proof_rel_key(app_root: Path, path: Path) -> str:
     return rel.lower()
 
 
+_PROOF_TEXT_SUFFIXES = frozenset(
+    {".py", ".md", ".json", ".ps1", ".mdc", ".txt", ".yml", ".yaml", ".sh", ".bat", ".cmd", ".template"}
+)
+
+
+def proof_file_content_hash(path: Path) -> str:
+    """SHA256 of file bytes; text files normalized to LF for cross-host proof parity (WQ B12 / CI)."""
+    suffix = path.suffix.lower()
+    if suffix in _PROOF_TEXT_SUFFIXES:
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+        normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+        return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    fh = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            fh.update(chunk)
+    return fh.hexdigest()
+
+
 def compute_tree_fingerprint(app_root: Path, cfg: dict) -> str | None:
     """Hash the *contents* of the audited files.
 
@@ -865,11 +887,7 @@ def compute_tree_fingerprint(app_root: Path, cfg: dict) -> str | None:
         return None
     h = hashlib.sha256()
     for rel in sorted(entries):
-        fh = hashlib.sha256()
-        with open(entries[rel], "rb") as handle:
-            for chunk in iter(lambda: handle.read(65536), b""):
-                fh.update(chunk)
-        h.update(f"{rel}|{fh.hexdigest()}\n".encode("utf-8"))
+        h.update(f"{rel}|{proof_file_content_hash(entries[rel])}\n".encode("utf-8"))
     return h.hexdigest()
 
 

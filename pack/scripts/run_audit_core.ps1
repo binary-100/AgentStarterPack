@@ -65,6 +65,19 @@ function Get-RepoGitHead([string]$Root) {
     return $null
 }
 
+function Get-ProofFileContentHash([string]$LiteralPath) {
+    $ext = [System.IO.Path]::GetExtension($LiteralPath).ToLowerInvariant()
+    $textExts = @('.py', '.md', '.json', '.ps1', '.mdc', '.txt', '.yml', '.yaml', '.sh', '.bat', '.cmd', '.template')
+    if ($textExts -contains $ext) {
+        $text = [System.IO.File]::ReadAllText($LiteralPath)
+        $normalized = $text -replace "`r`n", "`n" -replace "`r", "`n"
+        $bytes = [Text.Encoding]::UTF8.GetBytes($normalized)
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        return -join ($sha.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') })
+    }
+    return (Get-FileHash -LiteralPath $LiteralPath -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
 function Get-AuditTreeFingerprint([string]$AppRoot, $Cfg) {
     $paths = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     if ($Cfg.tests -and $Cfg.tests.script) {
@@ -116,7 +129,7 @@ function Get-AuditTreeFingerprint([string]$AppRoot, $Cfg) {
             $rel = $full
         }
         $rel = ($rel -replace '\\', '/').ToLowerInvariant()
-        $byRel[$rel] = (Get-FileHash -LiteralPath $full -Algorithm SHA256).Hash.ToLowerInvariant()
+        $byRel[$rel] = Get-ProofFileContentHash -LiteralPath $full
     }
     # Ordinal sort: Sort-Object is culture-aware and orders punctuation differently from Python's
     # sorted(), and both sides have to hash the same sequence.
