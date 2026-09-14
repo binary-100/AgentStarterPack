@@ -1347,6 +1347,22 @@
         86
       ],
       "note": "Static read for B11 gate script + B10 -PublishRoot on verify-audit-system.ps1; live probe runs -WhatIf and VERSION drift through gate with -SkipZoneA -SkipZoneB (sync only)."
+    },
+    {
+      "step": 87,
+      "title": "Zone B publish attestation (B12)",
+      "status": "mutation",
+      "mutation": {
+        "file": "pack/scripts/sync-working-copy-to-airlock-repo.ps1",
+        "find": "if (-not (Write-PackPublishAttestation -RepoRoot $RepoRoot)) {",
+        "replace": "if (-not ($true)) {  # WQ B12 mutation: attestation write disabled",
+        "why": "Skips writing docs/.audit_publish_attestation.json during B09 sync. Step 87's static read requires Write-PackPublishAttestation in the sync script; without it Zone B run_audit has nothing valid to validate and the publish gate cannot verify attestation after sync.",
+        "rejected": "Mutating Test-PackPublishAttestation in run_audit_core.ps1 would also redden the step but through a different arm; the defect under test is whether B09 produces the attestation artifact the dual-zone contract depends on."
+      },
+      "expectFailIn": [
+        87
+      ],
+      "note": "Static wiring read only: B09 sync calls Write-PackPublishAttestation; pack-paths.ps1 defines Write-PackPublishAttestation and Test-PackPublishAttestation; run_audit_core.ps1 validates attestation on Zone B trees instead of re-running semantic; verify-airlock-publish-gate.ps1 checks attestation after sync."
     }
   ]
 }

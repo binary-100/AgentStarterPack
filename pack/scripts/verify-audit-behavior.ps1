@@ -7037,12 +7037,14 @@ try {
             Fail 'run_audit_core does not validate publish attestation on Zone B trees'
         } elseif ($pathsBody -notmatch 'function Write-PackPublishAttestation') {
             Fail 'pack-paths.ps1 missing Write-PackPublishAttestation'
-        } elseif ($gateScript = Join-Path $PackRoot 'pack/scripts/verify-airlock-publish-gate.ps1';
-            -not (Test-Path -LiteralPath $gateScript)) {
-            Fail 'verify-airlock-publish-gate.ps1 missing'
-        } elseif ((Get-Content -LiteralPath $gateScript -Raw -Encoding UTF8) -notmatch 'Test-PackPublishAttestation') {
-            Fail 'publish gate does not verify attestation after B09 sync'
-        } else { Ok 'Zone B attestation wired in sync, run_audit_core, and publish gate' }
+        } else {
+            $gateScript87 = Join-Path $PackRoot 'pack/scripts/verify-airlock-publish-gate.ps1'
+            if (-not (Test-Path -LiteralPath $gateScript87)) {
+                Fail 'verify-airlock-publish-gate.ps1 missing'
+            } elseif ((Get-Content -LiteralPath $gateScript87 -Raw -Encoding UTF8) -notmatch 'Test-PackPublishAttestation') {
+                Fail 'publish gate does not verify attestation after B09 sync'
+            } else { Ok 'Zone B attestation wired in sync, run_audit_core, and publish gate' }
+        }
     }
 } catch {
     Fail "Zone B publish attestation checks error: $_"

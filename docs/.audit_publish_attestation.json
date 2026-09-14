@@ -1,7 +1,7 @@
 {
-    "schema":  1,
-    "writtenAt":  "2026-09-14T07:29:00.5733279Z",
-    "version":  "1.8.0",
-    "zoneTreeFingerprint":  "tree:b597b4770850c2b6865fcb6b1b109c8d5629805a8ae09773ccc7de4f8f062f6b",
-    "zoneBProofAtPublish":  "ec4c83173e5678381d5b0fc71057aaae0986eb4d+tree:b597b4770850c2b6865fcb6b1b109c8d5629805a8ae09773ccc7de4f8f062f6b"
+  "schema": 1,
+  "writtenAt": "2026-09-14T07:41:44.0050402Z",
+  "version": "1.8.0",
+  "zoneTreeFingerprint": "tree:b597b4770850c2b6865fcb6b1b109c8d5629805a8ae09773ccc7de4f8f062f6b",
+  "zoneBProofAtPublish": "bf037abc0b358f63e4d8fe3d3ceb9d84f4c986b3+tree:b597b4770850c2b6865fcb6b1b109c8d5629805a8ae09773ccc7de4f8f062f6b"
 }
