@@ -171,14 +171,11 @@ if (-not $WhatIf) {
         }
     }
     Write-Host '[OK] repo-only templates materialized in repo/'
-
-    if (-not (Write-PackPublishAttestation -RepoRoot $RepoRoot)) {
-        Write-Host '[FAIL] publish attestation write failed'
-        exit 1
-    }
 }
 
 # Zone B verify arms (Done-log cite compare, git index) expect HEAD to match the synced tree.
+# Attestation is written *after* the sync commit so the fingerprint matches the published HEAD
+# (writing it before commit captured a stale parent SHA and drifted on the next push).
 if (-not $WhatIf -and (Test-Path -LiteralPath (Join-Path $RepoRoot '.git'))) {
     $gitCmd = Get-Command git -ErrorAction SilentlyContinue
     if ($gitCmd) {
@@ -203,10 +200,31 @@ if (-not $WhatIf -and (Test-Path -LiteralPath (Join-Path $RepoRoot '.git'))) {
             } else {
                 Write-Host '[OK] synced tree already matches HEAD in repo/'
             }
+
+            if (-not (Write-PackPublishAttestation -RepoRoot $RepoRoot)) {
+                Write-Host '[FAIL] publish attestation write failed'
+                exit 1
+            }
+            & $gitCmd.Source add -A 2>$null | Out-Null
+            & $gitCmd.Source diff --cached --quiet 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                & $gitCmd.Source -c user.email=sync@airlock.local -c user.name='Airlock sync' `
+                    commit -m 'publish attestation' -q 2>$null | Out-Null
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host '[OK] publish attestation committed in repo/'
+                } else {
+                    Write-Host '[WARN] attestation commit failed - push may fail Zone B attestation check'
+                }
+            }
         } finally {
             $ErrorActionPreference = $prevEap
             Pop-Location
         }
+    }
+} elseif (-not $WhatIf) {
+    if (-not (Write-PackPublishAttestation -RepoRoot $RepoRoot)) {
+        Write-Host '[FAIL] publish attestation write failed'
+        exit 1
     }
 }
 

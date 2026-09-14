@@ -415,6 +415,12 @@ if ($FinalizeOnly) {
 # that runs a version or doc sync rewrites files the proof covers. With a git repo the proof is a
 # stable HEAD so it never showed, but in fingerprint mode - any project that has not run git init -
 # the verifier's post-test recompute could never match, leaving the semantic gate permanently stale.
+# Zone B: validate publish attestation before tests or version sync can mutate the proof tree.
+$script:ZoneBAttestationAtStart = $null
+if (Test-PackPublishZoneBTree -Root $AppRoot) {
+    $script:ZoneBAttestationAtStart = Test-PackPublishAttestation -Root $AppRoot
+}
+
 Stop-AuditPhase 'init'
 
 # --- Version sync ---
@@ -984,7 +990,10 @@ Stop-AuditPhase 'code_checks'
 # --- Semantic report verify (required for complete audit) ---
 Start-AuditPhase 'semantic'
 $zoneBPublishTree = Test-PackPublishZoneBTree -Root $AppRoot
-$zoneBAttestation = if ($zoneBPublishTree) { Test-PackPublishAttestation -Root $AppRoot } else { $null }
+$zoneBAttestation = if ($zoneBPublishTree) {
+    if ($null -ne $script:ZoneBAttestationAtStart) { $script:ZoneBAttestationAtStart }
+    else { Test-PackPublishAttestation -Root $AppRoot }
+} else { $null }
 if ($zoneBPublishTree -and $zoneBAttestation.Valid) {
     Write-Host "[OK] Zone B publish tree - semantic review attested at publish (tree fingerprint matches)"
 }

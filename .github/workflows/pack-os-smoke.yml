@@ -173,7 +173,12 @@ jobs:
         timeout-minutes: 12
         env:
           BUILD_NOPAUSE: '1'
-        run: bash run_audit.sh
+        run: |
+          set -euo pipefail
+          # Behavior suite runs in-process and may touch proof-path files; attestation is checked
+          # at audit init against the published commit, so restore the checkout first.
+          git checkout -- .
+          bash run_audit.sh
 
   # macOS had never been executed (WQ-436). It was treated as "Linux, near enough" on the strength of
   # both being non-Windows, which is exactly the assumption Linux itself disproved in WQ-446: that run

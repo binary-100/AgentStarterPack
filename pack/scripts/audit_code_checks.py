@@ -1778,12 +1778,31 @@ def fill_semantic_fixture(
     return path
 
 
+def _optional_import_dep_available(dep: str) -> bool:
+    """True when an optional third-party dep is importable (mcp is optional per check-requirements)."""
+    try:
+        import importlib.util
+
+        return importlib.util.find_spec(dep) is not None
+    except (ImportError, AttributeError, ValueError):
+        return False
+
+
 def import_smoke(app_root: Path, exclude: set[str], cfg: dict | None = None) -> list[str]:
     fixes: list[str] = []
     cc = (cfg or {}).get("codeChecks") or {}
     ism = cc.get("importSmoke") or {}
     if ism.get("enabled", True) is False:
         return fixes
+    skip_prefixes: list[tuple[str, str]] = []
+    for entry in ism.get("skipWhenDepMissing") or []:
+        if isinstance(entry, dict):
+            prefix = str(entry.get("pathPrefix") or "").replace("\\", "/").strip()
+            dep = str(entry.get("import") or "").strip()
+            if prefix and dep:
+                skip_prefixes.append((prefix.rstrip("/") + "/", dep))
+    if not skip_prefixes and ism.get("skipMcpWhenPackageMissing", True):
+        skip_prefixes.append(("mcp/", "mcp.server"))
 
     search_dirs: list[Path] = []
     dm = (cfg or {}).get("domainMap") or {}
@@ -1816,6 +1835,13 @@ def import_smoke(app_root: Path, exclude: set[str], cfg: dict | None = None) -> 
         for py in py_paths:
             rel_key = str(py.relative_to(app_root)).replace("\\", "/")
             if py.name in exclude or rel_key in seen:
+                continue
+            skip_optional = False
+            for prefix, dep in skip_prefixes:
+                if rel_key.startswith(prefix) and not _optional_import_dep_available(dep):
+                    skip_optional = True
+                    break
+            if skip_optional:
                 continue
             seen.add(rel_key)
             mod = py.stem
